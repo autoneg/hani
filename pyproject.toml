@@ -1,0 +1,75 @@
+[project]
+name = "han"
+version = "0.1.0"
+description = "Run Human-Agent Negotiations"
+license = { text = "GNU General Public License v2 or later (GPLv2+)" }
+authors = [
+    { name = "Yasser Mohammad", email = "yasserfarouk@gmail.com" },
+]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "hvplot>=0.11.2",
+    "negmas>=0.10.23",
+    "panel>=1.6.1",
+    "plotly>=6.0.0",
+]
+
+[build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+requires = ["setuptools >= 40.6.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+han = "han.run:main"
+
+[project.optional-dependencies]
+dev = [
+    "bumpversion>=0.6.0",
+    "watchfiles>=1.0.4",
+]
+doc = [
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-include-markdown-plugin>=7.1.4",
+    "mkdocs-material>=9.6.5",
+    "mkdocs>=1.6.1",
+    "mkdocstrings-python>=1.16.1",
+]
+docs = [
+    "mkdocs-jupyter>=0.25.1",
+]
+
+[tool.bumpversion]  # bumpversion config
+current_version = "0.1.0"
+delete_bookmark = true
+commit = false
+tag = false
+
+[tool.pytest.ini_options]  # pytest config
+# addopts = "--doctest-modules"  # Example: If you use doctest
+# testpaths = ["tests"]         # Example: If you have a tests directory
+collect_ignore = ['setup.py']
+
+[tool.mypy]
+warn_unused_configs = false
+warn_incomplete_stub = true
+check_untyped_defs = true
+python_version = "3.10"
+strict_optional = false
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]  # mypy overrides
+module = ["setup.*"]
+check_untyped_defs = false
+
+[tool.flake8]
+exclude = ["docs"]

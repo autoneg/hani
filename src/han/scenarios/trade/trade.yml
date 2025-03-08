@@ -1,0 +1,15 @@
+issues:
+- name: quantity
+  type: ContiguousIssue
+  values:
+  - 1
+  - 10
+- name: price
+  type: DiscreteCardinalIssue
+  values:
+  - 100
+  - 110
+  - 120
+  - 200
+name: Trade
+type: DiscreteCartesianOutcomeSpace

@@ -1,0 +1,37 @@
+Name: Trade
+title: Simple Trading Scenario
+issue_description:
+  quantity: The quantity to be traded
+  price: The unit price to trade at
+hints:
+  seller:
+    Target Quantity: 5
+    Quantity Importance: 0.25
+  buyer:
+    Target Quantity: 6
+    Quantity Importance: 0.5
+short_description: In this scenario, you are asked to trade with an agent. You are the **seller** and your partner is the buyer.
+description: |
+  ## Basic
+
+  In this scenario, you are asked to trade with an agent. You are the **seller** and your partner is the buyer.
+  You have something and something
+
+  Your partner is not always nice.
+
+  ### Utility functions
+  
+  Information about utility functions
+
+long_description: |
+  ## Basic
+
+  In this scenario, you are asked to trade with an agent. You are the **seller** and your partner is the buyer.
+  You have something and something
+
+  Your partner is not always nice.
+
+  ### Utility functions
+  
+  Information about utility functions
+
