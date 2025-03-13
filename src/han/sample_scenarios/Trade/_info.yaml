@@ -7,31 +7,23 @@ hints:
   seller:
     Target Quantity: 5
     Quantity Importance: 0.25
+    Price Importance: 0.75
   buyer:
     Target Quantity: 6
     Quantity Importance: 0.5
+    Price Importance: 0.5
+issues:
+  Quantity:
 short_description: In this scenario, you are asked to trade with an agent. You are the **seller** and your partner is the buyer.
-description: |
-  ## Basic
-
-  In this scenario, you are asked to trade with an agent. You are the **seller** and your partner is the buyer.
-  You have something and something
-
-  Your partner is not always nice.
-
-  ### Utility functions
-  
-  Information about utility functions
-
 long_description: |
-  ## Basic
+  #### Basic
 
   In this scenario, you are asked to trade with an agent. You are the **seller** and your partner is the buyer.
   You have something and something
 
   Your partner is not always nice.
 
-  ### Utility functions
+  #### Utility functions
   
   Information about utility functions
 

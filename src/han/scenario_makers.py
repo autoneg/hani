@@ -11,7 +11,7 @@ from negmas import (
     make_issue,
     make_os,
 )
-from pathlib import Path
+from han.common import SAMPLE_SCENRIOS
 
 
 __all__ = ["make_trade_scenario", "make_colored_chips"]
@@ -35,6 +35,7 @@ def int_in(x: IntRange):
 def make_values(
     qs: list[int], target: int, shortfall: FloatRange, excess: FloatRange
 ) -> dict[int, float]:
+    target = int_in(target)
     if target not in qs:
         dists = [abs(_ - target) for _ in qs]
         target = int(argmin(dists))
@@ -54,6 +55,7 @@ def make_values(
 
 
 def make_trade_scenario(
+    index: int,
     quantity: IntRange = (1, 20),
     price: tuple[int, int] | list[int] = list(range(100, 200, 20)),
     seller_name: str = "Seller",
@@ -88,13 +90,13 @@ def make_trade_scenario(
     )
 
     params = [seller_params, buyer_params]
-    names = ["seller", "buyer"]
+    names = ["Seller", "Buyer"]
     for d in params:
         if d["target"] is None:
             d["target"] = quantity
     os = make_os(
-        [make_issue(quantity, name="quantity"), make_issue(price, name="price")],
-        name="trade",
+        [make_issue(quantity, name="Quantity"), make_issue(price, name="Price")],
+        name="Trade",
     )
     assert isinstance(os, DiscreteCartesianOutcomeSpace)
     quantities = list(os.issues[0].all)
@@ -119,9 +121,9 @@ def make_trade_scenario(
     return Scenario(
         outcome_space=os,
         ufuns=tuple(ufuns),
-        info=load(Path(__file__).parent / "scenarios" / "trade" / "_info.yaml"),
+        info=load(SAMPLE_SCENRIOS / "Trade" / "_info.yaml"),
     )
 
 
-def make_colored_chips():
-    return make_trade_scenario((1, 5))
+def make_colored_chips(index: int):
+    return make_trade_scenario(index, (1, 5))

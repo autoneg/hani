@@ -9,7 +9,7 @@ from negmas import (
 )
 import panel as pn
 
-from han.tools.tool import Tool
+from han.tools.tool import SimpleTool
 
 __all__ = ["PreferencesTool", "LAYOUT_OPTIONS"]
 
@@ -19,11 +19,10 @@ LAYOUT_OPTIONS = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     margin=dict(l=0, r=0, t=0, b=0),
-    height=200,
 )
 
 
-class PreferencesTool(Tool):
+class PreferencesTool(SimpleTool):
     issue_index = param.Selector(objects=dict())
 
     def __init__(self, ufun: BaseUtilityFunction, **kwargs):
@@ -68,7 +67,7 @@ class PreferencesTool(Tool):
         fig = go.Figure(
             data=[go.Bar(y=labels, x=[fun(_) for _ in labels], orientation="h")]
         )
-        fig.update_layout(**LAYOUT_OPTIONS)  # type: ignore
+        fig.update_layout(**LAYOUT_OPTIONS, height=200)  # type: ignore
         return pn.pane.Plotly(fig, **self._config)
 
     # @param.depends("issue_index")
@@ -103,13 +102,17 @@ class PreferencesTool(Tool):
             )
 
             # issue_view = make_issue_view(issue_index)
-            fig.update_layout(**LAYOUT_OPTIONS)  # type: ignore
+            fig.update_layout(**LAYOUT_OPTIONS, height=150)  # type: ignore
         self.object = pn.Row(
             pn.Column(
                 pn.pane.Markdown("**Preferences**"),
                 pn.pane.Plotly(fig, **self._config),
+                pn.pane.Markdown(f"##### Reserved value: {ufun.reserved_value}"),
             ),
-            pn.Column(issue_index, pn.bind(self._issue_view, issue_index=issue_index)),
+            pn.Column(
+                issue_index,
+                pn.bind(self._issue_view, issue_index=issue_index),
+            ),
         )
         # print("Showing preferences ")
         # print(self.object)

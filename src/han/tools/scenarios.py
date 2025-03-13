@@ -1,12 +1,12 @@
 import pandas as pd
 import panel as pn
 from negmas.inout import Scenario
-from han.tools.tool import Tool
+from han.tools.tool import SimpleTool
 
 __all__ = ["ScenarioInfoTool"]
 
 
-class ScenarioInfoTool(Tool):
+class ScenarioInfoTool(SimpleTool):
     def __init__(self, scenario: Scenario, human_id: str, **kwargs):
         super().__init__(**kwargs)
         self.scenario = scenario
@@ -23,7 +23,7 @@ class ScenarioInfoTool(Tool):
                 f"  - **{issue.name}**: {issue.values} "
                 f"{scenario.info['issue_description'].get(human_id, dict()).get(issue.name, '')}\n"
             )
-        txt += f"\n\nYou act as the **{human_id}**\n\n#### Short Description"
+        txt += f"\n\nYou act as the **{human_id}**\n\n### Description"
         return txt
 
     def hints(self):
@@ -44,7 +44,7 @@ class ScenarioInfoTool(Tool):
             pn.pane.Markdown(
                 f"### {self.scenario.info.get('title', '')}\n\n"
                 f"{self.outcome_space()}\n"
-                f"{self.scenario.info.get('short_description', '')}"
+                f"{self.scenario.info.get('long_description', '')}"
             ),
             self.hints,
             sizing_mode="stretch_both",

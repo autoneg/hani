@@ -1,10 +1,10 @@
 issues:
-- name: quantity
+- name: Quantity
   type: ContiguousIssue
   values:
   - 1
   - 10
-- name: price
+- name: Price
   type: DiscreteCardinalIssue
   values:
   - 100
