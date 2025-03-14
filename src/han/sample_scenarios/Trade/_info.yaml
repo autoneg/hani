@@ -1,19 +1,17 @@
 Name: Trade
 title: Simple Trading Scenario
 issue_description:
-  quantity: The quantity to be traded
-  price: The unit price to trade at
+  Quantity: The quantity to be traded
+  Price: The unit price to trade at
 hints:
-  seller:
+  Seller:
     Target Quantity: 5
     Quantity Importance: 0.25
     Price Importance: 0.75
-  buyer:
+  Buyer:
     Target Quantity: 6
     Quantity Importance: 0.5
     Price Importance: 0.5
-issues:
-  Quantity:
 short_description: In this scenario, you are asked to trade with an agent. You are the **seller** and your partner is the buyer.
 long_description: |
   #### Basic

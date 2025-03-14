@@ -40,6 +40,7 @@ class ScenarioInfoTool(Tool):
     @param.depends("scenario", "human_id")
     def hints(self):
         human_id = self.human_id
+        human_id = human_id.replace(" (You)", "")
         hints = self.scenario.info.get("hints", dict()).get(human_id, dict())
         if not hints:
             return None

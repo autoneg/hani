@@ -69,13 +69,11 @@ class UtilityPlot2DTool(Tool):
         self._config = dict(sizing_mode="stretch_width")
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
-        print("Resetting history ========================")
         self.mechanism = session_state["mechanism"]
         self.human_index = session_state["human_index"]
         self.history.clear()
 
     def action_requested(self, session_state: dict[str, Any], nmi: SAONMI):
-        print("Updating history ------------------------")
         self.history = self.mechanism.full_trace
 
     @param.depends("mechanism", "first_issue", "second_issue", "history")

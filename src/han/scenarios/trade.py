@@ -174,13 +174,12 @@ def make_trade_scenario(
         ufuns.reverse()
 
     info = load(SAMPLE_SCENRIOS / "Trade" / INFO_FILE_NAME)
-    info["hints"]["seller"]["Target Quantity"] = seller_target
-    info["hints"]["buyer"]["Target Quantity"] = buyer_target
-    info["hints"]["seller"]["Quantity Importance"] = seller_quantity_weight
-    info["hints"]["buyer"]["Quantity Importance"] = buyer_quantity_weight
-    info["hints"]["seller"]["Price Importance"] = 1.0 - seller_quantity_weight
-    info["hints"]["buyer"]["Price Importance"] = 1.0 - buyer_quantity_weight
-    print(info["hints"])
+    info["hints"]["Seller"]["Target Quantity"] = int(seller_target)
+    info["hints"]["Buyer"]["Target Quantity"] = int(buyer_target)
+    info["hints"]["Seller"]["Quantity Importance"] = round(seller_quantity_weight, 3)
+    info["hints"]["Buyer"]["Quantity Importance"] = round(buyer_quantity_weight, 3)
+    info["hints"]["Seller"]["Price Importance"] = round(1.0 - seller_quantity_weight, 3)
+    info["hints"]["Buyer"]["Price Importance"] = round(1.0 - buyer_quantity_weight, 3)
     return Scenario(
         outcome_space=os,
         ufuns=tuple(ufuns),

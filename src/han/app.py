@@ -51,7 +51,7 @@ LAYOUT_OPTIONS = dict(
     height=200,
 )
 SESSION_PREFIX = "session:"
-ICON_WIDTH = 50
+ICON_WIDTH = 20
 HISTORY_SEPARATION = 10
 
 
@@ -126,7 +126,7 @@ class DisplayConfig:
     human_color: str = "#0072B5"
     agent_color: str = "#B543B5"
     human_background_color: str = "#d3e3d9"
-    agent_background_color: str = "#dbc5d5"
+    agent_background_color: str = "#e9ecf0"
     outcome_display_method: OutcomeDisplayMethod = OutcomeDisplayMethod.Panel
     reverse_offers: bool = False
 
