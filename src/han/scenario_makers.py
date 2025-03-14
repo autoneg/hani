@@ -115,6 +115,8 @@ def make_trade_scenario(
             weights=(w, 1.0 - w),
             outcome_space=os,
             reserved_value=float_in(p["reserved"]),  # type: ignore
+            name=name,
+            id=name,
         )
         ufuns.append(ufun)
 

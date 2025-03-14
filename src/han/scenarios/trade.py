@@ -10,11 +10,10 @@ from negmas import (
     UtilityFunction,
     make_issue,
     make_os,
+    Outcome,
+    Scenario,
 )
-from negmas.inout import Scenario
-
-from negmas import Scenario
-from han.common import SAMPLE_SCENRIOS
+from han.common import SAMPLE_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
 
 __ = TableFun, AffineFun, LinearFun, LambdaFun
 
@@ -22,8 +21,8 @@ FloatRange = tuple[float, float] | tuple[float, float, int] | list[float] | floa
 IntRange = tuple[int, int] | tuple[int, int, int] | list[int] | int
 FloatIssueRange = tuple[float, float] | tuple[float, float, float] | list[float]
 
-random.seed(1234)
-np.random.seed(1234)
+# random.seed(1234)
+# np.random.seed(1234)
 
 
 def range_in(x: FloatIssueRange):
@@ -63,22 +62,23 @@ def int_in(x: IntRange):
 
 def make_trade_scenario(
     index: int,
-    max_quantity: int = 20,
-    prices: FloatIssueRange = (100, 200, 11),
-    seller_target: IntRange = (2, 18),
+    max_quantity: IntRange = (10, 15),
+    prices: FloatIssueRange = (100, 200, 6),
+    seller_target: IntRange = (2, 10),
     seller_shortfall_penalty: FloatRange = (0.1, 0.8),
     seller_excess_penalty: FloatRange = (0.01, 0.2),
-    seller_quantity_weight: FloatRange = (0.01, 0.2),
+    seller_quantity_weight: FloatRange = (0.1, 0.3),
     seller_price_exponent: FloatRange = [0.05, 0.2, 1.0, 2.0, 5.0],
     seller_reserved_range: FloatRange = (0.0, 0.1),
-    buyer_target: IntRange = (2, 18),
+    buyer_target: IntRange = (4, 8),
     buyer_shortfall_penalty: FloatRange = (0.1, 0.8),
     buyer_excess_penalty: FloatRange = (0.1, 0.8),
-    buyer_quantity_weight: FloatRange = (0.1, 0.9),
+    buyer_quantity_weight: FloatRange = (0.1, 0.3),
     buyer_price_exponent: FloatRange = [0.05, 0.2, 1.0, 2.0, 5.0],
     buyer_reserved_range: FloatRange = (0.0, 0.1),
-    seller_starts: bool | None = None,
+    seller_starts: bool | None = True,
 ) -> Scenario:
+    max_quantity = int_in(max_quantity)
     os = make_os(
         [
             make_issue((1, max_quantity), name="Quantity"),
@@ -146,6 +146,7 @@ def make_trade_scenario(
             weights=[w, 1 - w],
             reserved_value=float_in(reserved_range),
             name="Seller" if is_seller else "Buyer",
+            id="Seller" if is_seller else "Buyer",
             outcome_space=os,
         )
 
@@ -172,15 +173,29 @@ def make_trade_scenario(
     if not seller_starts:
         ufuns.reverse()
 
-    info = load(SAMPLE_SCENRIOS / "Trade" / "_info.yaml")
+    info = load(SAMPLE_SCENRIOS / "Trade" / INFO_FILE_NAME)
     info["hints"]["seller"]["Target Quantity"] = seller_target
     info["hints"]["buyer"]["Target Quantity"] = buyer_target
     info["hints"]["seller"]["Quantity Importance"] = seller_quantity_weight
     info["hints"]["buyer"]["Quantity Importance"] = buyer_quantity_weight
     info["hints"]["seller"]["Price Importance"] = 1.0 - seller_quantity_weight
     info["hints"]["buyer"]["Price Importance"] = 1.0 - buyer_quantity_weight
+    print(info["hints"])
     return Scenario(
         outcome_space=os,
         ufuns=tuple(ufuns),
         info=info,
     )
+
+
+class TradeOutcomeDisplay(DefaultOutcomeDisplay):
+    def str(
+        self,
+        outcome: Outcome | None,
+        scenario: Scenario,
+        is_done: bool,
+        from_human: bool,
+    ) -> str:
+        if outcome is None:
+            return super().str(outcome, scenario, is_done, from_human)
+        return f"{outcome[0]} items at {outcome[1]}$"

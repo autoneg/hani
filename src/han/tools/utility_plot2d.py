@@ -1,4 +1,4 @@
-import functools
+from typing import Any
 import param
 import numpy as np
 import pandas as pd
@@ -6,10 +6,12 @@ import pandas as pd
 import plotly.graph_objects as go
 from negmas import (
     SAOMechanism,
+    TraceElement,
 )
+from negmas.sao import SAOMechanism, SAONMI
 import panel as pn
 
-from han.tools.tool import SimpleTool
+from han.tools.tool import Tool
 
 __all__ = ["UtilityPlot2DTool", "LAYOUT_OPTIONS"]
 
@@ -32,9 +34,13 @@ TRACE_COLUMNS = (
 )
 
 
-class UtilityPlot2DTool(SimpleTool):
+class UtilityPlot2DTool(Tool):
+    mechanism = param.ClassSelector(class_=SAOMechanism)
+    history = param.List(item_type=TraceElement)
     first_issue = param.Selector(objects=dict())
     second_issue = param.Selector(objects=dict())
+    show_agent_ufun = param.Boolean()
+    human_index = param.Integer()
 
     def __init__(
         self,
@@ -44,50 +50,54 @@ class UtilityPlot2DTool(SimpleTool):
         **kwargs,
     ):
         super().__init__(**kwargs)
+        self.human_index = human_index
+        self.show_agent_ufun = show_agent_ufun
+        self.mechanism = mechanism
         self._issues = mechanism.outcome_space.issues  # type: ignore
-        self._human_index = human_index
-        self._show_agent_ufun = show_agent_ufun
+        self._minmax = dict()
         self.time_cols = ["relative_time", "step", "time"]
         self.ycols = []
-        self._mechanism = mechanism
-        self._minmax = dict()
-        for i in range(len(self._mechanism.negotiators)):
-            if not self._show_agent_ufun and i != self._human_index:
+        for i in range(len(self.mechanism.negotiators)):
+            if not self.show_agent_ufun and i != self.human_index:
                 continue
-            neg = self._mechanism.negotiators[i]
+            neg = self.mechanism.negotiators[i]
             self.ycols.append(neg.name)
             self._minmax[neg.name] = neg.ufun.minmax()  # type: ignore
         self.xcols = self.time_cols + self.ycols
         self.param.first_issue.objects = list(self.xcols)
         self.param.second_issue.objects = list(self.ycols)
         self._config = dict(sizing_mode="stretch_width")
-        self._update_content()
 
-    def create_plot(self, event=None, x_col=None, y_col=None):
-        if x_col is None:
-            x_col = self.first_issue
-        if y_col is None:
-            y_col = self.second_issue
+    def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
+        print("Resetting history ========================")
+        self.mechanism = session_state["mechanism"]
+        self.human_index = session_state["human_index"]
+        self.history.clear()
+
+    def action_requested(self, session_state: dict[str, Any], nmi: SAONMI):
+        print("Updating history ------------------------")
+        self.history = self.mechanism.full_trace
+
+    @param.depends("mechanism", "first_issue", "second_issue", "history")
+    def plot(self):
+        x_col = self.first_issue
+        y_col = self.second_issue
         if not isinstance(x_col, str):
             x_col = x_col.value  # type: ignore
         if not isinstance(y_col, str):
             y_col = y_col.value  # type: ignore
-        mechanism = self._mechanism
-        assert mechanism is not None and mechanism.outcome_space is not None
+        mechanism = self.mechanism
         history = np.asarray(
-            [
-                dict(zip(TRACE_COLUMNS, tuple(_), strict=True))
-                for _ in mechanism.full_trace
-            ]
+            [dict(zip(TRACE_COLUMNS, tuple(_), strict=True)) for _ in self.history]
         )
         if len(history) == 0:
             df = pd.DataFrame(data=None, columns=self.xcols + ["negotiator"])  # type: ignore
         else:
             df = pd.DataFrame.from_records(history)
-            for i in range(len(self._mechanism.negotiators)):
-                if not self._show_agent_ufun and i != self._human_index:
+            for i in range(len(self.mechanism.negotiators)):
+                if not self.show_agent_ufun and i != self.human_index:
                     continue
-                neg = self._mechanism.negotiators[i]
+                neg = self.mechanism.negotiators[i]
                 ufun = neg.ufun
                 assert ufun is not None
                 df[neg.name] = df["offer"].apply(ufun)
@@ -97,28 +107,28 @@ class UtilityPlot2DTool(SimpleTool):
             if col == "relative_time":
                 return (0.0, 1.0)
             if col == "step":
-                n = self._mechanism.n_steps
+                n = self.mechanism.n_steps
                 if n is None:
                     return (0, df[col].max() + 2)
                 return (0, n)
             if col == "time":
-                max_time = self._mechanism.time_limit
+                max_time = self.mechanism.time_limit
                 if max_time is None:
                     return (0, df[col].max() * 1.1)
                 return (0, max_time)
             if col in self._minmax:
-                return self._minmax[col]
+                return tuple(100 * _ for _ in self._minmax[col])
             return None
 
-        if x_col is None or y_col is None:
-            return
+        x_multiplier = 1 if x_col in self.time_cols else 100
+        y_multiplier = 1 if y_col in self.time_cols else 100
         fig = go.Figure()
         for negotiator in df["negotiator"].unique():  # type: ignore
             negotiator_df = df[df["negotiator"] == negotiator]
             fig.add_trace(
                 go.Scatter(
-                    x=negotiator_df[x_col],
-                    y=negotiator_df[y_col],
+                    x=negotiator_df[x_col] * x_multiplier,
+                    y=negotiator_df[y_col] * y_multiplier,
                     mode="lines" if len(negotiator_df) > 1 else "markers",
                     name=negotiator,
                 )
@@ -131,9 +141,9 @@ class UtilityPlot2DTool(SimpleTool):
             fig.update_yaxes(range=rng)
         fig.update_layout(xaxis_title=x_col, yaxis_title=y_col)
         fig.update_layout(**LAYOUT_OPTIONS)  # type: ignore
-        return fig
+        return pn.pane.Plotly(fig, **self._config)
 
-    def _update_content(self):
+    def __panel__(self):
         self.first_issue = first_issue = pn.widgets.Select.from_param(
             self.param.first_issue,
             name="X-axis" if len(self.ycols) > 1 else "",
@@ -146,26 +156,10 @@ class UtilityPlot2DTool(SimpleTool):
         else:
             self.second_issue = second_issue = self.ycols[0]
         update_btn = pn.widgets.ButtonIcon(
-            icon="refresh",
-            on_click=functools.partial(
-                self.create_plot, x_col=self.first_issue, y_col=self.second_issue
-            ),
+            icon="refresh", on_click=lambda event: self.plot()
         )
         widgets = pn.Row(first_issue)
         if len(self.ycols) > 1:
             widgets.append(second_issue)
         widgets.append(update_btn)
-        self.object = pn.Column(
-            widgets,
-            pn.Column(
-                pn.pane.Plotly(
-                    pn.bind(self.create_plot, x_col=first_issue, y_col=second_issue),
-                    **self._config,
-                ),
-            ),
-        )
-
-    def _get_model(self, doc, root=None, parent=None, comm=None):
-        # Delegate to pn.pane.Str for string content
-        model = pn.Row(self.object)._get_model(doc, root, parent, comm)
-        return model
+        return pn.Column(widgets, self.plot)

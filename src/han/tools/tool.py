@@ -2,7 +2,7 @@ from typing import Any
 from negmas import SAONMI, SAOResponse, Scenario
 import panel as pn
 
-__all__ = ["SimpleTool"]
+__all__ = ["SimpleTool", "Tool"]
 
 
 class _Callbacks:
@@ -54,24 +54,7 @@ class Tool(pn.viewable.Viewable, _Callbacks):
     A fully reactive tool that can respond to events in the negotiation
     """
 
-    def init(self, session_state: dict[str, Any]):
-        """Called when the application is started before any negotiation."""
-
-    def on_negotiation_start(self, nmi: SAONMI, session_state: dict[str, Any]):
-        """Called on the beginning of the negotiation."""
-
-    def on_negotiation_end(self, nmi: SAONMI, session_state: dict[str, Any]):
-        """Called on the beginning of the negotiation."""
-
-    def on_action_requested(self, nmi: SAONMI):
-        """Called whenever the user is asked to act before they act."""
-
-    def before_action_execution(
-        self, nmi: SAONMI, session_state: dict[str, Any], action: SAOResponse
-    ):
-        """Called before an action from the user is executed."""
-
-    def after_action_execution(
-        self, nmi: SAONMI, session_state: dict[str, Any], action: SAOResponse
-    ):
-        """Called after an action from the user is executed."""
+    def _get_model(self, doc, root=None, parent=None, comm=None):
+        # Delegate to pn.pane.Str for string content
+        model = self.__panel__()._get_model(doc, root, parent, comm)  # type: ignore
+        return model
