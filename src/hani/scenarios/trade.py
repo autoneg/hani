@@ -13,7 +13,7 @@ from negmas import (
     Outcome,
     Scenario,
 )
-from han.common import SAMPLE_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
+from hani.common import SAMPLE_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
 
 __ = TableFun, AffineFun, LinearFun, LambdaFun
 

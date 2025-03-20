@@ -3,7 +3,7 @@ import pandas as pd
 import panel as pn
 from negmas.inout import Scenario
 import param
-from han.tools.tool import Tool
+from hani.tools.tool import Tool
 
 __all__ = ["ScenarioInfoTool"]
 
@@ -13,6 +13,7 @@ class ScenarioInfoTool(Tool):
         class_=Scenario, doc="The scenario currently being negotiated"
     )
     human_id = param.String(doc="The ID of the human")  # type: ignore
+    long_desc = param.Boolean(doc="Show Long Description")
 
     def __init__(self, scenario: Scenario, human_id: str, **params):
         super().__init__(**params)
@@ -56,14 +57,30 @@ class ScenarioInfoTool(Tool):
     def title(self):
         return pn.pane.Markdown(f'### {self.scenario.info.get("title", "")}')
 
-    @param.depends("scenario", "human_id")
+    @param.depends("scenario", "human_id", "long_desc")
     def long_description(self):
-        return pn.pane.Markdown(self.scenario.info.get("long_description", ""))
+        return (
+            pn.pane.Markdown(self.scenario.info.get("long_description", ""))
+            if self.long_desc  # type: ignore
+            else None
+        )
+
+    @param.depends("scenario", "human_id", "long_desc")
+    def short_description(self):
+        return (
+            pn.pane.Markdown(self.scenario.info.get("short_description", ""))
+            if not self.long_desc  # type: ignore
+            else None
+        )
 
     def __panel__(self):
         return pn.Column(
             self.title,
             self.outcome_space,
+            pn.widgets.Checkbox.from_param(
+                self.param.long_desc, name="Long Description"
+            ),  # type: ignore
+            self.short_description,
             self.long_description,
             self.hints,
             sizing_mode="stretch_both",

@@ -1,5 +1,5 @@
 [project]
-name = "han"
+name = "hani"
 version = "0.1.0"
 description = "Run Human-Agent Negotiations"
 license = { text = "GNU General Public License v2 or later (GPLv2+)" }
@@ -21,6 +21,7 @@ dependencies = [
     "negmas>=0.10.23",
     "panel>=1.6.1",
     "plotly>=6.0.0",
+    "sqlalchemy>=2.0.39",
 ]
 
 [build-system]
@@ -30,7 +31,7 @@ requires = ["setuptools >= 40.6.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-han = "han.run:main"
+hani = "hani.run:main"
 
 [project.optional-dependencies]
 dev = [
@@ -73,3 +74,9 @@ check_untyped_defs = false
 
 [tool.flake8]
 exclude = ["docs"]
+
+[dependency-groups]
+dev = [
+    "alembic>=1.15.1",
+    "sqlalchemy-schemadisplay>=2.0",
+]

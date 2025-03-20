@@ -11,7 +11,7 @@ from negmas import (
 )
 import panel as pn
 
-from han.tools.tool import Tool
+from hani.tools.tool import Tool
 
 __all__ = ["PreferencesTool", "LAYOUT_OPTIONS"]
 

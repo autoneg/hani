@@ -1,8 +1,10 @@
+from datetime import datetime
 from enum import Enum
 from random import choice
+from negmas.helpers.inout import add_records
 import numpy as np
 from types import NoneType
-from attrs import define, field
+from attrs import define, field, asdict
 import traceback
 import time
 import threading
@@ -12,9 +14,16 @@ from negmas import (
     SAOMechanism,
     SAOState,
 )
+from negmas.serialization import serialize
 import pandas as pd
 from typing import Any
 from negmas.helpers import humanize_time, get_class
+from negmas.preferences.ops import (
+    calc_outcome_optimality,
+    calc_outcome_distances,
+    calc_scenario_stats,
+    estimate_max_dist,
+)
 from negmas import (
     ContiguousIssue,
     SAONegotiator,
@@ -26,13 +35,16 @@ from negmas import (
 from negmas.sao import BoulwareTBNegotiator, SAONegotiator, SAOState
 from negmas.inout import Mechanism, Scenario
 
-from han.scenarios.trade import TradeOutcomeDisplay, make_trade_scenario
-from han.tools import SimpleTool
-from han.tools.history import HistoryTool
-from han.tools.preferences import PreferencesTool
-from han.tools.scenario_info import ScenarioInfoTool
-from han.tools.utility_plot2d import UtilityPlot2DTool
-from han.common import SAMPLE_SCENRIOS, DefaultOutcomeDisplay, OutcomeDisplay
+from hani.scenarios.trade import TradeOutcomeDisplay, make_trade_scenario
+from hani.tools import Tool
+from hani.tools.history import NegotiationTraceTool
+from hani.tools.preferences import PreferencesTool
+from hani.tools.results import AllResultsTool, SessionResultsTool, UserResultsTool
+from hani.tools.scenario_info import ScenarioInfoTool
+from hani.tools.random import RandomOutcomeTool
+from hani.tools.urange import UtilityInverterTool
+from hani.tools.utility_plot2d import UtilityPlot2DTool
+from hani.common import DB_PATH, SAMPLE_SCENRIOS, DefaultOutcomeDisplay, OutcomeDisplay
 
 
 session_state = dict()
@@ -40,6 +52,8 @@ session_state = dict()
 pn.extension(design="bootstrap", sizing_mode="stretch_width")
 pn.extension("modal")
 pn.extension("plotly")
+pn.extension("tabulator")
+pn.config.throttled = True
 # pn.extension("fontawesome")  # Ensure fontawesome is loaded
 # pn.extension("tabulator")
 LAYOUT_OPTIONS = dict(
@@ -53,11 +67,36 @@ LAYOUT_OPTIONS = dict(
 SESSION_PREFIX = "session:"
 ICON_WIDTH = 20
 HISTORY_SEPARATION = 10
+GUEST = "guest"
+NORMALIZE_BY_TIME = True
+TRACE_COLUMNS = [
+    "time",
+    "relative_time",
+    "step",
+    "negotiator",
+    "offer",
+    "responses",
+    "state",
+]
+
+
+def set_user(session_state=session_state) -> None:
+    user = session_state.get("user", pn.state.user)
+    if not user:
+        user = GUEST
+    session_state["user"] = user
+
+
+def is_admin(session_state=session_state):
+    set_user()
+    return session_state["user"] == "admin"
 
 
 class Timing(Enum):
     Always = 0
-    Start = 1
+    Load = 1
+    Start = 2
+    End = 3
 
 
 def equal_dicts(a: dict, b: dict) -> bool:
@@ -74,15 +113,16 @@ def equal_dicts(a: dict, b: dict) -> bool:
 @define
 class ToolConfig:
     name: str
-    type: type[SimpleTool]
+    type: type[Tool]
     timing: Timing
     params: dict[str, Any] = field(factory=dict)
     bottom: bool = False
+    side: bool = False
     admin_only: bool = False
     added: bool = False
 
     def __eq__(self, value: object, /) -> bool:
-        if not isinstance(object, ToolConfig):
+        if not isinstance(value, ToolConfig):
             return False
         return (
             self.name == value.name
@@ -97,7 +137,7 @@ class ToolConfig:
             session_state = session_state[item]
         return session_state
 
-    def make(self, session_state: dict[str, Any] = session_state) -> SimpleTool:
+    def make(self, session_state: dict[str, Any] = session_state) -> Tool:
         print(f"Making {self.name}")
         params = dict()
         for k, v in self.params.items():
@@ -135,7 +175,12 @@ TOOL_MAP = {
     "Scenario Info": ScenarioInfoTool,
     "Preferences": PreferencesTool,
     "Utility Plot": UtilityPlot2DTool,
-    "Offers": HistoryTool,
+    "Trace": NegotiationTraceTool,
+    "Random Outcome": RandomOutcomeTool,
+    "Utility Inverter": UtilityInverterTool,
+    "Session Results": SessionResultsTool,
+    "User Results": UserResultsTool,
+    "All Results": AllResultsTool,
 }
 
 DISPLAY_MAP = {"Trade": TradeOutcomeDisplay()}
@@ -150,17 +195,17 @@ class HumanPlaceholder(SAONegotiator):
 
 
 def default_tools():
-    return [
+    tools = [
         ToolConfig(
             "Scenario Info",
             TOOL_MAP["Scenario Info"],
-            timing=Timing.Start,
+            timing=Timing.Load,
             params=dict(scenario="session:scenario", human_id="session:human_id"),
         ),
         ToolConfig(
             "Preferences",
             TOOL_MAP["Preferences"],
-            timing=Timing.Start,
+            timing=Timing.Load,
             params=dict(ufun="session:human_ufun"),
         ),
         ToolConfig(
@@ -172,16 +217,59 @@ def default_tools():
             ),
             bottom=True,
         ),
-        # ToolConfig(
-        #     "Offers",
-        #     TOOL_MAP["Offers"],
-        #     Timing.Start,
-        #     params=dict(
-        #         mechanism="session:mechanism", human_index="session:human_index"
-        #     ),
-        #     bottom=True,
-        # ),
+        ToolConfig(
+            "Trace",
+            TOOL_MAP["Trace"],
+            Timing.Start,
+            params=dict(
+                mechanism="session:mechanism", human_index="session:human_index"
+            ),
+            bottom=True,
+        ),
+        ToolConfig(
+            "Session Results",
+            TOOL_MAP["Session Results"],
+            Timing.End,
+            params=dict(normalize_by_time=NORMALIZE_BY_TIME),
+            bottom=True,
+        ),
+        ToolConfig(
+            "User Results",
+            TOOL_MAP["User Results"],
+            Timing.Always,
+            params=dict(user="session:user", normalize_by_time=NORMALIZE_BY_TIME),
+            bottom=True,
+        ),
+        ToolConfig(
+            "Utility Inverter",
+            TOOL_MAP["Utility Inverter"],
+            Timing.Start,
+            params=dict(
+                scenario="session:scenario",
+                widgets="session:offer_widgets",
+                human_index="session:human_index",
+            ),
+            side=True,
+        ),
+        ToolConfig(
+            "Random Outcome",
+            TOOL_MAP["Random Outcome"],
+            Timing.Start,
+            params=dict(scenario="session:scenario", widgets="session:offer_widgets"),
+            side=True,
+        ),
     ]
+    if is_admin():
+        tools += [
+            ToolConfig(
+                "All Results",
+                TOOL_MAP["All Results"],
+                Timing.Always,
+                params=dict(normalize_by_time=NORMALIZE_BY_TIME),
+                bottom=True,
+            )
+        ]
+    return tools
 
 
 @define
@@ -189,14 +277,14 @@ class AppConfig:
     scenarios_base: Path | str = SAMPLE_SCENRIOS
     human_index: int = 1
     n_steps: int | None = 10
-    time_limit: float | None = None
-    sync_calls: bool = True
-    one_offer_per_step: bool = True
-    hidden_time_limit: float = float("inf")
+    time_limit: float | None = None if is_admin() else 120
     pend: float = 0
     pend_per_second: float = 0
     step_time_limit: float | None = None
     negotiator_time_limit: float | None = None
+    hidden_time_limit: float = float("inf")
+    sync_calls: bool = True
+    one_offer_per_step: bool = True
     human_params: dict[str, Any] | None = None
     agent_params: dict[str, Any] | None = None
     mechanism_type: type[Mechanism] | None = None
@@ -211,11 +299,20 @@ class AppConfig:
     def has_one_tool_pane(self):
         return not any(_.bottom for _ in self.tools)
 
+    @property
+    def has_side_tabs(self):
+        return any(_.side for _ in self.tools)
+
     def upper_tools(self, timing: Timing = Timing.Always):
-        return [_ for _ in self.tools if not _.bottom and _.timing == timing]
+        return [
+            _ for _ in self.tools if not _.side and not _.bottom and _.timing == timing
+        ]
 
     def lower_tools(self, timing: Timing = Timing.Always):
-        return [_ for _ in self.tools if _.bottom and _.timing == timing]
+        return [_ for _ in self.tools if not _.side and _.bottom and _.timing == timing]
+
+    def side_tools(self, timing: Timing = Timing.Always):
+        return [_ for _ in self.tools if _.side and _.timing == timing]
 
 
 CONFIG = AppConfig()
@@ -227,7 +324,7 @@ CONFIG = AppConfig()
 MAKER_MAP = {"Trade": make_trade_scenario}
 
 
-class CountdownTimer(pn.pane.Markdown):
+class CountdownTimer(pn.pane.HTML):
     def __init__(self, duration, update_interval=1, **params):
         super().__init__(**params)
         self.duration = duration
@@ -248,11 +345,9 @@ class CountdownTimer(pn.pane.Markdown):
     def stop(self):
         self.running = False
         if self._start is None:
-            self.object = f"**Done on {time.time()}**"
+            self.object = f"<strong>Done on {time.time()}</strong>"
         else:
-            self.object = (
-                f"**Done in {humanize_time(time.perf_counter()-self._start)}**"
-            )
+            self.object = f"<strong>Done in {humanize_time(time.perf_counter()-self._start)}</strong>"
 
     def set_duration(self, duration):
         self._start = time.perf_counter()
@@ -265,11 +360,12 @@ class CountdownTimer(pn.pane.Markdown):
         end_time = time.time() + self.duration
         while self.running and time.time() < end_time:
             remaining = int(end_time - time.time())
-            self.object = f"**{humanize_time(remaining)}  remaining**"
+            color = "black" if remaining > 10 else "red"
+            self.object = f'<h5 style="color:{color}">{humanize_time(remaining).strip()}  remaining</h5>'
             time.sleep(self.update_interval)
 
         if self.running:  # if the timer finished naturally, rather than being stopped.
-            self.object = "**Time's up!**"
+            self.object = '<div style="color:red"><strong>Time\'s up!</strong>></div>'
             self.running = False
             session_state["human_action"] = SAOResponse(
                 ResponseType.REJECT_OFFER,
@@ -297,9 +393,9 @@ def read_scenario(path: Path | None = None) -> Scenario:  # type: ignore
 
 def make_mechanism(
     scenario: Scenario,
+    human_index: int = CONFIG.human_index,
     n_steps: int | float | None = CONFIG.n_steps,
     time_limit: float | None = CONFIG.time_limit,
-    human_index: int = CONFIG.human_index,
     pend: float = CONFIG.pend,
     pend_per_second: float = CONFIG.pend_per_second,
     step_time_limit: float | None = CONFIG.step_time_limit,
@@ -353,6 +449,7 @@ def make_mechanism(
     m = scenario.make_session(negotiators=negotiators)
     if not start_only:
         m.run()
+        save_result(m)
         # print(
         #     f"Negotiation completed with {session_state['outcome_display'].str(m.agreement, session_state['scenario'], True, False)}"
         # )
@@ -365,6 +462,62 @@ def make_mechanism(
     return m
 
 
+def save_result(m: SAOMechanism):
+    ufuns = session_state["scenario"].ufuns
+    human_index = session_state["human_index"]
+    utils = tuple(u(m.agreement) for u in ufuns)
+    stats = calc_scenario_stats(ufuns)
+    max_dist = estimate_max_dist(ufuns)
+    human_utility = float(session_state["human_ufun"](m.agreement))
+    agent_utility = sum(u(m.agreement) for i, u in enumerate(ufuns) if i != human_index)
+
+    def get_status(state: SAOState):
+        if state.agreement is not None:
+            return "success"
+        if state.broken:
+            return "broken"
+        if state.timedout:
+            return "timedout"
+        if state.has_error:
+            return "erred"
+
+    result = serialize(
+        dict(
+            scenario=session_state["scenario"].outcome_space.name,
+            human_index=human_index,
+            human_id=session_state["human_id"],
+            user=session_state["user"],
+            agreement=m.agreement,
+            human_utility=human_utility,
+            agent_utility=human_utility,
+            welfare=human_utility + agent_utility,
+            ended_at=str(datetime.now()),
+            status=get_status(m.state),
+        )
+        | asdict(m.state)
+        | {k: v for k, v in asdict(m.nmi).items() if not k.startswith("_")}
+        | asdict(
+            calc_outcome_optimality(
+                calc_outcome_distances(utils, stats), stats, max_dist
+            )
+        ),
+        python_class_identifier="type",
+    )
+    add_records(session_state["db_path"] / "results.csv", [result])
+    path = session_state["user_path"] / "logs" / f"{m.id}.csv"
+    path.parent.mkdir(exist_ok=True, parents=True)
+    add_records(session_state["user_path"] / "results.csv", [result])
+    pd.DataFrame.from_records(m.full_trace, columns=TRACE_COLUMNS).to_csv(
+        path, index=True, index_label="index"
+    )
+    path = session_state["user_path"] / "scenarios" / f"{m.id}"
+    path.mkdir(exist_ok=True, parents=True)
+    session_state["scenario"].dumpas(path)
+
+    session_state["results"].append(result)
+    # session_state["results_df"] = pd.DataFrame.from_records(session_state["results"])
+
+
 def get_action(state: SAOState) -> SAOResponse:
     return session_state["human_action"]
 
@@ -372,14 +525,15 @@ def get_action(state: SAOState) -> SAOResponse:
 def end_session():
     mechanism = session_state["mechanism"]
     human_index = session_state["human_index"]
-
+    save_result(mechanism)
+    add_tools(Timing.End)
     for tool in session_state["tools"]:
         tool.negotiation_ended(session_state, mechanism.negotiators[human_index].nmi)
     session_state["timer"].stop()
     session_state["human_action"] = None
     session_state["action_panel_displayed"] = False
     session_state["action_panel"].clear()
-    session_state["action_panel"].append(start_button())
+    session_state["action_panel"].append(load_button())
     # session_state["history"].clear()
 
 
@@ -387,7 +541,7 @@ def display_state(state: SAOState):
     # update progress
     session_state["progress"].value = int(state.relative_time * 100)
     session_state["summary"].pop(0)
-    session_state["summary"].insert(0, pn.pane.Markdown(f"**Step: {state.step}**"))
+    session_state["summary"].insert(0, pn.pane.HTML(f"<h5>Step: {state.step}</h5>"))
     human_id = session_state["human_id"]
     from_human = state.current_proposer == human_id
     color = (
@@ -471,11 +625,31 @@ def display_state(state: SAOState):
     return pn.Column(row, pn.layout.Spacer(height=HISTORY_SEPARATION))
 
 
+def load_button():
+    load_btn = pn.widgets.Button(name="Load", icon="loader-3", button_type="primary")
+    load_btn.on_click(load_scenario)
+    pn.bind(load_scenario, load_btn)
+    strt_btn = pn.widgets.Button(
+        name="Start", icon="player-play", button_type="primary"
+    )
+    strt_btn.disabled = True
+    strt_btn.on_click(start_negotiation)
+    pn.bind(start_negotiation, strt_btn)
+    session_state["strt_btn"] = strt_btn
+    session_state["load_btn"] = load_btn
+    session_state["action_panel_displayed"] = False
+    return pn.Column(load_btn, strt_btn)
+
+
 def start_button():
-    strt_btn = pn.widgets.Button(name="Start")
+    strt_btn = pn.widgets.Button(name="Start", icon="player-play")
     strt_btn.on_click(start_negotiation)
     pn.bind(start_negotiation, strt_btn)
     session_state["action_panel_displayed"] = False
+    if session_state["strt_btn"]:
+        session_state["strt_btn"].disabled = True
+    if session_state["load_btn"]:
+        session_state["load_btn"].disabled = False
     return pn.Column(strt_btn)
 
 
@@ -618,6 +792,7 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
         )
 
     my_util = pn.bind(offer_util, *widgets)
+    session_state["offer_widgets"] = widgets
     col = pn.Column(
         *(
             pn.Row(
@@ -734,20 +909,29 @@ def step_to_human(event=None):
 
 def add_tools(timing: Timing):
     upper_config = [_ for _ in CONFIG.upper_tools(timing) if not _.added]
-    lower_config = [_ for _ in CONFIG.lower_tools(timing) if not _.added]
     upper_tools = [_.make() for _ in upper_config]
-    lower_tools = [_.make() for _ in lower_config]
     upper_tabs = list(zip((_.name for _ in upper_config), upper_tools))
-    lower_tabs = list(zip((_.name for _ in lower_config), lower_tools))
-    session_state["tools"] = session_state["tools"] + upper_tools + lower_tools
     for tab in upper_tabs:
         session_state["upper_tabs"].append(tab)
-    for tab in lower_tabs:
-        session_state["lower_tabs"].append(tab)
     for tool in upper_tools:
         tool.init(session_state)
+    lower_config = [_ for _ in CONFIG.lower_tools(timing) if not _.added]
+    lower_tools = [_.make() for _ in lower_config]
+    lower_tabs = list(zip((_.name for _ in lower_config), lower_tools))
+    for tab in lower_tabs:
+        session_state["lower_tabs"].append(tab)
     for tool in lower_tools:
         tool.init(session_state)
+    side_config = [_ for _ in CONFIG.side_tools(timing) if not _.added]
+    side_tools = [_.make() for _ in side_config]
+    side_tabs = list(zip((_.name for _ in side_config), side_tools))
+    for tab in side_tabs:
+        session_state["side_tabs"].append(tab)
+    for tool in side_tools:
+        tool.init(session_state)
+    session_state["tools"] = (
+        session_state["tools"] + upper_tools + lower_tools + side_tools
+    )
 
 
 def send_event_to_tools(event):
@@ -767,8 +951,8 @@ def send_event_to_tools(event):
 
 def start_negotiation(event=None):
     session_state["history"].clear()
-    load_scenario()
-    print("Starting negotiation")
+    # load_scenario()
+    # print("Starting negotiation")
     scenario = session_state["scenario"]
     human_index = session_state["human_index"]
     mechanism = session_state["mechanism"] = make_mechanism(
@@ -776,15 +960,20 @@ def start_negotiation(event=None):
         one_offer_per_step=True,
         sync_calls=True,
         human_index=human_index,
+        n_steps=session_state["timing"]["n_steps"].value,
+        time_limit=session_state["timing"]["time_limit"].value,
+        pend=session_state["timing"]["pend"].value,
+        pend_per_second=session_state["timing"]["pend_per_second"].value,
+        step_time_limit=session_state["timing"]["step_time_limit"].value,
+        negotiator_time_limit=session_state["timing"]["negotiator_time_limit"].value,
     )
     session_state["timer"].set_duration(mechanism.time_limit)
     session_state["timer"].start()
     session_state["human_action"] = None
     session_state["negotiation_started"] = True
+    step_to_human()
     add_tools(Timing.Start)
     send_event_to_tools("negotiation_started")
-
-    step_to_human()
 
 
 def get_subfolders(path: Path):
@@ -792,7 +981,7 @@ def get_subfolders(path: Path):
     return dict(zip([_.name for _ in folders], folders))
 
 
-def load_scenario():
+def load_scenario(event=None):
     # session_state["scenario"] = read_scenario(Path(CONFIG.scenarios_base) / "trade")
     try:
         generators = session_state["scenarios"]["generators"].value
@@ -816,16 +1005,43 @@ def load_scenario():
         session_state["human_index"]
     ]
     session_state["human_id"] = session_state["human_ufun"].name
+    if session_state["strt_btn"]:
+        session_state["strt_btn"].disabled = False
+    if session_state["load_btn"]:
+        session_state["load_btn"].disabled = True
 
+    add_tools(Timing.Load)
     send_event_to_tools("scenario_loaded")
 
 
 def main():
     pn.extension(sizing_mode="stretch_width")
+
+    # # Define your custom templates
+    # login_template_path = Path(__file__).parent / "tempates" / "basic_login.html"
+    # logout_template_path = Path(__file__).parent / "tempates" / "logout.html"
+    #
+    # # Read the contents of your custom template files
+    # from panel import auth
+    #
+    # with open(login_template_path, "r") as f:
+    #     auth.login_template = f.read()
+    #
+    # with open(logout_template_path, "r") as f:
+    #     auth.logout_template = f.read()
+    set_user()
+    DB_PATH.mkdir(parents=True, exist_ok=True)
+    session_state["db_path"] = DB_PATH
+    session_state["user_path"] = DB_PATH / session_state["user"]
+    session_state["user_path"].mkdir(parents=True, exist_ok=True)
+    session_state["results"] = []
     session_state["next_sceanrio"] = 0
     session_state["negotiation_started"] = False
     session_state["negotiation_done"] = False
     session_state["display"] = dict()
+    session_state["offer_widgets"] = []
+    session_state["strt_btn"] = None
+    session_state["load_btn"] = None
     session_state["outcome_display"] = CONFIG.outcome_display
     session_state["display"]["extra_margin"] = CONFIG.display.history_margin
     session_state["display"]["agent_color"] = CONFIG.display.agent_color
@@ -837,19 +1053,17 @@ def main():
         CONFIG.display.human_background_color
     )
     session_state["display"]["reverse_offers"] = CONFIG.display.reverse_offers
-    logout = pn.widgets.Button(name="Log out")
+    logout = pn.widgets.Button(name="Log out", icon="logout")
     logout.js_on_click(code="""window.location.href = './logout'""")
 
     image = pn.Row(
         pn.pane.JPG(
-            Path(__file__).parent / "images" / "han.jpeg",
+            Path(__file__).parent / "images" / "hani.jpeg",
             width=100,
             sizing_mode="scale_height",
         ),
         pn.Column(
-            pn.pane.Markdown(
-                f"## HAN2025\n## `{pn.state.user if pn.state.user else 'Guest'}`"
-            ),
+            pn.pane.Markdown(f"## HAN2025\n## `{session_state['user']}`"),
             logout if pn.state.user else None,
             align="center",
         ),
@@ -857,7 +1071,7 @@ def main():
     )
     progress = pn.widgets.Progress(value=1, bar_color="primary")
     session_state["progress"] = progress
-    session_state["step_value"] = pn.pane.Markdown("**Step: 0**")
+    session_state["step_value"] = pn.pane.HTML("<h5>Step: 0</h5>")
     session_state["timer"] = CountdownTimer(duration=None)
     summary = pn.Column(
         session_state["step_value"],
@@ -867,7 +1081,7 @@ def main():
         margin=0,
     )
     session_state["summary"] = summary
-    offer = start_button()
+    offer = load_button()
     session_state["action_panel_displayed"] = False
     session_state["action_panel"] = offer
     util = pn.pane.Markdown("")
@@ -879,16 +1093,29 @@ def main():
     session_state["scenarios"] = dict()
     folders = get_subfolders(Path(CONFIG.scenarios_base))
     session_state["scenarios"]["scenario_folder"] = pn.widgets.Select(
-        name="", options=folders, size=2, value=list(folders.values())[0]
+        name="File Sources", options=folders, size=2, value=list(folders.values())[0]
     )
     session_state["scenarios"]["generators"] = pn.widgets.MultiSelect(
-        name="Generated", options=MAKER_MAP, size=3, value=list(MAKER_MAP.values())
+        name="Generators", options=MAKER_MAP, size=3, value=list(MAKER_MAP.values())
     )
     session_state["timing"]["n_steps"] = pn.widgets.NumberInput(
-        name="N. Offers", value=0
+        name="Allowed Number of Offers", value=CONFIG.n_steps
     )
     session_state["timing"]["time_limit"] = pn.widgets.NumberInput(
-        name="Time Limit", value=60
+        name="Session Time Limit", value=CONFIG.time_limit
+    )
+
+    session_state["timing"]["pend"] = pn.widgets.NumberInput(
+        name="Ending Probability Per Step", value=CONFIG.pend
+    )
+    session_state["timing"]["pend_per_second"] = pn.widgets.NumberInput(
+        name="Ending Probability Per Second", value=CONFIG.pend_per_second
+    )
+    session_state["timing"]["step_time_limit"] = pn.widgets.NumberInput(
+        name="Step Time Limit", value=CONFIG.step_time_limit
+    )
+    session_state["timing"]["negotiator_time_limit"] = pn.widgets.NumberInput(
+        name="Response Time Limit", value=CONFIG.negotiator_time_limit
     )
     session_state["toggles"]["init_with_last"] = pn.widgets.Checkbox(
         name="Initialize with last offer", value=True
@@ -935,15 +1162,24 @@ def main():
         ),
         value=CONFIG.display.outcome_display_method,
     )
+    if not is_admin():
+        for group in ("timing", "scenarios"):
+            for widget in session_state[group].values():
+                widget.disabled = True
+
     # session_state["display"]["tools"] = pn.widgets.MultiSelect(
     #     name="Tools", options=TOOLS, size=1, value=TOOLS
     # )
     sidebar = pn.Column(
         image,
-        pn.Card(*session_state["toggles"].values(), title="Settings"),
-        pn.Card(*session_state["timing"].values(), title="Timing"),
-        pn.Card(*session_state["scenarios"].values(), title="Scenario"),
-        pn.Card(*session_state["display"].values(), title="Display Control"),
+        pn.Card(
+            *session_state["toggles"].values(), title="Display Toogles", collapsed=True
+        ),
+        pn.Card(
+            *session_state["display"].values(), title="Display Control", collapsed=True
+        ),
+        pn.Card(*session_state["timing"].values(), title="Timing", collapsed=True),
+        pn.Card(*session_state["scenarios"].values(), title="Scenario", collapsed=True),
     )
 
     template = pn.template.FastGridTemplate(
@@ -956,6 +1192,7 @@ def main():
     )
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
+    session_state["side_tabs"] = side_tabs = pn.Tabs()
     session_state["tools"] = []
     add_tools(Timing.Always)
 
@@ -971,7 +1208,11 @@ def main():
     # template.main[2:4, 0:5] = prefs
     template.main[4:5, 0:5] = summary  # type: ignore
     template.main[0:3, 5:12] = hist  # type: ignore
-    template.main[3:5, 5:12] = offer  # type: ignore
+    if CONFIG.has_side_tabs:
+        template.main[3:5, 5:9] = offer  # type: ignore
+        template.main[3:5, 9:12] = side_tabs  # type: ignore
+    else:
+        template.main[3:5, 5:12] = offer  # type: ignore
     # template.main[0:5, 10:12] = tools_pane
     session_state["template"] = template
     template.servable()

@@ -11,7 +11,7 @@ from negmas import (
     make_issue,
     make_os,
 )
-from han.common import SAMPLE_SCENRIOS
+from hani.common import SAMPLE_SCENRIOS
 
 
 __all__ = ["make_trade_scenario", "make_colored_chips"]

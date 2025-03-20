@@ -1,0 +1,31 @@
+Name: Trade
+title: Simple Trading Scenario
+issue_description:
+  Quantity: The quantity to be traded
+  Price: The unit price to trade at
+hints:
+  Seller:
+    Target Quantity: 5
+    Quantity Importance: 0.25
+    Price Importance: 0.75
+  Buyer:
+    Target Quantity: 6
+    Quantity Importance: 0.5
+    Price Importance: 0.5
+short_description: In this scenario, you are asked to trade with an agent. The seller and buyer have a target quantity (which is usually different) they want to achieve. They are penalized for falling short or any excess trade. Moreover, each have some monotonic value for money (increasing for the seller and decreasing for the buyer).
+long_description: |
+  **The Domain** The negotiation is in a trade environment in which a buyer and a seller negotiate the quantity and price for a specific trade.
+
+  **Seller Utility Function** The utility function of the seller is a weighted combination of two factors:
+
+  1. **Quantity** There is a target quantity that the seller is trying to sell. Selling too little incurs a penalty (maybe because the product will expire and must be disposed of). Selling too much also incurs a penalty (maybe because the seller cannot produce enough and will need to buy the extra items from the spot-market at a premium).
+  2. **Price** The seller wants the *highest* price possible but it has some nonlinear curve representing its *value of money*. This curve can be thought of as a representation of risk attitude of the seller.
+
+  The importance of these two factors is controlled through a weighing factor that converts *value of quantity* and *value of money* to the same units.
+  
+  **Buyer Utility Function** The utility function of the buyer is a weighted combination of two factors:
+
+  1. **Quantity** There is a target quantity that the buyer is trying to buy. Buying too much incurs a penalty (maybe because the product will expire and must be disposed of). Buying too little also incurs a penalty (maybe because the buyer cannot secure its needs and will need to buy the extra items from the spot-market at a premium).
+  2. **Price** The buyer wants the *lowest* price possible but it has some nonlinear curve representing its *value of money*. This curve can be thought of as a representation of risk attitude of the buyer.
+
+  The importance of these two factors is controlled through a weighing factor that converts *value of quantity* and *value of money* to the same units.

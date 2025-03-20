@@ -17,7 +17,7 @@ from negmas.sao import BoulwareTBNegotiator, SAONegotiator, SAOState
 from negmas.inout import Mechanism, Scenario
 from negmas.preferences.generators import generate_ufuns_for
 
-from han.negotiator import SAOHumanNegotiator
+from hani.negotiator import SAOHumanNegotiator
 
 session_state = dict()
 

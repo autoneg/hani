@@ -1,6 +1,6 @@
 from negmas import Outcome, Scenario
 
-from han.common import DefaultOutcomeDisplay
+from hani.common import DefaultOutcomeDisplay
 
 
 class TradeOutcomeDisplay(DefaultOutcomeDisplay):

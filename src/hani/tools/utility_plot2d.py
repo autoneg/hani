@@ -11,7 +11,7 @@ from negmas import (
 from negmas.sao import SAOMechanism, SAONMI
 import panel as pn
 
-from han.tools.tool import Tool
+from hani.tools.tool import Tool
 
 __all__ = ["UtilityPlot2DTool", "LAYOUT_OPTIONS"]
 
@@ -53,7 +53,11 @@ class UtilityPlot2DTool(Tool):
         self.human_index = human_index
         self.show_agent_ufun = show_agent_ufun
         self.mechanism = mechanism
-        self._issues = mechanism.outcome_space.issues  # type: ignore
+        self._update_cols()
+        self._config = dict(sizing_mode="stretch_width")
+
+    def _update_cols(self):
+        self._issues = self.mechanism.outcome_space.issues  # type: ignore
         self._minmax = dict()
         self.time_cols = ["relative_time", "step", "time"]
         self.ycols = []
@@ -66,12 +70,12 @@ class UtilityPlot2DTool(Tool):
         self.xcols = self.time_cols + self.ycols
         self.param.first_issue.objects = list(self.xcols)
         self.param.second_issue.objects = list(self.ycols)
-        self._config = dict(sizing_mode="stretch_width")
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         self.mechanism = session_state["mechanism"]
         self.human_index = session_state["human_index"]
         self.history.clear()
+        self._update_cols()
 
     def action_requested(self, session_state: dict[str, Any], nmi: SAONMI):
         self.history = self.mechanism.full_trace
