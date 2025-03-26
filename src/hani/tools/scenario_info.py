@@ -73,7 +73,7 @@ class ScenarioInfoTool(Tool):
             else None
         )
 
-    def __panel__(self):
+    def panel(self):
         return pn.Column(
             self.title,
             self.outcome_space,

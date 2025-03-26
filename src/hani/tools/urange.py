@@ -55,6 +55,7 @@ class UtilityInverterTool(OutcomeSelector):
 
         def click(event):
             self.selected = event.row
+            self.set_outcome()
 
         self.selected = None
         self.tbl_widget = pn.widgets.Tabulator(

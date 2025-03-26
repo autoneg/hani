@@ -7,7 +7,15 @@ import param
 __all__ = ["Tool", "OutcomeSelector"]
 
 
-class _Callbacks:
+class Tool(pn.viewable.Viewable):
+    """
+    A fully reactive tool that can respond to events in the negotiation
+    """
+
+    def _get_model(self, doc, root=None, parent=None, comm=None):
+        model = self.__panel__()._get_model(doc, root, parent, comm)  # type: ignore
+        return model
+
     def init(self, session_state: dict[str, Any]):
         """Called when the application is started before any other callbacks."""
 
@@ -33,16 +41,53 @@ class _Callbacks:
     ):
         """Called after an action from the user is executed."""
 
+    def __init__(self, session_state, **params):
+        super().__init__(**params)
+        self.session_state = session_state
 
-class Tool(pn.viewable.Viewable, _Callbacks):
-    """
-    A fully reactive tool that can respond to events in the negotiation
-    """
+        self.upper_button = pn.widgets.ButtonIcon(
+            name="Upper Pane",
+            on_click=self.move_up,
+            icon="fold-up",
+        )
+        self.lower_button = pn.widgets.ButtonIcon(
+            name="Lower Pane",
+            on_click=self.move_down,
+            icon="fold-down",
+        )
+        self.side_button = pn.widgets.ButtonIcon(
+            name="Side Pane",
+            on_click=self.move_side,
+            icon="box-align-right",
+        )
+        self.close_button = pn.widgets.ButtonIcon(
+            name="Close",
+            on_click=self.move_side,
+            icon="square-rounded-x",
+        )
 
-    def _get_model(self, doc, root=None, parent=None, comm=None):
-        # Delegate to pn.pane.Str for string content
-        model = self.__panel__()._get_model(doc, root, parent, comm)  # type: ignore
-        return model
+    def panel(self) -> Any:
+        return pn.pane.Column()
+
+    def common_buttons(self) -> Any:
+        return pn.Row(
+            self.upper_button, self.lower_button, self.side_button, self.close_button
+        )
+
+    def move_up(self, event=None):
+        print("Moving up")
+
+    def move_down(self, event=None):
+        print("Moving down")
+
+    def move_side(self, event=None):
+        print("Moving side")
+
+    def close(self, event=None):
+        print("Closing")
+
+    def __panel__(self) -> Any:
+        return pn.Column(self.panel(), self.common_buttons)
 
 
 def set_widget(widget, issue: Issue, value):
@@ -84,6 +129,7 @@ class OutcomeSelector(Tool):
 
     def set_outcome(self, event=None):
         outcome = self.get_outcome()
+        print(f"Setting outcome to {outcome}")
         if outcome is None:
             return
         for widget, issue, value in zip(self._widgets, self._issues, outcome):
@@ -92,8 +138,5 @@ class OutcomeSelector(Tool):
     def get_outcome(self) -> Outcome | None:
         return self.scenario.outcome_space.random_outcome()  # type: ignore
 
-    def panel(self) -> Any:
-        pass
-
     def __panel__(self):
-        return pn.Column(self.panel, self.btn)
+        return pn.Column(self.panel(), self.btn, self.common_buttons)

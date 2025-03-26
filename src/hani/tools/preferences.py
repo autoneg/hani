@@ -114,7 +114,7 @@ class PreferencesTool(Tool):
             f"##### Reserved value: {self.ufun.reserved_value:0.1%}"
         )
 
-    def __panel__(self):
+    def panel(self):
         ufun = self.ufun
         issue_index = pn.widgets.Select.from_param(self.param.issue_index, name="")
         return pn.Row(

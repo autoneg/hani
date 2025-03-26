@@ -145,7 +145,7 @@ class UtilityPlot2DTool(Tool):
         fig.update_layout(**LAYOUT_OPTIONS)  # type: ignore
         return pn.pane.Plotly(fig, **self._config)
 
-    def __panel__(self):
+    def panel(self):
         self.first_issue = first_issue = pn.widgets.Select.from_param(
             self.param.first_issue,
             name="X-axis" if len(self.ycols) > 1 else "",

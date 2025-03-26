@@ -96,5 +96,5 @@ class NegotiationTraceTool(Tool):
 
         return pn.pane.DataFrame(df, index=False)
 
-    def __panel__(self):
+    def panel(self):
         return pn.Column(self.table)

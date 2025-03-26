@@ -29,6 +29,7 @@ class SessionResultsTool(Tool):
     def __init__(self, normalize_by_time: bool = True, **kwargs):
         super().__init__(**kwargs)
         self._normalize_by_time = normalize_by_time
+        self.param.columns.objects = DEFAULT
 
     def negotiation_ended(self, session_state: dict[str, Any], nmi: SAONMI):
         self.tbl = pd.DataFrame.from_records(session_state["results"])
@@ -64,7 +65,7 @@ class SessionResultsTool(Tool):
                 score /= base
         return pn.pane.HTML(f"<h5>Score {100*score:03.3} in {len(df)} negotitions</h5>")
 
-    def __panel__(self):
+    def panel(self):
         return pn.Column(
             pn.widgets.MultiChoice.from_param(self.param.columns, name="Columns"),
             self.score,
@@ -83,6 +84,10 @@ class UserResultsTool(Tool):
         self._user_path = DB_PATH / user / "results.csv"
         if self._user_path.is_file():
             self.tbl = pd.read_csv(self._user_path, index_col=None)
+            if len(self.tbl) > 0:
+                self.param.columns.objects = [_ for _ in self.tbl.columns]
+            else:
+                self.param.columns.objects = DEFAULT
 
     def negotiation_ended(self, session_state: dict[str, Any], nmi: SAONMI):
         self.tbl = pd.concat(
@@ -120,7 +125,7 @@ class UserResultsTool(Tool):
             return df[DEFAULT]
         return df[self.columns]
 
-    def __panel__(self):
+    def panel(self):
         return pn.Column(
             pn.widgets.MultiChoice.from_param(self.param.columns, name="Columns"),
             self.score,
@@ -137,6 +142,10 @@ class AllResultsTool(Tool):
         self._user_path = DB_PATH / "results.csv"
         self._normalize_by_time = normalize_by_time
         self.tbl = pd.read_csv(self._user_path, index_col=None)
+        if len(self.tbl) > 0:
+            self.param.columns.objects = [_ for _ in self.tbl.columns]
+        else:
+            self.param.columns.objects = DEFAULT
 
     def negotiation_ended(self, session_state: dict[str, Any], nmi: SAONMI):
         self.tbl = pd.concat(
@@ -174,7 +183,7 @@ class AllResultsTool(Tool):
                 score /= base
         return pn.pane.HTML(f"<h5>Score {100*score:03.3} in {len(df)} negotitions</h5>")
 
-    def __panel__(self):
+    def panel(self):
         return pn.Column(
             pn.widgets.MultiChoice.from_param(self.param.columns, name="Columns"),
             self.score,

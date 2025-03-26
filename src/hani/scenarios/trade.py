@@ -130,9 +130,9 @@ def make_trade_scenario(
         def pval(is_seller) -> list[float]:
             mn, mx = os.issues[1].min_value, os.issues[1].max_value
             values = (
-                [(_ - mn) / (mx - mn) for _ in prices]
+                [1.0 - (_ - mn) / (mx - mn) for _ in prices]
                 if is_seller
-                else [1.0 - (_ - mn) / (mx - mn) for _ in prices]
+                else [(_ - mn) / (mx - mn) for _ in prices]
             )
             # self.max_aspiration * (1.0 - math.pow(t, self.exponent))
 
