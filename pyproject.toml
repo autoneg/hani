@@ -7,7 +7,6 @@ authors = [
     { name = "Yasser Mohammad", email = "yasserfarouk@gmail.com" },
 ]
 classifiers = [
-    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -32,6 +31,9 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 hani = "hani.run:main"
+
+[tool.uv.sources]
+negmas = { path = "../negmas" , editable = true }
 
 [project.optional-dependencies]
 dev = [
@@ -79,4 +81,5 @@ exclude = ["docs"]
 dev = [
     "alembic>=1.15.1",
     "sqlalchemy-schemadisplay>=2.0",
+    "twine>=6.1.0",
 ]

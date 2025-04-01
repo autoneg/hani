@@ -34,8 +34,15 @@ from negmas import (
     ResponseType,
     SAOResponse,
 )
-from negmas.sao import BoulwareTBNegotiator, SAONegotiator, SAOState
+from negmas.sao import SAONegotiator, SAOState
+
+try:
+    from negmas.sao import HybridNegotiator as DefaultNegotiator
+except:
+    from negmas.sao import AspirationNegotiator as DefaultNegotiator
 from negmas.inout import Mechanism, Scenario
+from negmas.sao import all_negotiator_types
+import negmas.genius.gnegotiators as gneg
 
 from hani.scenarios.trade import TradeOutcomeDisplay, make_trade_scenario
 from hani.tools import Tool
@@ -51,15 +58,9 @@ from hani.tools.histograms import OutcomeHistogramPlot
 from hani.common import DB_PATH, SAMPLE_SCENRIOS, DefaultOutcomeDisplay, OutcomeDisplay
 
 
-session_state = dict()
+GENIUS_NEGOTITORS = [f"genius.{x}" for x in gneg.__all__]
+NEGMAS_NEGOTIATORS = [_.__name__ for _ in all_negotiator_types()]
 
-pn.extension(design="bootstrap", sizing_mode="stretch_width")
-pn.extension("modal")
-pn.extension("plotly")
-pn.extension("tabulator")
-pn.config.throttled = True
-# pn.extension("fontawesome")  # Ensure fontawesome is loaded
-# pn.extension("tabulator")
 LAYOUT_OPTIONS = dict(
     showlegend=False,
     modebar_remove=True,
@@ -83,16 +84,28 @@ TRACE_COLUMNS = [
     "state",
 ]
 
-AGENT_TYPES = [
+SELECTED_AGENT_TYPES = [
+    "HybridNegotiator",
     "BoulwareTBNegotiator",
     "LinearTBNegotiator",
     "ConcederTBNegotiator",
     "genius.Atlas3",
     "genius.NiceTitForTat",
 ]
+session_state = dict()
+
+pn.extension(design="bootstrap", sizing_mode="stretch_width")
+pn.extension("modal")
+pn.extension("plotly")
+pn.extension("tabulator")
+pn.config.throttled = True
+# pn.extension("fontawesome")  # Ensure fontawesome is loaded
+# pn.extension("tabulator")
 
 if not genius_bridge_is_running():
-    AGENT_TYPES = [_ for _ in AGENT_TYPES if not _.startswith("genius.")]
+    SELECTED_AGENT_TYPES = [
+        _ for _ in SELECTED_AGENT_TYPES if not _.startswith("genius.")
+    ]
 
 
 def get_agent_type(x: Negotiator | str | None) -> Negotiator:
@@ -145,6 +158,7 @@ class ToolConfig:
     admin_only: bool = False
     added: bool = False
     at_front: bool = False
+    tab: Any | None = None
 
     def __eq__(self, value: object, /) -> bool:
         if not isinstance(value, ToolConfig):
@@ -335,10 +349,12 @@ class AppConfig:
     mechanism_type: type[Mechanism] | None = None
     mechanism_params: dict[str, Any] | None = None
     human_type: type[SAONegotiator] | str = HumanPlaceholder
-    agent_type: type[SAONegotiator] | str = BoulwareTBNegotiator  # type: ignore
+    agent_type: type[SAONegotiator] | str = DefaultNegotiator  # type: ignore
     display: DisplayConfig = field(factory=DisplayConfig)
     tools: list[ToolConfig] = field(factory=default_tools)
     outcome_display: OutcomeDisplay = DefaultOutcomeDisplay()
+    genius: bool = True
+    negmas: bool = True
 
     @property
     def has_one_tool_pane(self):
@@ -392,7 +408,7 @@ class CountdownTimer(pn.pane.HTML):
         if self._start is None:
             self.object = f"<strong>Done on {time.time()}</strong>"
         else:
-            self.object = f"<strong>Done in {humanize_time(time.perf_counter()-self._start)}</strong>"
+            self.object = f"<strong>Done in {humanize_time(time.perf_counter() - self._start)}</strong>"
 
     def set_duration(self, duration):
         self._start = time.perf_counter()
@@ -423,7 +439,7 @@ class CountdownTimer(pn.pane.HTML):
         mech = session_state.get("mechanism", None)
         if not mech:
             return ""
-        return f" ({1-mech.relative_time:3.1%})"
+        return f" ({1 - mech.relative_time:3.1%})"
 
     def reset(self, new_duration=None):
         self.stop()
@@ -1173,13 +1189,48 @@ def main():
     session_state["timing"] = dict()
     session_state["scenarios"] = dict()
     session_state["partners"] = dict()
+    session_state["partners"]["negmas_negotiators"] = pn.widgets.Checkbox(
+        name="Allow NegMAS Negotiators", value=CONFIG.negmas
+    )
+    session_state["partners"]["genius_negotiators"] = pn.widgets.Checkbox(
+        name="Allow Genius Negotiators",
+        value=CONFIG.genius and genius_bridge_is_running(),
+    )
+
+    def make_agent_types():
+        all_agent_types = []
+        if session_state["partners"]["genius_negotiators"].value:
+            all_agent_types += GENIUS_NEGOTITORS
+        if session_state["partners"]["negmas_negotiators"].value:
+            all_agent_types += NEGMAS_NEGOTIATORS
+        if not all_agent_types:
+            all_agent_types = SELECTED_AGENT_TYPES
+        return all_agent_types
+
     folders = get_subfolders(Path(CONFIG.scenarios_base))
     session_state["partners"]["show_partner_type"] = pn.widgets.Checkbox(
         name="Show Selected Partner Type", value=is_admin()
     )
+    # agent_options = pn.rx(make_agent_types)
+    # agent_selection = pn.rx(
+    #     lambda: list(set(SELECTED_AGENT_TYPES).intersection(make_agent_types()))
+    # )
     session_state["partners"]["partner_types"] = pn.widgets.MultiChoice(
-        name="Partner Types", options=AGENT_TYPES, value=AGENT_TYPES
+        name="Partner Types",
+        options=make_agent_types(),
+        value=list(set(SELECTED_AGENT_TYPES).intersection(make_agent_types())),
     )
+
+    def update_agent_types(event):
+        session_state["partners"]["partner_types"].options = make_agent_types()
+
+    session_state["partners"]["genius_negotiators"].param.watch(
+        update_agent_types, "value"
+    )
+    session_state["partners"]["negmas_negotiators"].param.watch(
+        update_agent_types, "value"
+    )
+
     session_state["scenarios"]["scenario_folder"] = pn.widgets.Select(
         name="File Sources", options=folders, size=2, value=list(folders.values())[0]
     )
