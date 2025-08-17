@@ -86,11 +86,11 @@ TRACE_COLUMNS = [
 
 SELECTED_AGENT_TYPES = [
     "HybridNegotiator",
-    # "BoulwareTBNegotiator",
-    # "LinearTBNegotiator",
-    # "ConcederTBNegotiator",
-    # "genius.Atlas3",
-    # "genius.NiceTitForTat",
+    "BoulwareTBNegotiator",
+    "LinearTBNegotiator",
+    "ConcederTBNegotiator",
+    "genius.Atlas3",
+    "genius.NiceTitForTat",
 ]
 session_state = dict()
 
@@ -1207,6 +1207,7 @@ def main():
             all_agent_types += NEGMAS_NEGOTIATORS
         if not all_agent_types:
             all_agent_types = SELECTED_AGENT_TYPES
+        print(f"Will use {all_agent_types} as agent types")
         return all_agent_types
 
     folders = get_subfolders(Path(CONFIG.scenarios_base))
@@ -1217,10 +1218,11 @@ def main():
     # agent_selection = pn.rx(
     #     lambda: list(set(SELECTED_AGENT_TYPES).intersection(make_agent_types()))
     # )
+    made_types = make_agent_types()
     session_state["partners"]["partner_types"] = pn.widgets.MultiChoice(
         name="Partner Types",
-        options=make_agent_types(),
-        value=list(set(SELECTED_AGENT_TYPES).intersection(make_agent_types())),
+        options=made_types,
+        value=list(set(SELECTED_AGENT_TYPES).intersection(made_types)),
     )
 
     def update_agent_types(event):
