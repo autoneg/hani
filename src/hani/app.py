@@ -1045,7 +1045,10 @@ def send_event_to_tools(event):
 
 def start_negotiation(event=None):
     session_state["history"].clear()
-    partner_type = choice(session_state["partners"]["partner_types"].value)
+    types = session_state["partners"]["partner_types"].value
+    if not types:
+        types = SELECTED_AGENT_TYPES
+    partner_type = choice(types)
     if session_state["partners"]["show_partner_type"].value:
         session_state["history"].append(pn.pane.HTML(f"Partner type: {partner_type}"))
 
