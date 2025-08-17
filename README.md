@@ -10,6 +10,12 @@ You can install the interface from pypi using:
 pip install hani
 ```
 
+You can then start it using:
+
+```bash
+hani
+```
+
 ## Contribution
 
 To contribute, clone this repo then run:
