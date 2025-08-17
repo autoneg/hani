@@ -86,11 +86,11 @@ TRACE_COLUMNS = [
 
 SELECTED_AGENT_TYPES = [
     "HybridNegotiator",
-    "BoulwareTBNegotiator",
-    "LinearTBNegotiator",
-    "ConcederTBNegotiator",
-    "genius.Atlas3",
-    "genius.NiceTitForTat",
+    # "BoulwareTBNegotiator",
+    # "LinearTBNegotiator",
+    # "ConcederTBNegotiator",
+    # "genius.Atlas3",
+    # "genius.NiceTitForTat",
 ]
 session_state = dict()
 
@@ -335,8 +335,8 @@ def default_tools():
 class AppConfig:
     scenarios_base: Path | str = SAMPLE_SCENRIOS
     human_index: int = 1
-    n_steps: int | None = 30
-    time_limit: float | None = None if is_admin() else 120
+    n_steps: int | None = 50
+    time_limit: float | None = None if is_admin() else 600
     pend: float = 0
     pend_per_second: float = 0
     step_time_limit: float | None = None
@@ -355,6 +355,7 @@ class AppConfig:
     outcome_display: OutcomeDisplay = DefaultOutcomeDisplay()
     genius: bool = True
     negmas: bool = True
+    allow_moving_tools: bool = False
 
     @property
     def has_one_tool_pane(self):
@@ -1129,6 +1130,7 @@ def main():
     #     auth.logout_template = f.read()
     set_user()
     DB_PATH.mkdir(parents=True, exist_ok=True)
+    session_state["allow_moving_tools"] = CONFIG.allow_moving_tools
     session_state["db_path"] = DB_PATH
     session_state["user_path"] = DB_PATH / session_state["user"]
     session_state["user_path"].mkdir(parents=True, exist_ok=True)

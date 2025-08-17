@@ -87,7 +87,9 @@ class Tool(pn.viewable.Viewable):
         print("Closing")
 
     def __panel__(self) -> Any:
-        return pn.Column(self.panel(), self.common_buttons)
+        if self.session_state["allow_moving_tools"]:
+            return pn.Column(self.panel(), self.common_buttons)
+        return pn.Column(self.panel())
 
 
 def set_widget(widget, issue: Issue, value):
@@ -115,21 +117,24 @@ class OutcomeSelector(Tool):
             icon="chevron-left",
             button_type="success",
         )
+        self._disabled = False
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         self.scenario = session_state["scenario"]
         self.btn.disabled = False
+        self._disabled = False
         self._issues = self.scenario.outcome_space.issues
 
     def negotiation_ended(self, session_state: dict[str, Any], nmi: SAONMI):
         self.btn.disabled = True
+        self._disabled = True
 
     def action_requested(self, session_state: dict[str, Any], nmi: SAONMI):
         self.btn.disabled = False
+        self._disabled = False
 
     def set_outcome(self, event=None):
         outcome = self.get_outcome()
-        print(f"Setting outcome to {outcome}")
         if outcome is None:
             return
         for widget, issue, value in zip(self._widgets, self._issues, outcome):
@@ -139,4 +144,6 @@ class OutcomeSelector(Tool):
         return self.scenario.outcome_space.random_outcome()  # type: ignore
 
     def __panel__(self):
-        return pn.Column(self.panel(), self.btn, self.common_buttons)
+        if self.session_state["allow_moving_tools"]:
+            return pn.Column(self.panel(), self.btn, self.common_buttons)
+        return pn.Column(self.panel(), self.btn)
