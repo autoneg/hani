@@ -12,10 +12,10 @@ hints:
   human:
     Most Important Item: Watermelon
     Least Important Item: Apple
-short_description: In this scenario, you and an agent are stranded in an island. You have 8 items and you are negotiating how to divide them.
+short_description: In this scenario, you and an agent bought 4 items of 4 types of fruits and you are negotiating about how to distribute them between yourselves.
 long_description: |
-  **The Domain** There are eight issues corresponding to the eight items you are Distributing.
+  **The Domain** There are four issues corresponding to the number of items of each fruit that **you** get.
 
-  **Utility Function** Each item has some value for each of the two negotiators. The more items you get, the higher the utility you get.
+  **Utility Function** Each fruit has some value for each of the two negotiators. The more items you get, the higher the utility you get.
 
 
