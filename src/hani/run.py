@@ -7,6 +7,8 @@ def main():
     try:
         subprocess.run(
             ["panel", "serve", str(Path(__file__).parent / "app.py")]
+            + ["--logout-template", "src/hani/templates/logout.html"]
+            + ["--basic-login-template", "src/hani/templates/basic_login.html"]
             + (
                 ["--dev"]
                 if len(sys.argv) > 1 and any(_ in sys.argv[1:] for _ in ("dev",))
