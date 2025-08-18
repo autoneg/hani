@@ -1,4 +1,5 @@
 from datetime import datetime
+from rich import print
 from enum import Enum
 from negmas.helpers.inout import dump
 from random import choice
@@ -614,11 +615,24 @@ def save_result(m: SAOMechanism):
 
     path = session_state["user_path"] / "mechanisms"
     path.mkdir(exist_ok=True, parents=True)
-    dump(
-        # serialize(m.nmi, deep=False, ignore_lambda=True, add_type_field=False),
-        asdict(m.nmi),
-        path / f"{m.id}.json",
+
+    mechanism_dict = dict(
+        id=m.nmi.id,
+        end_on_no_response=m.nmi.end_on_no_response,
+        one_offer_per_step=m.nmi.one_offer_per_step,
+        n_outcomes=m.nmi.n_outcomes,
+        # outcome_space=m.nmi.outcome_space,
+        time_limit=m.nmi.time_limit,
+        pend=m.nmi.pend,
+        pend_per_second=m.nmi.pend_per_second,
+        step_time_limit=m.nmi.step_time_limit,
+        negotiator_time_limit=m.nmi.negotiator_time_limit,
+        n_steps=m.nmi.n_steps,
+        dynamic_entry=m.nmi.dynamic_entry,
+        max_n_negotiators=m.nmi.max_n_negotiators,
+        annotation=m.nmi.annotation,
     )
+    dump(mechanism_dict, path / f"{m.id}.json")
 
     session_state["results"].append(result)
     # session_state["results_df"] = pd.DataFrame.from_records(session_state["results"])
