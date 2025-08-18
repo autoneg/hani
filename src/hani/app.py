@@ -614,7 +614,11 @@ def save_result(m: SAOMechanism):
 
     path = session_state["user_path"] / "mechanisms"
     path.mkdir(exist_ok=True, parents=True)
-    dump(serialize(m.nmi, deep=True), path / f"{m.id}.json")
+    dump(
+        # serialize(m.nmi, deep=False, ignore_lambda=True, add_type_field=False),
+        asdict(m.nmi),
+        path / f"{m.id}.json",
+    )
 
     session_state["results"].append(result)
     # session_state["results_df"] = pd.DataFrame.from_records(session_state["results"])
