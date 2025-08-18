@@ -12,10 +12,10 @@ hints:
   human:
     Most Important Item: Watermelon
     Least Important Item: Apple
-short_description: In this scenario, Alice and Bob are stranded into an island. You have 8 items and you are negotiating how to divide them.
+short_description: In this scenario, you and an agent are stranded in an island. You have 8 items and you are negotiating how to divide them.
 long_description: |
   **The Domain** There are eight issues corresponding to the eight items you are Distributing.
 
-  **Utility Function** Each item has some value for each of the two negotiators. The more items you get, the total the utility you get.
+  **Utility Function** Each item has some value for each of the two negotiators. The more items you get, the higher the utility you get.
 
 
