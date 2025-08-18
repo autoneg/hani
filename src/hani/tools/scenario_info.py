@@ -69,8 +69,8 @@ class ScenarioInfoTool(Tool):
     def short_description(self):
         return (
             pn.pane.Markdown(self.scenario.info.get("short_description", ""))
-            if not self.long_desc  # type: ignore
-            else None
+            # if not self.long_desc  # type: ignore
+            # else None
         )
 
     def panel(self):
