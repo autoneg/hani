@@ -1,0 +1,45 @@
+name: alice
+reserved_value: 0.0
+type: LinearAdditiveUtilityFunction
+values:
+- mapping:
+    alice: 1.0
+    bob: 0.0
+  type: TableFun
+- mapping:
+    alice: 1.0
+    bob: 0.0
+  type: TableFun
+- mapping:
+    alice: 1.0
+    bob: 0.0
+  type: TableFun
+- mapping:
+    alice: 1.0
+    bob: 0.0
+  type: TableFun
+- mapping:
+    alice: 1.0
+    bob: 0.0
+  type: TableFun
+- mapping:
+    alice: 1.0
+    bob: 0.0
+  type: TableFun
+- mapping:
+    alice: 1.0
+    bob: 0.0
+  type: TableFun
+- mapping:
+    alice: 1.0
+    bob: 0.0
+  type: TableFun
+weights:
+- 13
+- 22
+- 17
+- 6
+- 5
+- 20
+- 7
+- 10

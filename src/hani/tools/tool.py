@@ -12,6 +12,9 @@ class Tool(pn.viewable.Viewable):
     A fully reactive tool that can respond to events in the negotiation
     """
 
+    def redraw(self):
+        pass
+
     def _get_model(self, doc, root=None, parent=None, comm=None):
         model = self.__panel__()._get_model(doc, root, parent, comm)  # type: ignore
         return model
@@ -21,9 +24,11 @@ class Tool(pn.viewable.Viewable):
 
     def scenario_loaded(self, session_state: dict[str, Any], scenario: Scenario):
         """Called after a scenario is loaded"""
+        self.redraw()
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         """Called on the beginning of the negotiation."""
+        self.redraw()
 
     def negotiation_ended(self, session_state: dict[str, Any], nmi: SAONMI):
         """Called on the beginning of the negotiation."""

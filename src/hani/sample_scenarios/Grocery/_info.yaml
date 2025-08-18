@@ -1,0 +1,21 @@
+Name: Grocery
+title: Groceries Distribution
+issue_description:
+  Apple 🍉: How many apples you get
+  Banana 🍌: How many bananas you get
+  Orange 🟠: How many oranges you get
+  Watermelon 🍎: How many watermelons you get
+hints:
+  agent:
+    Most Important Item: Orange 
+    Least Important Item: Banana
+  human:
+    Most Important Item: Watermelon
+    Least Important Item: Apple
+short_description: In this scenario, Alice and Bob are stranded into an island. You have 8 items and you are negotiating how to divide them.
+long_description: |
+  **The Domain** There are eight issues corresponding to the eight items you are Distributing.
+
+  **Utility Function** Each item has some value for each of the two negotiators. The more items you get, the total the utility you get.
+
+

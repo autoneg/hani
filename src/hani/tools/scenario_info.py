@@ -36,7 +36,7 @@ class ScenarioInfoTool(Tool):
                 f"{scenario.info['issue_description'].get(human_id, dict()).get(issue.name, '')}\n"
             )
         txt += f"\n\nYou act as **{human_id}**"
-        return pn.pane.Markdown(txt)
+        return pn.pane.Markdown(txt, styles={"font-size": "12pt"})
 
     @param.depends("scenario", "human_id")
     def hints(self):
@@ -55,7 +55,7 @@ class ScenarioInfoTool(Tool):
 
     @param.depends("scenario", "human_id")
     def title(self):
-        return pn.pane.Markdown(f'### {self.scenario.info.get("title", "")}')
+        return pn.pane.Markdown(f"### {self.scenario.info.get('title', '')}")
 
     @param.depends("scenario", "human_id", "long_desc")
     def long_description(self):
@@ -76,11 +76,11 @@ class ScenarioInfoTool(Tool):
     def panel(self):
         return pn.Column(
             self.title,
+            self.short_description,
             self.outcome_space,
             pn.widgets.Checkbox.from_param(
                 self.param.long_desc, name="Long Description"
             ),  # type: ignore
-            self.short_description,
             self.long_description,
             self.hints,
             sizing_mode="stretch_both",

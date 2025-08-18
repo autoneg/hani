@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from negmas.helpers.inout import dump
 from random import choice
 from negmas.helpers.inout import add_records
 import numpy as np
@@ -45,6 +46,8 @@ from negmas.sao import all_negotiator_types
 import negmas.genius.gnegotiators as gneg
 
 from hani.scenarios.trade import TradeOutcomeDisplay, make_trade_scenario
+from hani.scenarios.island import IslandOutcomeDisplay, make_island_scenario
+from hani.scenarios.grocery import GroceryOutcomeDisplay, make_grocery_scenario
 from hani.tools import Tool
 from hani.tools.history import NegotiationTraceTool
 from hani.tools.preferences import PreferencesTool
@@ -59,7 +62,16 @@ from hani.common import DB_PATH, SAMPLE_SCENRIOS, DefaultOutcomeDisplay, Outcome
 
 
 GENIUS_NEGOTITORS = [f"genius.{x}" for x in gneg.__all__]
-NEGMAS_NEGOTIATORS = [_.__name__ for _ in all_negotiator_types()]
+NEGMAS_NEGOTIATORS = [_.__name__ for _ in all_negotiator_types()]  # type: ignore
+HANI_NEGOTIATORS = [
+    "helpers.AverageTitForTat",
+    "helpers.HardHeaded",
+    "helpers.AgentK",
+    "helpers.Atlas3",
+    "helpers.CUHKAgent",
+    "helpers.AgentGG",
+]
+
 
 LAYOUT_OPTIONS = dict(
     showlegend=False,
@@ -86,9 +98,15 @@ TRACE_COLUMNS = [
 
 SELECTED_AGENT_TYPES = [
     "HybridNegotiator",
-    "BoulwareTBNegotiator",
-    "LinearTBNegotiator",
-    "ConcederTBNegotiator",
+    # "BoulwareTBNegotiator",
+    # "LinearTBNegotiator",
+    # "ConcederTBNegotiator",
+    "helpers.AverageTitForTat",
+    "helpers.HardHeaded",
+    "helpers.AgentK",
+    "helpers.Atlas3",
+    "helpers.CUHKAgent",
+    "helpers.AgentGG",
     "genius.Atlas3",
     "genius.NiceTitForTat",
 ]
@@ -111,6 +129,9 @@ if not genius_bridge_is_running():
 def get_agent_type(x: Negotiator | str | None) -> Negotiator:
     if isinstance(x, str) and "." not in x:
         x = f"negmas.sao.{x}"
+    if isinstance(x, str) and x.startswith("helpers."):
+        x = x[len("helpers.") :]
+        x = f"hani.helpers.negotiators.{x}"
     if isinstance(x, str) and x.startswith("genius."):
         x = x[len("genius.") :]
         x = f"negmas.genius.gnegotiators.{x}"
@@ -184,7 +205,7 @@ class ToolConfig:
                 if isinstance(v, str) and v.startswith(SESSION_PREFIX):
                     params[k] = self._parse(v[len(SESSION_PREFIX) :], session_state)
                     continue
-                params[k] = v
+                params[k] = v  # type: ignore
             except Exception as e:
                 print(traceback.format_exc())  # type: ignore
                 raise e
@@ -226,7 +247,11 @@ TOOL_MAP = {
     "All Results": AllResultsTool,
 }
 
-DISPLAY_MAP = {"Trade": TradeOutcomeDisplay()}
+DISPLAY_MAP = {
+    "Trade": TradeOutcomeDisplay(),
+    "Island": IslandOutcomeDisplay(),
+    "Grocery": GroceryOutcomeDisplay(),
+}
 
 
 class HumanPlaceholder(SAONegotiator):
@@ -335,8 +360,8 @@ def default_tools():
 class AppConfig:
     scenarios_base: Path | str = SAMPLE_SCENRIOS
     human_index: int = 1
-    n_steps: int | None = 50
-    time_limit: float | None = None if is_admin() else 600
+    n_steps: int | None = 100
+    time_limit: float | None = None if is_admin() else 300
     pend: float = 0
     pend_per_second: float = 0
     step_time_limit: float | None = None
@@ -355,6 +380,7 @@ class AppConfig:
     outcome_display: OutcomeDisplay = DefaultOutcomeDisplay()
     genius: bool = True
     negmas: bool = True
+    hani_helpers: bool = False
     allow_moving_tools: bool = False
 
     @property
@@ -383,7 +409,11 @@ CONFIG = AppConfig()
 # TOOLS = ["Offer Utilities", "Outcome View", "Inverse Utility"]
 
 # MAKER_MAP = {"Trade": make_trade_scenario, "Colored Chips": make_colored_chips}
-MAKER_MAP = {"Trade": make_trade_scenario}
+MAKER_MAP = {
+    "Trade": make_trade_scenario,
+    "Island": make_island_scenario,
+    "Grocery": make_grocery_scenario,
+}
 
 
 class CountdownTimer(pn.pane.HTML):
@@ -423,7 +453,7 @@ class CountdownTimer(pn.pane.HTML):
         while self.running and time.time() < end_time:
             remaining = int(end_time - time.time())
             color = "black" if remaining > 10 else "red"
-            self.object = f'<h5 style="color:{color}">{humanize_time(remaining).strip()}  remaining{self.relative()}</h5>'
+            self.object = f'<h5 style="color:{color}">{humanize_time(remaining).strip()}  remaining{self.relative()}</h5>'  # type: ignore
             time.sleep(self.update_interval)
 
         if self.running:  # if the timer finished naturally, rather than being stopped.
@@ -511,13 +541,13 @@ def make_mechanism(
         if i == human_index:
             negotiators.append(get_class(human_type)(**human_params))
         else:
-            negotiators.append(get_agent_type(agent_type)(**agent_params))
+            negotiators.append(get_agent_type(agent_type)(**agent_params))  # type: ignore
     human_id = negotiators[human_index].id
     print(f"{human_params=}\n{agent_params=}\n{human_id=}")
     m = scenario.make_session(negotiators=negotiators)
     if not start_only:
         m.run()
-        save_result(m)
+        save_result(m)  # type: ignore
         # print(
         #     f"Negotiation completed with {session_state['outcome_display'].str(m.agreement, session_state['scenario'], True, False)}"
         # )
@@ -582,6 +612,10 @@ def save_result(m: SAOMechanism):
     path.mkdir(exist_ok=True, parents=True)
     session_state["scenario"].dumpas(path)
 
+    path = session_state["user_path"] / "mechanisms"
+    path.mkdir(exist_ok=True, parents=True)
+    dump(serialize(m, deep=True), path / f"{m.id}.json")
+
     session_state["results"].append(result)
     # session_state["results_df"] = pd.DataFrame.from_records(session_state["results"])
 
@@ -605,11 +639,22 @@ def end_session():
     # session_state["history"].clear()
 
 
-def display_state(state: SAOState):
+def display_state(state: SAOState) -> pn.Column:
+    try:
+        nmi = session_state["mechanism"].nmi
+        steps = f" of {nmi.n_steps}" if nmi.n_steps else ""
+        tlimit = f" (max {humanize_time(nmi.time_limit)})" if nmi.time_limit else ""
+    except Exception:
+        steps, tlimit = "", ""
     # update progress
     session_state["progress"].value = int(state.relative_time * 100)
     session_state["summary"].pop(0)
-    session_state["summary"].insert(0, pn.pane.HTML(f"<h5>Step: {state.step}</h5>"))
+    session_state["summary"].insert(
+        0, pn.pane.HTML(f"<h5>Step: {state.step}{steps}{tlimit}</h5>")
+    )
+    session_state["step_value"] = pn.pane.HTML(
+        f"<h5>Step: {state.step}{steps}{tlimit}</h5>"
+    )
     human_id = session_state["human_id"]
     from_human = state.current_proposer == human_id
     color = (
@@ -642,7 +687,7 @@ def display_state(state: SAOState):
             s = f"broken after {humanize_time(state.time)}"
         else:
             s = "done"
-        return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "12pt"})
+        return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "12pt"})  # type: ignore
     border = {
         "border-radius": "10px",
         "border": "1px solid black",
@@ -699,9 +744,16 @@ def display_state(state: SAOState):
     return pn.Column(row, pn.layout.Spacer(height=HISTORY_SEPARATION))
 
 
+def do_logout(event=None): ...
+
+
 def load_button():
+    logout = pn.widgets.Button(name="Log out", icon="logout", button_type="danger")
+    logout.js_on_click(code="""window.location.href = './logout'""")
+    logout.on_click(do_logout)
     load_btn = pn.widgets.Button(name="Load", icon="loader-3", button_type="primary")
     load_btn.on_click(load_scenario)
+    load_btn.js_on_click(code="""window.location.reload();""")
     pn.bind(load_scenario, load_btn)
     strt_btn = pn.widgets.Button(
         name="Start", icon="player-play", button_type="primary"
@@ -709,10 +761,12 @@ def load_button():
     strt_btn.disabled = True
     strt_btn.on_click(start_negotiation)
     pn.bind(start_negotiation, strt_btn)
+    session_state["logout_btn"] = logout
     session_state["strt_btn"] = strt_btn
     session_state["load_btn"] = load_btn
     session_state["action_panel_displayed"] = False
-    return pn.Column(load_btn, strt_btn)
+    return pn.Column(logout, load_btn, strt_btn)
+    # return pn.Column(logout, strt_btn)
 
 
 def start_button():
@@ -1034,13 +1088,19 @@ def send_event_to_tools(event):
         mechanism = session_state["mechanism"]
         human_index = session_state["human_index"]
         for tool in tools:
-            tool.negotiation_started(
-                session_state, mechanism.negotiators[human_index].nmi
-            )
+            try:
+                tool.negotiation_started(
+                    session_state, mechanism.negotiators[human_index].nmi
+                )
+            except Exception as e:
+                print(f"{tool.name} failed to start negotiation: {e}")
         return
     elif event == "scenario_loaded":
         for tool in tools:
-            tool.scenario_loaded(session_state, session_state["scenario"])
+            try:
+                tool.scenario_loaded(session_state, session_state["scenario"])
+            except Exception as e:
+                print(f"{tool.name} failed to load scenario: {e}")
 
 
 def start_negotiation(event=None):
@@ -1092,16 +1152,16 @@ def load_scenario(event=None):
     if not generators:
         session_state["scenario"] = read_scenario(Path(CONFIG.scenarios_base) / "trade")
     else:
-        session_state["scenario"] = choice(generators)(session_state["next_sceanrio"])
+        session_state["scenario"] = choice(generators)(session_state["next_scenario"])
         print(
-            f"Generated New {session_state['next_sceanrio']}\nFirst: {session_state['scenario'].ufuns[0].values}\n"
+            f"Generated New {session_state['next_scenario']}\nFirst: {session_state['scenario'].ufuns[0].values}\n"
             f"Second: {session_state['scenario'].ufuns[1].values}"
         )
     session_state["outcome_display"] = DISPLAY_MAP.get(
         session_state["scenario"].outcome_space.name, CONFIG.outcome_display
     )
 
-    session_state["next_sceanrio"] = session_state["next_sceanrio"] + 1
+    session_state["next_scenario"] = session_state["next_scenario"] + 1
     session_state["human_index"] = CONFIG.human_index
     session_state["human_ufun"] = session_state["scenario"].ufuns[  # type: ignore
         session_state["human_index"]
@@ -1112,6 +1172,16 @@ def load_scenario(event=None):
     if session_state["load_btn"]:
         session_state["load_btn"].disabled = True
 
+    if "human_best_offer" in session_state:
+        del session_state["human_best_offer"]
+    session_state["action_panel_displayed"] = False
+    print("========= New Scenario Loaded")
+
+    # session_state["tools"] = []
+    # session_state["upper_tabs"] = pn.Tabs()
+    # session_state["lower_tabs"] = pn.Tabs()
+    # session_state["side_tabs"] = pn.Tabs()
+    # add_tools(Timing.Always)
     add_tools(Timing.Load)
     send_event_to_tools("scenario_loaded")
 
@@ -1138,7 +1208,7 @@ def main():
     session_state["user_path"] = DB_PATH / session_state["user"]
     session_state["user_path"].mkdir(parents=True, exist_ok=True)
     session_state["results"] = []
-    session_state["next_sceanrio"] = 0
+    session_state["next_scenario"] = 0
     session_state["negotiation_started"] = False
     session_state["negotiation_done"] = False
     session_state["display"] = dict()
@@ -1197,6 +1267,9 @@ def main():
     session_state["partners"]["negmas_negotiators"] = pn.widgets.Checkbox(
         name="Allow NegMAS Negotiators", value=CONFIG.negmas
     )
+    session_state["partners"]["hani_negotiators"] = pn.widgets.Checkbox(
+        name="Selected HANI Negotiators", value=CONFIG.hani_helpers
+    )
     session_state["partners"]["genius_negotiators"] = pn.widgets.Checkbox(
         name="Allow Genius Negotiators",
         value=CONFIG.genius and genius_bridge_is_running(),
@@ -1208,6 +1281,8 @@ def main():
             all_agent_types += GENIUS_NEGOTITORS
         if session_state["partners"]["negmas_negotiators"].value:
             all_agent_types += NEGMAS_NEGOTIATORS
+        if session_state["partners"]["hani_negotiators"].value:
+            all_agent_types += HANI_NEGOTIATORS
         if not all_agent_types:
             all_agent_types = SELECTED_AGENT_TYPES
         print(f"Will use {all_agent_types} as agent types")
@@ -1235,6 +1310,9 @@ def main():
         update_agent_types, "value"
     )
     session_state["partners"]["negmas_negotiators"].param.watch(
+        update_agent_types, "value"
+    )
+    session_state["partners"]["hani_negotiators"].param.watch(
         update_agent_types, "value"
     )
 
@@ -1368,6 +1446,7 @@ def main():
         template.main[3:5, 5:12] = offer  # type: ignore
     # template.main[0:5, 10:12] = tools_pane
     session_state["template"] = template
+    load_scenario()
     template.servable(title="Human Agent Negotiation Interface")
 
 

@@ -23,7 +23,7 @@ def main():
                 else []
             )
             + (
-                [_ for _ in sys.argv[1:] if _ not in ("dev", "login")]
+                [_ for _ in sys.argv[1:] if _ not in ("dev", "login", "port")]
                 if len(sys.argv) > 1
                 else []
             ),

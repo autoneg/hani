@@ -1,0 +1,24 @@
+issues:
+- name: Apple
+  type: ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: Banana
+  type: ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: Orange
+  type: ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: Watermelon
+  type: ContiguousIssue
+  values:
+  - 0
+  - 4
+name: Grocery
+type: DiscreteCartesianOutcomeSpace
+

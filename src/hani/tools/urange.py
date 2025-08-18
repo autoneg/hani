@@ -30,12 +30,21 @@ class UtilityInverterTool(OutcomeSelector):
         self._inverter = None
         self.selected = None
 
+    def scenario_loaded(self, session_state: dict[str, Any], scenario):
+        self.human_index = session_state["human_index"]
+        self._inverter = None
+        self.selected = None
+
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         self.human_index = session_state["human_index"]
         self._inverter = (
             session_state["scenario"].ufuns[session_state["human_index"]].invert()
         )
+        print(
+            f"Inverter recalculated for {session_state['scenario'].outcome_space.name}"
+        )
         super().negotiation_started(session_state, nmi)
+        self.redraw()
 
     @param.depends("rng", "min_util")
     def outcomes_tbl(self):

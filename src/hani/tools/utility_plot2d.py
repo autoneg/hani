@@ -74,7 +74,10 @@ class UtilityPlot2DTool(Tool):
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         self.mechanism = session_state["mechanism"]
         self.human_index = session_state["human_index"]
+        self._update_cols()
         self.history.clear()
+
+    def scenario_loaded(self, session_state: dict[str, Any], scenario):
         self._update_cols()
 
     def action_requested(self, session_state: dict[str, Any], nmi: SAONMI):
@@ -82,6 +85,7 @@ class UtilityPlot2DTool(Tool):
 
     @param.depends("mechanism", "first_issue", "second_issue", "history")
     def plot(self):
+        self._update_cols()
         x_col = self.first_issue
         y_col = self.second_issue
         if not isinstance(x_col, str):

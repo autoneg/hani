@@ -63,7 +63,9 @@ class SessionResultsTool(Tool):
                 score = 0
             else:
                 score /= base
-        return pn.pane.HTML(f"<h5>Score {100*score:03.3} in {len(df)} negotitions</h5>")
+        return pn.pane.HTML(
+            f"<h5>Score {100 * score:03.3} in {len(df)} negotitions</h5>"
+        )
 
     def panel(self):
         return pn.Column(
@@ -90,9 +92,10 @@ class UserResultsTool(Tool):
                 self.param.columns.objects = DEFAULT
 
     def negotiation_ended(self, session_state: dict[str, Any], nmi: SAONMI):
-        self.tbl = pd.concat(
-            (self.tbl, pd.DataFrame.from_records([session_state["results"][-1]]))
-        )
+        if session_state["results"]:
+            self.tbl = pd.concat(
+                (self.tbl, pd.DataFrame.from_records([session_state["results"][-1]]))
+            )
         self.param.columns.objects = [_ for _ in self.tbl.columns]
         # self.param.columns.value = ["scenario", "human_utility"]
 
@@ -114,7 +117,15 @@ class UserResultsTool(Tool):
                 score = 0
             else:
                 score /= base
-        return pn.pane.HTML(f"<h5>Score {100*score:03.3} in {len(df)} negotitions</h5>")
+        try:
+            _h = pn.pane.HTML(
+                f"<h5>Score {100 * score:03.3} in {len(df)} negotitions</h5>"
+            )
+        except Exception:
+            _h = pn.pane.HTML(
+                f"<h5>Score {100 * score:03} in {len(df)} negotitions</h5>"
+            )
+        return _h
 
     @param.depends("table", "columns")
     def filtered_data(self):
@@ -181,7 +192,9 @@ class AllResultsTool(Tool):
                 score = 0
             else:
                 score /= base
-        return pn.pane.HTML(f"<h5>Score {100*score:03.3} in {len(df)} negotitions</h5>")
+        return pn.pane.HTML(
+            f"<h5>Score {100 * score:03.3} in {len(df)} negotitions</h5>"
+        )
 
     def panel(self):
         return pn.Column(

@@ -1,8 +1,6 @@
 import math
 import random
-from typing import Iterable
-import numpy as np
-from negmas.preferences.value_fun import TableFun, AffineFun, LinearFun, LambdaFun
+from negmas.preferences.value_fun import TableFun
 from negmas.helpers.inout import load
 from negmas import (
     DiscreteCartesianOutcomeSpace,
@@ -14,50 +12,7 @@ from negmas import (
     Scenario,
 )
 from hani.common import SAMPLE_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
-
-__ = TableFun, AffineFun, LinearFun, LambdaFun
-
-FloatRange = tuple[float, float] | tuple[float, float, int] | list[float] | float
-IntRange = tuple[int, int] | tuple[int, int, int] | list[int] | int
-FloatIssueRange = tuple[float, float] | tuple[float, float, float] | list[float]
-
-# random.seed(1234)
-# np.random.seed(1234)
-
-
-def range_in(x: FloatIssueRange):
-    if isinstance(x, tuple) and len(x) == 3:
-        x = np.round(np.linspace(x[0], x[1], num=x[2], endpoint=True)).tolist()  # type: ignore
-    if isinstance(x, tuple) and len(x) == 2:
-        return range_in((*x, 11))  # type: ignore
-    if isinstance(x, list):
-        return x
-    raise ValueError(f"Unsupported iterable {x}")
-
-
-def float_in(x: FloatRange):
-    if isinstance(x, tuple) and len(x) == 3:
-        num = (x[1] - x[0]) / x[2]
-        x = np.linspace(x[0], x[1], num=num).tolist()  # type: ignore
-    if isinstance(x, tuple) and len(x) == 2:
-        return x[0] + (x[1] - x[0]) * random.random()
-    if isinstance(x, list):
-        return random.choice(x)
-    if isinstance(x, Iterable):
-        raise ValueError(f"Unsupported iterable {x}")
-    return x
-
-
-def int_in(x: IntRange):
-    if isinstance(x, tuple) and len(x) == 2:
-        return random.randint(x[0], x[-1])
-    if isinstance(x, tuple) and len(x) == 3:
-        x = list(range(x[0], x[1], x[2]))
-    if isinstance(x, list):
-        return random.choice(list(x))
-    if isinstance(x, Iterable):
-        raise ValueError(f"Unsupported iterable {x}")
-    return x
+from .common import IntRange, FloatIssueRange, FloatRange, float_in, int_in, range_in
 
 
 def make_trade_scenario(
@@ -67,13 +22,13 @@ def make_trade_scenario(
     seller_target: IntRange = (2, 10),
     seller_shortfall_penalty: FloatRange = (0.1, 0.8),
     seller_excess_penalty: FloatRange = (0.01, 0.2),
-    seller_quantity_weight: FloatRange = (0.1, 0.3),
+    seller_quantity_weight: FloatRange = (0.2, 0.6),
     seller_price_exponent: FloatRange = [0.05, 0.2, 1.0, 2.0, 5.0],
     seller_reserved_range: FloatRange = (0.0, 0.1),
     buyer_target: IntRange = (4, 8),
     buyer_shortfall_penalty: FloatRange = (0.1, 0.8),
     buyer_excess_penalty: FloatRange = (0.1, 0.8),
-    buyer_quantity_weight: FloatRange = (0.1, 0.3),
+    buyer_quantity_weight: FloatRange = (0.2, 0.7),
     buyer_price_exponent: FloatRange = [0.05, 0.2, 1.0, 2.0, 5.0],
     buyer_reserved_range: FloatRange = (0.0, 0.1),
     seller_starts: bool | None = True,
