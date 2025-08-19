@@ -111,6 +111,10 @@ SELECTED_AGENT_TYPES = [
     "genius.Atlas3",
     "genius.NiceTitForTat",
 ]
+
+FEW_SELECTED_AGENT_TYPES = [
+    "HybridNegotiator",
+]
 session_state = dict()
 
 pn.extension(design="bootstrap", sizing_mode="stretch_width")
@@ -1302,7 +1306,7 @@ def main():
         if session_state["partners"]["hani_negotiators"].value:
             all_agent_types += HANI_NEGOTIATORS
         if not all_agent_types:
-            all_agent_types = SELECTED_AGENT_TYPES
+            all_agent_types = FEW_SELECTED_AGENT_TYPES
         print(f"Will use {all_agent_types} as agent types")
         return all_agent_types
 
