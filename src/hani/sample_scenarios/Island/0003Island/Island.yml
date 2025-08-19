@@ -1,0 +1,43 @@
+issues:
+- name: "Compass \U0001F9ED"
+  type: negmas.outcomes.categorical_issue.CategoricalIssue
+  values:
+  - agent
+  - human
+- name: "Container \U0001F9F0"
+  type: negmas.outcomes.categorical_issue.CategoricalIssue
+  values:
+  - agent
+  - human
+- name: "Food \U0001F372"
+  type: negmas.outcomes.categorical_issue.CategoricalIssue
+  values:
+  - agent
+  - human
+- name: "Hammer \U0001F528"
+  type: negmas.outcomes.categorical_issue.CategoricalIssue
+  values:
+  - agent
+  - human
+- name: "Knife \U0001F52A"
+  type: negmas.outcomes.categorical_issue.CategoricalIssue
+  values:
+  - agent
+  - human
+- name: "Match \U0001F525"
+  type: negmas.outcomes.categorical_issue.CategoricalIssue
+  values:
+  - agent
+  - human
+- name: "Medicine \U0001F48A"
+  type: negmas.outcomes.categorical_issue.CategoricalIssue
+  values:
+  - agent
+  - human
+- name: "Rope \U0001FAA2"
+  type: negmas.outcomes.categorical_issue.CategoricalIssue
+  values:
+  - agent
+  - human
+name: Island
+type: negmas.outcomes.outcome_space.DiscreteCartesianOutcomeSpace

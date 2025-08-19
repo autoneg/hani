@@ -1,0 +1,45 @@
+name: human
+reserved_value: 0.020848924477032616
+type: negmas.preferences.crisp.linear.LinearAdditiveUtilityFunction
+values:
+- mapping:
+    agent: 0
+    human: 1
+  type: negmas.preferences.value_fun.TableFun
+- mapping:
+    agent: 0
+    human: 1
+  type: negmas.preferences.value_fun.TableFun
+- mapping:
+    agent: 0
+    human: 1
+  type: negmas.preferences.value_fun.TableFun
+- mapping:
+    agent: 0
+    human: 1
+  type: negmas.preferences.value_fun.TableFun
+- mapping:
+    agent: 0
+    human: 1
+  type: negmas.preferences.value_fun.TableFun
+- mapping:
+    agent: 0
+    human: 1
+  type: negmas.preferences.value_fun.TableFun
+- mapping:
+    agent: 0
+    human: 1
+  type: negmas.preferences.value_fun.TableFun
+- mapping:
+    agent: 0
+    human: 1
+  type: negmas.preferences.value_fun.TableFun
+weights:
+- 0.07228915662650602
+- 0.012048192771084338
+- 0.12048192771084339
+- 0.26506024096385544
+- 0.25301204819277107
+- 0.03614457831325301
+- 0.1927710843373494
+- 0.04819277108433735

@@ -1,0 +1,17 @@
+name: human
+reserved_value: 0.13351219855790006
+type: negmas.preferences.crisp.linear.LinearAdditiveUtilityFunction
+values:
+- slope: 0.25
+  type: negmas.preferences.value_fun.LinearFun
+- slope: 0.25
+  type: negmas.preferences.value_fun.LinearFun
+- slope: 0.25
+  type: negmas.preferences.value_fun.LinearFun
+- slope: 0.25
+  type: negmas.preferences.value_fun.LinearFun
+weights:
+- 0.30000000000000004
+- 0.06666666666666668
+- 0.43333333333333335
+- 0.20000000000000004

@@ -1,0 +1,23 @@
+issues:
+- name: "apple \U0001F34E"
+  type: negmas.outcomes.contiguous_issue.ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: "banana \U0001F34C"
+  type: negmas.outcomes.contiguous_issue.ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: "orange \U0001F7E0"
+  type: negmas.outcomes.contiguous_issue.ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: "watermelon \U0001F349"
+  type: negmas.outcomes.contiguous_issue.ContiguousIssue
+  values:
+  - 0
+  - 4
+name: Grocery
+type: negmas.outcomes.outcome_space.DiscreteCartesianOutcomeSpace

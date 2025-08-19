@@ -1,0 +1,27 @@
+name: Buyer
+reserved_value: 0.0444678808142454
+type: negmas.preferences.crisp.linear.LinearAdditiveUtilityFunction
+values:
+- mapping:
+    1: 0.0
+    2: 0.0
+    3: 0.0
+    4: 0.0
+    5: 0.0
+    6: 0.0
+    7: 0.49
+    8: 1.0
+    9: 0.22
+    10: 0.0
+  type: negmas.preferences.value_fun.TableFun
+- mapping:
+    100.0: 1.0
+    120.0: 0.08
+    140.0: 0.04
+    160.0: 0.03
+    180.0: 0.01
+    200.0: 0.0
+  type: negmas.preferences.value_fun.TableFun
+weights:
+- 0.27535819936910283
+- 0.7246418006308972

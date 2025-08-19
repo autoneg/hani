@@ -11,7 +11,7 @@ from negmas import (
     Outcome,
     Scenario,
 )
-from hani.common import SAMPLE_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
+from hani.common import DEFAULT_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
 from .common import IntRange, float_in, int_in, FloatRange
 
 Agent = "agent"
@@ -135,7 +135,7 @@ def make_grocery_scenario(
 
     ufuns = [make_ufun("agent"), make_ufun("human")]
 
-    info = load(SAMPLE_SCENRIOS / "Grocery" / INFO_FILE_NAME)
+    info = load(DEFAULT_SCENRIOS / "Grocery" / INFO_FILE_NAME)
     info["hints"]["agent"]["Most Important Item"] = best["agent"]
     info["hints"]["agent"]["Least Important Item"] = worst["agent"]
     info["hints"]["human"]["Most Important Item"] = best["human"]
@@ -145,7 +145,6 @@ def make_grocery_scenario(
         ufuns=tuple(ufuns),
         info=info,
     )
-    print(f"Ufuns: {[(_.values, _.weights) for _ in scenario.ufuns]}")
     return scenario
 
 

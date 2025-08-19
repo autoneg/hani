@@ -1,0 +1,21 @@
+name: agent
+reserved_value: 0.29154680582850473
+type: negmas.preferences.crisp.linear.LinearAdditiveUtilityFunction
+values:
+- bias: 1.0
+  slope: -0.25
+  type: negmas.preferences.value_fun.AffineFun
+- bias: 1.0
+  slope: -0.25
+  type: negmas.preferences.value_fun.AffineFun
+- bias: 1.0
+  slope: -0.25
+  type: negmas.preferences.value_fun.AffineFun
+- bias: 1.0
+  slope: -0.25
+  type: negmas.preferences.value_fun.AffineFun
+weights:
+- 0.36363636363636365
+- 0.36363636363636365
+- 0.19696969696969696
+- 0.07575757575757576

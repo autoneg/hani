@@ -9,7 +9,7 @@ from negmas import (
     Outcome,
     Scenario,
 )
-from hani.common import SAMPLE_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
+from hani.common import DEFAULT_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
 from .common import IntRange, float_in, int_in, FloatRange
 
 
@@ -141,7 +141,7 @@ def make_island_scenario(
 
     ufuns = [make_ufun("agent"), make_ufun("human")]
 
-    info = load(SAMPLE_SCENRIOS / "Island" / INFO_FILE_NAME)
+    info = load(DEFAULT_SCENRIOS / "Island" / INFO_FILE_NAME)
     info["hints"]["agent"]["Most Important Item"] = best["agent"]
     info["hints"]["agent"]["Least Important Item"] = worst["agent"]
     info["hints"]["human"]["Most Important Item"] = best["human"]

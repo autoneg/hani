@@ -1,7 +1,8 @@
 from datetime import datetime
 from rich import print
 from enum import Enum
-from negmas.helpers.inout import dump
+from negmas.helpers.inout import dump, load
+from negmas.inout import INFO_FILE_NAME
 from random import choice
 from negmas.helpers.inout import add_records
 import numpy as np
@@ -56,9 +57,9 @@ from negmas.inout import Mechanism, Scenario
 from negmas.sao import all_negotiator_types
 import negmas.genius.gnegotiators as gneg
 
-from hani.scenarios.trade import TradeOutcomeDisplay, make_trade_scenario
-from hani.scenarios.island import IslandOutcomeDisplay, make_island_scenario
-from hani.scenarios.grocery import GroceryOutcomeDisplay, make_grocery_scenario
+from hani.scenarios.trade import TradeOutcomeDisplay
+from hani.scenarios.island import IslandOutcomeDisplay
+from hani.scenarios.grocery import GroceryOutcomeDisplay
 from hani.tools import Tool
 from hani.tools.history import NegotiationTraceTool
 from hani.tools.preferences import PreferencesTool
@@ -122,7 +123,6 @@ SELECTED_AGENT_TYPES = [
     "genius.NiceTitForTat",
 ]
 
-# TODO: use percentages in th UI
 
 FEW_SELECTED_AGENT_TYPES = [
     "HybridNegotiator",
@@ -429,10 +429,43 @@ CONFIG = AppConfig()
 # TOOLS = ["Offer Utilities", "Outcome View", "Inverse Utility"]
 
 # MAKER_MAP = {"Trade": make_trade_scenario, "Colored Chips": make_colored_chips}
+# INFO_FILE_NAME = "_info.yml"
+INFO_FILE = f"{INFO_FILE_NAME}.yml"
+
+
+def load_type(k: str, index: int):
+    type_base = Path(CONFIG.scenarios_base) / k
+    path = type_base / f"{index + 1:04d}{k}"
+    if path.exists():
+        scenario = Scenario.load(path)
+        if scenario is None:
+            print(f"[red]Cannot load scenario[/red] from {path}. Creating a new one.")
+        scenario.info = load(path / INFO_FILE)
+    else:
+        last_index = 0
+        numbers = [int(_.name[:4]) for _ in type_base.glob("*") if _.is_dir()]
+        if numbers:
+            last_index = max(numbers)
+            print(
+                f"Found {last_index} scenarios in {type_base}. Will start from {last_index + 1}"
+            )
+        if not last_index:
+            print(f"[red]No scenarios found in[/red] {type_base}. Creating a new one.")
+            return MAKER_MAP[k](index)
+        index = index % last_index + 1
+        path = type_base / f"{index:04d}{k}"
+        scenario = Scenario.load(path)
+        if scenario is not None:
+            print(f"No scenarios found in {type_base}. Creating a new one.")
+        scenario.info = load(path / INFO_FILE)
+
+    return scenario
+
+
 MAKER_MAP = {
-    "Trade": make_trade_scenario,
-    "Island": make_island_scenario,
-    "Grocery": make_grocery_scenario,
+    "Trade": lambda index: load_type(k="Trade", index=index),
+    "Island": lambda index: load_type(k="Island", index=index),
+    "Grocery": lambda index: load_type(k="Grocery", index=index),
 }
 
 
@@ -1187,7 +1220,9 @@ def load_scenario(event=None):
     except:
         generators = []
     if not generators:
-        session_state["scenario"] = read_scenario(Path(CONFIG.scenarios_base) / "trade")
+        session_state["scenario"] = read_scenario(
+            Path(CONFIG.scenarios_base) / "Default" / "Trade"
+        )
     else:
         session_state["scenario"] = choice(generators)(session_state["next_scenario"])
         # print(

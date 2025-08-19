@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 SAMPLE_SCENRIOS = Path(__file__).parent / "sample_scenarios"
+DEFAULT_SCENRIOS = Path(__file__).parent / "sample_scenarios" / "Default"
 INFO_FILE_NAME = "_info.yaml"
 
 DB_PATH = Path.home() / "negmas" / "hani" / "db"

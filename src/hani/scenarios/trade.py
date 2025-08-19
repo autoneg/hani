@@ -11,8 +11,11 @@ from negmas import (
     Outcome,
     Scenario,
 )
-from hani.common import SAMPLE_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
+from hani.common import DEFAULT_SCENRIOS, DefaultOutcomeDisplay, INFO_FILE_NAME
 from .common import IntRange, FloatIssueRange, FloatRange, float_in, int_in, range_in
+
+
+def load_trade_scenario(index): ...
 
 
 def make_trade_scenario(
@@ -128,7 +131,7 @@ def make_trade_scenario(
     if not seller_starts:
         ufuns.reverse()
 
-    info = load(SAMPLE_SCENRIOS / "Trade" / INFO_FILE_NAME)
+    info = load(DEFAULT_SCENRIOS / "Trade" / INFO_FILE_NAME)
     info["hints"]["Seller"]["Target Quantity"] = int(seller_target)
     info["hints"]["Buyer"]["Target Quantity"] = int(buyer_target)
     info["hints"]["Seller"]["Quantity Importance"] = round(seller_quantity_weight, 3)
