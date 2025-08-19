@@ -126,7 +126,7 @@ University Ethics Committee at (216) 564 91 76.
 reg_signature = pn.widgets.Checkbox(
     name="I hereby confirm that I have read relevant details of Human Agent Negotiation Competition research study and all my questions (if any) were answered by the researcher. I consent to participate in this study voluntarily. "
 )
-reg_name = pn.widgets.TextInput(name="Name")
+reg_name = pn.widgets.TextInput(name="Full Name (Signature)")
 reg_username = pn.widgets.TextInput(name="Username")
 reg_password = pn.widgets.PasswordInput(name="Password")
 reg_email = pn.widgets.TextInput(name="Email")
@@ -139,14 +139,24 @@ def register(event):
     users = load_users()
     username = reg_username.value.strip()
     name = reg_name.value.strip()
-    signature = reg_name.value
+    signature = reg_signature.value
     email = reg_email.value.strip()
     email_confirm = reg_email_confirm.value.strip()
+    print(signature)
+    if not signature:
+        reg_message.object = "You MUST accept the consent form by checking the checkbox above to register."
+        return
+    if not name:
+        reg_message.object = "You MUST enter your full name."
+        return
     if not username or not reg_password.value:
         reg_message.object = "Username and password required."
         return
     if email != email_confirm:
         reg_message.object = "Emails do not match."
+        return
+    if name in [_.get("name", "") for _ in users.values()]:
+        reg_message.object = "Your full name is already registered."
         return
     if username in users:
         reg_message.object = "Username already exists."
