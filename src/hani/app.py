@@ -822,9 +822,9 @@ def load_button():
     logout.js_on_click(code="""window.location.href = './logout'""")
     logout.on_click(do_logout)
     load_btn = pn.widgets.Button(name="Load", icon="loader-3", button_type="primary")
-    load_btn.on_click(load_scenario)
+    # load_btn.on_click(load_scenario)
     load_btn.js_on_click(code="""window.location.reload();""")
-    pn.bind(load_scenario, load_btn)
+    # pn.bind(load_scenario, load_btn)
     strt_btn = pn.widgets.Button(
         name="Start", icon="player-play", button_type="primary"
     )
@@ -1213,22 +1213,35 @@ def get_subfolders(path: Path):
     return dict(zip([_.name for _ in folders], folders))
 
 
-def load_scenario(event=None):
-    # session_state["scenario"] = read_scenario(Path(CONFIG.scenarios_base) / "trade")
+def generate_scenario() -> Scenario:
     try:
         generators = session_state["scenarios"]["generators"].value
     except:
         generators = []
     if not generators:
-        session_state["scenario"] = read_scenario(
-            Path(CONFIG.scenarios_base) / "Default" / "Trade"
-        )
+        return read_scenario(Path(CONFIG.scenarios_base) / "Default" / "Trade")
+    return choice(generators)(session_state["next_scenario"])
+
+
+SCENARIO_LIST = (Path(__file__).parent / "scenario_order.txt").read_text().splitlines()
+LAST_SCENARIO_FILE = "last_scenario.txt"
+
+
+def get_scenario() -> Scenario:
+    user = session_state["user"]
+    path = session_state["user_path"] / LAST_SCENARIO_FILE
+    path.parent.mkdir(exist_ok=True, parents=True)
+    if not path.exists():
+        index = 0
     else:
-        session_state["scenario"] = choice(generators)(session_state["next_scenario"])
-        # print(
-        #     f"Generated New {session_state['next_scenario']}\nFirst: {session_state['scenario'].ufuns[0].values}\n"
-        #     f"Second: {session_state['scenario'].ufuns[1].values}"
-        # )
+        index = int(path.read_text())
+    type_ = SCENARIO_LIST[index % len(SCENARIO_LIST)]
+    path.write_text(str(index + 1))
+    return MAKER_MAP[type_](session_state["next_scenario"])  # type: ignore
+
+
+def load_scenario(event=None):
+    session_state["scenario"] = get_scenario()
     session_state["outcome_display"] = DISPLAY_MAP.get(
         session_state["scenario"].outcome_space.name, CONFIG.outcome_display
     )
