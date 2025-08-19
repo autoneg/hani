@@ -42,6 +42,16 @@ try:
     from negmas.sao import HybridNegotiator as DefaultNegotiator
 except:
     from negmas.sao import AspirationNegotiator as DefaultNegotiator
+FAST_MICRO_NEGOTIATOR = None
+try:
+    from negmas.sao import FastMiCRONegotiator
+
+    _ = FastMiCRONegotiator
+
+    FAST_MICRO_NEGOTIATOR = "FastMiCRONegotiator"
+except:
+    pass
+
 from negmas.inout import Mechanism, Scenario
 from negmas.sao import all_negotiator_types
 import negmas.genius.gnegotiators as gneg
@@ -112,9 +122,14 @@ SELECTED_AGENT_TYPES = [
     "genius.NiceTitForTat",
 ]
 
+# TODO: use percentages in th UI
+
 FEW_SELECTED_AGENT_TYPES = [
     "HybridNegotiator",
 ]
+# if FAST_MICRO_NEGOTIATOR:
+#     SELECTED_AGENT_TYPES.append(FAST_MICRO_NEGOTIATOR)
+#     FEW_SELECTED_AGENT_TYPES.append(FAST_MICRO_NEGOTIATOR)
 session_state = dict()
 
 pn.extension(design="bootstrap", sizing_mode="stretch_width")
@@ -1054,7 +1069,7 @@ def step_to_human(event=None):
 
         add_to_history()
         next_neg_ids = mechanism.next_negotitor_ids()
-        print(next_neg_ids[0], human_id, next_neg_ids[0] == human_id)
+        # print(next_neg_ids[0], human_id, next_neg_ids[0] == human_id)
         if mechanism.state.done:
             break
     human_index = session_state["human_index"]
@@ -1175,10 +1190,10 @@ def load_scenario(event=None):
         session_state["scenario"] = read_scenario(Path(CONFIG.scenarios_base) / "trade")
     else:
         session_state["scenario"] = choice(generators)(session_state["next_scenario"])
-        print(
-            f"Generated New {session_state['next_scenario']}\nFirst: {session_state['scenario'].ufuns[0].values}\n"
-            f"Second: {session_state['scenario'].ufuns[1].values}"
-        )
+        # print(
+        #     f"Generated New {session_state['next_scenario']}\nFirst: {session_state['scenario'].ufuns[0].values}\n"
+        #     f"Second: {session_state['scenario'].ufuns[1].values}"
+        # )
     session_state["outcome_display"] = DISPLAY_MAP.get(
         session_state["scenario"].outcome_space.name, CONFIG.outcome_display
     )
@@ -1197,7 +1212,6 @@ def load_scenario(event=None):
     if "human_best_offer" in session_state:
         del session_state["human_best_offer"]
     session_state["action_panel_displayed"] = False
-    print("========= New Scenario Loaded")
 
     # session_state["tools"] = []
     # session_state["upper_tabs"] = pn.Tabs()
