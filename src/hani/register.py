@@ -121,10 +121,21 @@ negative consequences. If you have any questions, concerns, or
 suggestions regarding the ethical aspects of the research described in
 this form and/or the details of the research, please contact the Özyeğin
 University Ethics Committee at (216) 564 91 76.
+
+
+You **must** satisfy the following conditions to be considered for the official competition and the monetary prize:                                                                                                    
+
+- You must agree to the consent form you are reading now.
+- You must fill the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations with our system.
+- You must fill the [Post-Competition-Questionnaire](https://forms.gle/HEmb2CpruFD8aUvt8) **after** conducting all negotiations. We will email you the link to this questionnaire after the competition ends.                          
+- There are three different negotiation scenario types in HAN 2025 (Grocery, Island and Simple Trade). You need to log at least two negotiations on each scenario.                                                            
 """,
 )
 reg_signature = pn.widgets.Checkbox(
     name="I hereby confirm that I have read relevant details of Human Agent Negotiation Competition research study and all my questions (if any) were answered by the researcher. I consent to participate in this study voluntarily. "
+)
+reg_pre = pn.widgets.Checkbox(
+    name="I have filled the pre-competition questionnaire at https://forms.gle/c4tNxYof1Gm7ezmC7"
 )
 reg_name = pn.widgets.TextInput(name="Full Name (Signature)")
 reg_username = pn.widgets.TextInput(name="Username")
@@ -145,6 +156,9 @@ def register(event):
     print(signature)
     if not signature:
         reg_message.object = "You MUST accept the consent form by checking the checkbox above to register."
+        return
+    if not reg_pre.value:
+        reg_message.object = "You MUST complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) and check the corresponding checkbox above to be registered."
         return
     if not name:
         reg_message.object = "You MUST enter your full name."
@@ -168,7 +182,7 @@ def register(event):
         "signature": signature,
     }
     save_users(users)
-    reg_message.object = "Registration successful! Please log in."
+    reg_message.object = "Registration successful!\n\nPlease be sure to complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations.\n\n Once the questionnaire is filled, you can start negotiating [here](https://anac.cs.brown.edu/hanapp)."
 
 
 register_btn.on_click(register)
@@ -177,6 +191,7 @@ registration_panel = pn.Column(
     "## Register",
     reg_consent,
     reg_signature,
+    reg_pre,
     reg_name,
     reg_username,
     reg_password,
