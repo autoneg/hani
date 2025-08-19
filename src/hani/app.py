@@ -384,7 +384,7 @@ class AppConfig:
     tools: list[ToolConfig] = field(factory=default_tools)
     outcome_display: OutcomeDisplay = DefaultOutcomeDisplay()
     genius: bool = True
-    negmas: bool = True
+    negmas: bool = False
     hani_helpers: bool = False
     allow_moving_tools: bool = False
 
@@ -1298,15 +1298,14 @@ def main():
     )
 
     def make_agent_types():
-        all_agent_types = []
+        all_agent_types = FEW_SELECTED_AGENT_TYPES
         if session_state["partners"]["genius_negotiators"].value:
             all_agent_types += GENIUS_NEGOTITORS
         if session_state["partners"]["negmas_negotiators"].value:
             all_agent_types += NEGMAS_NEGOTIATORS
         if session_state["partners"]["hani_negotiators"].value:
             all_agent_types += HANI_NEGOTIATORS
-        if not all_agent_types:
-            all_agent_types = FEW_SELECTED_AGENT_TYPES
+        all_agent_types = list(set(all_agent_types))
         print(f"Will use {all_agent_types} as agent types")
         return all_agent_types
 
