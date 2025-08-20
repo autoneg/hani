@@ -440,7 +440,6 @@ def load_type(k: str, index: int):
         scenario = Scenario.load(path)
         if scenario is None:
             print(f"[red]Cannot load scenario[/red] from {path}. Creating a new one.")
-        scenario.info = load(path / INFO_FILE)
     else:
         last_index = 0
         numbers = [int(_.name[:4]) for _ in type_base.glob("*") if _.is_dir()]
@@ -457,7 +456,10 @@ def load_type(k: str, index: int):
         scenario = Scenario.load(path)
         if scenario is not None:
             print(f"No scenarios found in {type_base}. Creating a new one.")
-        scenario.info = load(path / INFO_FILE)
+    print(
+        f"Will load scenario from {path.name}... with index {index} for {session_state['user']}"
+    )
+    scenario.info = load(path / INFO_FILE)
 
     return scenario
 
@@ -1242,6 +1244,8 @@ def get_scenario() -> Scenario:
         index = int(path.read_text())
     type_ = SCENARIO_LIST[index % len(SCENARIO_LIST)]
     path.write_text(str(index + 1))
+    session_state["next_scenario"] = index + 1
+
     return MAKER_MAP[type_](session_state["next_scenario"])  # type: ignore
 
 
@@ -1251,7 +1255,6 @@ def load_scenario(event=None):
         session_state["scenario"].outcome_space.name, CONFIG.outcome_display
     )
 
-    session_state["next_scenario"] = session_state["next_scenario"] + 1
     session_state["human_index"] = CONFIG.human_index
     session_state["human_ufun"] = session_state["scenario"].ufuns[  # type: ignore
         session_state["human_index"]
