@@ -114,11 +114,12 @@ class UserResultsTool(Tool):
         scores = dict()
         for s in scenarios:
             lst = sorted(
-                df[df["scenario"] == s]["human_utility"].values.tolist(), reverse=True
+                df[df["scenario"] == s]["human_utility"].values.tolist(),
+                reverse=True,
             )
             n = len(lst)
             if len(lst) < 2:
-                scores[s] = 0
+                scores[s] = (0.0, n)
                 continue
             scores[s] = lst[:-1]
             if len(lst) > 3:
@@ -135,7 +136,15 @@ class UserResultsTool(Tool):
             else:
                 score /= base
         details = (
-            "<br><table><th><tr><td>Scenario Type</td><td>Score</td><td>N. Negotiations</td></tr></th>"
+            """
+<style>
+table, th, td {
+  border: 1px solid black;
+  border-collapse: collapse;
+}
+</style>
+        """
+            + "<br><table><th><tr><td>Scenario Type</td><td>Score</td><td>Negotiations</td></tr></th>"
             + "".join(
                 [
                     f"<tr><td>{s}</td><td>{100 * v:03.3}</td><td>{n}</td></tr>"
@@ -144,6 +153,7 @@ class UserResultsTool(Tool):
             )
             + "</table>"
         )
+
         try:
             _h = pn.pane.HTML(
                 f"<h3>Score {score:03.3} in {len(df)} negotitions</h3>" + details
@@ -212,16 +222,72 @@ class AllResultsTool(Tool):
         if self.tbl is None:
             return None
         df = self.tbl
-        score = df["human_utility"].sum()
-        if self._normalize_by_time:
-            base = df["time"].sum()
-            if base < 1e-3:
-                score = 0
+        scenarios = df["scenario"].unique()
+        users = df["user"].unique()
+        allscores = []
+        for user in users:
+            scores = dict()
+            for s in scenarios:
+                lst = sorted(
+                    df[(df["scenario"] == s) & (df["user"] == user)][
+                        "human_utility"
+                    ].values.tolist(),
+                    reverse=True,
+                )
+                n = len(lst)
+                if len(lst) < 2:
+                    scores[s] = (0.0, n)
+                    continue
+                scores[s] = lst[:-1]
+                if len(lst) > 3:
+                    scores[s] = scores[s][:3]
+                scores[s] = (sum(scores[s]) / len(scores[s]) if scores[s] else 0, n)
+            if scores:
+                score = 100 * sum(_[0] for _ in scores.values()) / len(scores)
             else:
-                score /= base
-        return pn.pane.HTML(
-            f"<h5>Score {100 * score:03.3} in {len(df)} negotitions</h5>"
+                score = 100 * df["human_utility"].sum()
+            if self._normalize_by_time:
+                base = df["time"].sum()
+                if base < 1e-3:
+                    score = 0
+                else:
+                    score /= base
+            allscores.append(dict(User=user, Score=score))
+        details = """
+<style>
+table, th, td {
+  border: 1px solid black;
+  border-collapse: collapse;
+}
+</style>
+        """
+        if len(users) > 1:
+            allscores = pd.DataFrame.from_records(allscores)
+            details += "<br><h4>LeaderBoard</h4>"
+            details += "<table><th><tr><td>User</td><td>Score</td><td>Negotiations</td></tr></th>"
+            for row in allscores.sort_values("Score", ascending=False).itertuples():
+                details += f"<tr><td>{row.User}</td><td>{row.Score:03.3}</td><td>{len(df[df['user'] == row.User])}</td></tr>"
+            details += "</table>"
+        details += (
+            "<h4>Scores Per Scenario</h4><table><th><tr><td>Scenario Type</td><td>Score</td><td>Negotiations</td></tr></th>"
+            + "".join(
+                [
+                    f"<tr><td>{s}</td><td>{100 * v:03.3}</td><td>{n}</td></tr>"
+                    for s, (v, n) in scores.items()
+                ]
+            )
+            + "</table>"
         )
+
+        try:
+            _h = pn.pane.HTML(
+                f"<h3>Score {score:03.3} in {len(df)} negotitions</h3>" + details
+            )
+        except Exception:
+            _h = pn.pane.HTML(
+                f"<h3>Score {score:03} in {len(df)} negotitions</h3>" + details
+            )
+        return _h
 
     def panel(self):
         return pn.Column(
