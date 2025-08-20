@@ -1,0 +1,45 @@
+name: agent
+reserved_value: 0.15106645513179265
+type: LinearAdditiveUtilityFunction
+values:
+- mapping:
+    agent: 1
+    human: 0
+  type: TableFun
+- mapping:
+    agent: 1
+    human: 0
+  type: TableFun
+- mapping:
+    agent: 1
+    human: 0
+  type: TableFun
+- mapping:
+    agent: 1
+    human: 0
+  type: TableFun
+- mapping:
+    agent: 1
+    human: 0
+  type: TableFun
+- mapping:
+    agent: 1
+    human: 0
+  type: TableFun
+- mapping:
+    agent: 1
+    human: 0
+  type: TableFun
+- mapping:
+    agent: 1
+    human: 0
+  type: TableFun
+weights:
+- 0.11864406779661017
+- 0.0423728813559322
+- 0.11864406779661017
+- 0.15254237288135594
+- 0.15254237288135594
+- 0.17796610169491528
+- 0.1440677966101695
+- 0.09322033898305085

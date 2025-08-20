@@ -1,0 +1,21 @@
+name: agent
+reserved_value: 0.10386397777519105
+type: LinearAdditiveUtilityFunction
+values:
+- bias: 1.0
+  slope: -0.25
+  type: AffineFun
+- bias: 1.0
+  slope: -0.25
+  type: AffineFun
+- bias: 1.0
+  slope: -0.25
+  type: AffineFun
+- bias: 1.0
+  slope: -0.25
+  type: AffineFun
+weights:
+- 0.27586206896551724
+- 0.25862068965517243
+- 0.396551724137931
+- 0.06896551724137931

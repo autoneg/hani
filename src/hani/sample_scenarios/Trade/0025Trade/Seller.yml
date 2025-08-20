@@ -1,0 +1,27 @@
+name: Seller
+reserved_value: 0.05234627825082266
+type: LinearAdditiveUtilityFunction
+values:
+- mapping:
+    1: 0.0
+    2: 0.0
+    3: 0.46
+    4: 1.0
+    5: 0.95
+    6: 0.85
+    7: 0.73
+    8: 0.61
+    9: 0.59
+    10: 0.57
+  type: TableFun
+- mapping:
+    100.0: 0.0
+    120.0: 0.04
+    140.0: 0.1
+    160.0: 0.17
+    180.0: 0.28
+    200.0: 1.0
+  type: TableFun
+weights:
+- 0.4074964500830189
+- 0.5925035499169811

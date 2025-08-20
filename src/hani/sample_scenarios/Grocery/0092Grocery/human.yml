@@ -1,0 +1,17 @@
+name: human
+reserved_value: 0.19355268735632386
+type: LinearAdditiveUtilityFunction
+values:
+- slope: 0.25
+  type: LinearFun
+- slope: 0.25
+  type: LinearFun
+- slope: 0.25
+  type: LinearFun
+- slope: 0.25
+  type: LinearFun
+weights:
+- 0.3035714285714286
+- 0.25
+- 0.32142857142857145
+- 0.125

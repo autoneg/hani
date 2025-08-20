@@ -1,0 +1,24 @@
+Name: Grocery
+hints:
+  agent:
+    Least Important Item: "banana \U0001F34C"
+    Most Important Item: "apple \U0001F34E"
+  human:
+    Least Important Item: "orange \U0001F7E0"
+    Most Important Item: "watermelon \U0001F349"
+issue_description:
+  "Apple \U0001F349": How many apples you get
+  "Banana \U0001F34C": How many bananas you get
+  "Orange \U0001F7E0": How many oranges you get
+  "Watermelon \U0001F34E": How many watermelons you get
+long_description: '**The Domain** There are four issues corresponding to the number
+  of items of each fruit that **you** get.
+
+
+  **Utility Function** Each fruit has some value for each of the two negotiators.
+  The more items you get, the higher the utility you get.
+
+  '
+short_description: In this scenario, you and an agent bought 4 items of 4 types of
+  fruits and you are negotiating about how to distribute them between yourselves.
+title: Groceries Distribution

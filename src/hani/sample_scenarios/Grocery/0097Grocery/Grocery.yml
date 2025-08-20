@@ -1,0 +1,23 @@
+issues:
+- name: "apple \U0001F34E"
+  type: ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: "banana \U0001F34C"
+  type: ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: "orange \U0001F7E0"
+  type: ContiguousIssue
+  values:
+  - 0
+  - 4
+- name: "watermelon \U0001F349"
+  type: ContiguousIssue
+  values:
+  - 0
+  - 4
+name: Grocery
+type: DiscreteCartesianOutcomeSpace

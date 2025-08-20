@@ -1,0 +1,31 @@
+name: Buyer
+reserved_value: 0.06996203686266599
+type: LinearAdditiveUtilityFunction
+values:
+- mapping:
+    1: 0.0
+    2: 0.0
+    3: 0.33
+    4: 0.49
+    5: 1.0
+    6: 0.41
+    7: 0.14
+    8: 0.0
+    9: 0.0
+    10: 0.0
+    11: 0.0
+    12: 0.0
+    13: 0.0
+    14: 0.0
+  type: TableFun
+- mapping:
+    100.0: 1.0
+    120.0: 0.8
+    140.0: 0.6
+    160.0: 0.4
+    180.0: 0.2
+    200.0: 0.0
+  type: TableFun
+weights:
+- 0.4561157306699879
+- 0.5438842693300121
