@@ -97,7 +97,7 @@ SESSION_PREFIX = "session:"
 ICON_WIDTH = 20
 HISTORY_SEPARATION = 10
 GUEST = "guest"
-NORMALIZE_BY_TIME = True
+NORMALIZE_BY_TIME = False
 TRACE_COLUMNS = [
     "time",
     "relative_time",
@@ -330,13 +330,13 @@ def default_tools():
             ),
             bottom=True,
         ),
-        ToolConfig(
-            "Session Results",
-            TOOL_MAP["Session Results"],
-            Timing.End,
-            params=dict(normalize_by_time=NORMALIZE_BY_TIME),
-            bottom=False,
-        ),
+        # ToolConfig(
+        #     "Session Results",
+        #     TOOL_MAP["Session Results"],
+        #     Timing.End,
+        #     params=dict(normalize_by_time=NORMALIZE_BY_TIME),
+        #     bottom=False,
+        # ),
         ToolConfig(
             "User Results",
             TOOL_MAP["User Results"],
@@ -632,9 +632,14 @@ def save_result(m: SAOMechanism):
         if state.has_error:
             return "erred"
 
+    scenario_name = session_state["scenario"].outcome_space.name
+    if "/" in scenario_name:
+        scenario_name = scenario_name.split("/")[-1]
+    if "." in scenario_name:
+        scenario_name = scenario_name.split(".")[0]
     result = serialize(
         dict(
-            scenario=session_state["scenario"].outcome_space.name,
+            scenario=scenario_name,
             human_index=human_index,
             human_id=session_state["human_id"],
             user=session_state["user"],

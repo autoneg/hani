@@ -110,20 +110,47 @@ class UserResultsTool(Tool):
         if self.tbl is None:
             return None
         df = self.tbl
-        score = df["human_utility"].sum()
+        scenarios = df["scenario"].unique()
+        scores = dict()
+        for s in scenarios:
+            lst = sorted(
+                df[df["scenario"] == s]["human_utility"].values.tolist(), reverse=True
+            )
+            n = len(lst)
+            if len(lst) < 2:
+                scores[s] = 0
+                continue
+            scores[s] = lst[:-1]
+            if len(lst) > 3:
+                scores[s] = scores[s][:3]
+            scores[s] = (sum(scores[s]) / len(scores[s]) if scores[s] else 0, n)
+        if scores:
+            score = 100 * sum(_[0] for _ in scores.values()) / len(scores)
+        else:
+            score = 100 * df["human_utility"].sum()
         if self._normalize_by_time:
             base = df["time"].sum()
             if base < 1e-3:
                 score = 0
             else:
                 score /= base
+        details = (
+            "<br><table><th><tr><td>Scenario Type</td><td>Score</td><td>N. Negotiations</td></tr></th>"
+            + "".join(
+                [
+                    f"<tr><td>{s}</td><td>{100 * v:03.3}</td><td>{n}</td></tr>"
+                    for s, (v, n) in scores.items()
+                ]
+            )
+            + "</table>"
+        )
         try:
             _h = pn.pane.HTML(
-                f"<h5>Score {100 * score:03.3} in {len(df)} negotitions</h5>"
+                f"<h3>Score {score:03.3} in {len(df)} negotitions</h3>" + details
             )
         except Exception:
             _h = pn.pane.HTML(
-                f"<h5>Score {100 * score:03} in {len(df)} negotitions</h5>"
+                f"<h3>Score {score:03} in {len(df)} negotitions</h3>" + details
             )
         return _h
 
