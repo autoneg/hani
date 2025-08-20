@@ -109,7 +109,7 @@ virtual agents.
 
 3.  The users can register any user-name they like.
 
-4.  All data will be anonymized before being made publicly available.
+4.  All data will be anonymized before being made publicly available. Negotiation logs and results will e saved without any identification of the competitors. The anonymized data will be published to help the research community to develop better negotiation agents and interfaces. Usernames will also be anonymized so feel free to use any username.
 
 5.  Demographical data such as age, gender and education level could be
     saved for further analysis without any identification of the
