@@ -105,19 +105,19 @@ class PreferencesTool(Tool):
             )
 
             # issue_view = make_issue_view(issue_index)
-            fig.update_layout(**LAYOUT_OPTIONS, height=150)  # type: ignore
+            fig.update_layout(**LAYOUT_OPTIONS, height=140)  # type: ignore
         return pn.pane.Plotly(fig, **self._config)
 
     @param.depends("ufun")
     def reserved(self):
-        return pn.pane.Markdown(
-            f"##### Reserved value: {self.ufun.reserved_value:0.1%}"
-        )
+        return pn.pane.Markdown(f"### Reserved value: {self.ufun.reserved_value:0.1%}")
 
     def panel(self):
         ufun = self.ufun
         issue_index = pn.widgets.Select.from_param(self.param.issue_index, name="")
         return pn.Row(
-            pn.Column(pn.pane.Markdown("**Preferences**"), self.weights, self.reserved),
+            pn.Column(
+                pn.pane.Markdown("**Issue Weights**"), self.weights, self.reserved
+            ),
             pn.Column(issue_index, self._issue_view),
         )
