@@ -32,6 +32,9 @@ def main(
     overwrite: Annotated[
         bool, typer.Option("--overwrite", "-o", help="Overwrite existing scenarios")
     ] = False,
+    dry: Annotated[
+        bool, typer.Option("--overwrite", "-o", help="Overwrite existing scenarios")
+    ] = False,
 ):
     last_index = 0
     type_base = base / scenario_type
@@ -57,6 +60,9 @@ def main(
         path = type_base / fname
         if path.exists() and not overwrite:
             print(f"Scenario {path} already exists. Skipping...")
+            continue
+        if dry:
+            print("Will create {path}")
             continue
         path.mkdir(exist_ok=True, parents=True)
         scenario.to_yaml(path)
