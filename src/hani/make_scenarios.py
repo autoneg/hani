@@ -33,8 +33,9 @@ def main(
         bool, typer.Option("--overwrite", "-o", help="Overwrite existing scenarios")
     ] = False,
     dry: Annotated[
-        bool, typer.Option("--overwrite", "-o", help="Overwrite existing scenarios")
+        bool, typer.Option(help="Dry run. Nothing is created or overwritten")
     ] = False,
+    verbose: bool = False,
 ):
     last_index = 0
     type_base = base / scenario_type
@@ -46,6 +47,7 @@ def main(
                 f"Found {last_index} scenarios in {type_base}. Will start from {last_index + 1}"
             )
     print(f"Will start creating scenarios in {type_base}... with {last_index + 1}")
+    n_created, n_overwritten = 0, 0
     # for i in track(range(last_index + 1, last_index + n + 1), "Creating scenarios"):
     for i in range(last_index + 1, last_index + n + 1):
         maker = MAKER_MAP.get(scenario_type)
@@ -61,14 +63,22 @@ def main(
         if path.exists() and not overwrite:
             print(f"Scenario {path} already exists. Skipping...")
             continue
+        if path.exists():
+            n_overwritten += 1
+        if not path.exists():
+            n_created += 1
         if dry:
-            print("Will create {path}")
+            if verbose:
+                print(f"Will create {path}")
             continue
         path.mkdir(exist_ok=True, parents=True)
         scenario.to_yaml(path)
         for f in files:
             shutil.copyfile(SRC / scenario_type / f, path / f)
         # dump(info, path / "_info.yml", f)
+    print(
+        f"{'Created' if not dry else 'Would have'} {n_created} scenarios and {'overwritten' if not dry else 'would have overwritten'} {n_overwritten} scenarios in {type_base}"
+    )
 
 
 if __name__ == "__main__":
