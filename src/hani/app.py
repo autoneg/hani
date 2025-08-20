@@ -645,7 +645,7 @@ def save_result(m: SAOMechanism):
             user=session_state["user"],
             agreement=m.agreement,
             human_utility=human_utility,
-            agent_utility=human_utility,
+            agent_utility=agent_utility,
             welfare=human_utility + agent_utility,
             ended_at=str(datetime.now()),
             status=get_status(m.state),
