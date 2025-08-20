@@ -126,7 +126,7 @@ University Ethics Committee at (216) 564 91 76.
 You **must** satisfy the following conditions to be considered for the official competition and the monetary prize:                                                                                                    
 
 - You must be at least 18 years old.
-- You must agree to the consent form you are reading now.
+- You must agree to the consent form you are reading now by writing your full name in the "Name" field and the current date in the "Date of Consent" field. The concatenation of these two fields will be considered your dated signature.
 - You must fill the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations with our system.
 - You must fill the [Post-Competition-Questionnaire](https://forms.gle/HEmb2CpruFD8aUvt8) **after** conducting all negotiations. We will email you the link to this questionnaire after the competition ends.                          
 - There are three different negotiation scenario types in HAN 2025 (Grocery, Island and Simple Trade). You need to log at least two negotiations on each scenario.                                                            
