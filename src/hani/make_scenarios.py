@@ -29,15 +29,20 @@ def main(
     ],
     n: Annotated[int, typer.Option("-n", help="Number of scenarios to create")] = 20,
     base: Annotated[Path, typer.Option(help="Base directory for scenarios")] = BASE,
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", "-o", help="Overwrite existing scenarios")
+    ] = False,
 ):
     last_index = 0
     type_base = base / scenario_type
-    numbers = [int(_.name[:5]) for _ in type_base.glob("*") if _.is_dir()]
-    if numbers:
-        last_index = max(numbers)
-        print(
-            f"Found {last_index} scenarios in {type_base}. Will start from {last_index + 1}"
-        )
+    if type_base.exists():
+        numbers = [int(_.name[:4]) for _ in type_base.iterdir() if _.is_dir()]
+        if numbers:
+            last_index = max(numbers)
+            print(
+                f"Found {last_index} scenarios in {type_base}. Will start from {last_index + 1}"
+            )
+    print(f"Will start creating scenarios in {type_base}... with {last_index + 1}")
     # for i in track(range(last_index + 1, last_index + n + 1), "Creating scenarios"):
     for i in range(last_index + 1, last_index + n + 1):
         maker = MAKER_MAP.get(scenario_type)
@@ -48,8 +53,11 @@ def main(
             raise typer.Exit(code=1)
         scenario: Scenario = maker(i)
         info = scenario.info
-        fname = f"{i + last_index:04d}{scenario_type}"
+        fname = f"{i:04d}{scenario_type}"
         path = type_base / fname
+        if path.exists() and not overwrite:
+            print(f"Scenario {path} already exists. Skipping...")
+            continue
         path.mkdir(exist_ok=True, parents=True)
         scenario.to_yaml(path)
         for f in files:
