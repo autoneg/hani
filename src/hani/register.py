@@ -125,19 +125,25 @@ University Ethics Committee at (216) 564 91 76.
 
 You **must** satisfy the following conditions to be considered for the official competition and the monetary prize:                                                                                                    
 
+- You must be at least 18 years old.
 - You must agree to the consent form you are reading now.
 - You must fill the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations with our system.
 - You must fill the [Post-Competition-Questionnaire](https://forms.gle/HEmb2CpruFD8aUvt8) **after** conducting all negotiations. We will email you the link to this questionnaire after the competition ends.                          
 - There are three different negotiation scenario types in HAN 2025 (Grocery, Island and Simple Trade). You need to log at least two negotiations on each scenario.                                                            
+
+You can check the methodology, data management conditions and information declaration [here](https://anac.cs.brown.edu/files/han/privacy_and_conditions.pdf).
+
+Please visit us at the ANAC competition booth if you have any further questions or for support in filling this form (Booth 7) from 9am to 12pm and 2pm to 5pm on August 20th, and 201st 2025 or from 9am to 12pm on August 22nd, 2025.
 """,
 )
 reg_signature = pn.widgets.Checkbox(
-    name="I hereby confirm that I have read relevant details of Human Agent Negotiation Competition research study and all my questions (if any) were answered by the researcher. I consent to participate in this study voluntarily. "
+    name="I hereby confirm that I have read relevant details of Human Agent Negotiation Competition and all my questions (if any) were answered by the researcher. I consent to participate in this study voluntarily. "
 )
 reg_pre = pn.widgets.Checkbox(
-    name="I have filled the pre-competition questionnaire at https://forms.gle/c4tNxYof1Gm7ezmC7"
+    name="I filled the pre-competition questionnaire at https://forms.gle/c4tNxYof1Gm7ezmC7"
 )
 reg_name = pn.widgets.TextInput(name="Full Name (Signature)")
+reg_date = pn.widgets.TextInput(name="Date of consent (yyyy-mm-dd)")
 reg_username = pn.widgets.TextInput(name="Username")
 reg_password = pn.widgets.PasswordInput(name="Password")
 reg_email = pn.widgets.TextInput(name="Email")
@@ -150,10 +156,10 @@ def register(event):
     users = load_users()
     username = reg_username.value.strip()
     name = reg_name.value.strip()
+    sig_date = reg_date.value.strip()
     signature = reg_signature.value
     email = reg_email.value.strip()
     email_confirm = reg_email_confirm.value.strip()
-    print(signature)
     if not signature:
         reg_message.object = "You MUST accept the consent form by checking the checkbox above to register."
         return
@@ -162,6 +168,9 @@ def register(event):
         return
     if not name:
         reg_message.object = "You MUST enter your full name."
+        return
+    if not sig_date:
+        reg_message.object = "You MUST enter the date of consent."
         return
     if not username or not reg_password.value:
         reg_message.object = "Username and password required."
@@ -180,6 +189,7 @@ def register(event):
         "email": email,
         "name": name,
         "signature": signature,
+        "date_of_signature": sig_date,
     }
     save_users(users)
     reg_message.object = "Registration successful!\n\nPlease be sure to complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations.\n\n Once the questionnaire is filled, you can start negotiating [here](https://anac.cs.brown.edu/hanapp)."
@@ -193,6 +203,7 @@ registration_panel = pn.Column(
     reg_signature,
     reg_pre,
     reg_name,
+    reg_date,
     reg_username,
     reg_password,
     reg_email,
@@ -209,12 +220,18 @@ login_message = pn.pane.Markdown("")
 logout_btn = pn.widgets.Button(name="Logout", button_type="danger", visible=False)
 
 # Profile
-profile_name = pn.widgets.TextInput(name="Name", disabled=True)
+profile_name = pn.widgets.TextInput(name="Name (Signature)", disabled=True)
+profile_date = pn.widgets.TextInput(name="Date of Consent", disabled=True)
 profile_email = pn.widgets.TextInput(name="Email")
 profile_save_btn = pn.widgets.Button(name="Save Profile", button_type="primary")
 profile_message = pn.pane.Markdown("")
 profile_panel = pn.Column(
-    "## Profile", profile_name, profile_email, profile_save_btn, profile_message
+    "## Profile",
+    profile_name,
+    profile_date,
+    profile_email,
+    profile_save_btn,
+    profile_message,
 )
 profile_panel.visible = False
 
@@ -234,6 +251,7 @@ def login(event):
         profile_panel.visible = True
         profile_email.value = users[username].get("email", "")
         profile_name.value = users[username].get("name", "")
+        profile_date.value = users[username].get("date_of_signature", "")
         profile_message.object = ""
     else:
         login_message.object = "Invalid username or password."
