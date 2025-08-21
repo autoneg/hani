@@ -451,7 +451,7 @@ def load_type(k: str, index: int):
         if not last_index:
             print(f"[red]No scenarios found in[/red] {type_base}. Creating a new one.")
             return MAKER_MAP[k](index)
-        index = index % last_index + 1
+        index = max(last_index, index % last_index + 1)
         path = type_base / f"{index:04d}{k}"
         scenario = Scenario.load(path)
         if scenario is not None:
