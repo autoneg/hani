@@ -829,7 +829,7 @@ def load_button():
     logout.js_on_click(code="""window.location.href = './logout'""")
     logout.on_click(do_logout)
     load_btn = pn.widgets.Button(name="Load", icon="loader-3", button_type="primary")
-    # load_btn.on_click(load_scenario)
+    load_btn.on_click(show_announcements)
     load_btn.js_on_click(code="""window.location.reload();""")
     # pn.bind(load_scenario, load_btn)
     strt_btn = pn.widgets.Button(
@@ -1278,6 +1278,34 @@ def load_scenario(event=None):
     send_event_to_tools("scenario_loaded")
 
 
+def read_announcements():
+    announcements_path = Path(__file__).parent / "announcements.md"
+    if announcements_path:
+        txt = announcements_path.read_text()
+        session_state["announcements"] = txt
+    else:
+        session_state["announcements"] = ""
+
+
+def show_announcements():
+    txt = session_state["announcements"]
+    if txt:
+        session_state["history"].insert(0, pn.pane.Markdown(txt))
+        session_state["showing_announcements"] = True
+
+
+def hide_announcements():
+    if session_state["showing_announcements"]:
+        session_state["history"].drop(0)
+        session_state["showing_announcements"] = False
+
+
+def remove_announcemnents():
+    txt = session_state["announcements"]
+    if txt:
+        session_state["history"].insert(0, pn.pane.Markdown(txt))
+
+
 def main():
     pn.extension(sizing_mode="stretch_width")
 
@@ -1351,6 +1379,9 @@ def main():
     util = pn.pane.Markdown("")
     hist = pn.Column(sizing_mode="stretch_both", margin=0)
     session_state["history"] = hist
+    session_state["showing_announcements"] = False
+    read_announcements()
+    show_announcements()
     session_state["received_utility"] = util
     session_state["toggles"] = dict()
     session_state["timing"] = dict()
