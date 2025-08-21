@@ -172,6 +172,11 @@ def register(event):
     if not sig_date:
         reg_message.object = "You MUST enter the date of consent."
         return
+    if username.lower().strip() == "ai":
+        reg_message.object = (
+            "Cannot use AI as your username. Please choose a different username."
+        )
+        return
     if not username or not reg_password.value:
         reg_message.object = "Username and password required."
         return
@@ -192,7 +197,7 @@ def register(event):
         "date_of_signature": sig_date,
     }
     save_users(users)
-    reg_message.object = "Registration successful!\n\nPlease be sure to complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations.\n\n Once the questionnaire is filled, you can start negotiating [here](https://anac.cs.brown.edu/hanapp)."
+    reg_message.object = "Registration successful!🎉🎉\n\nPlease be sure to complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations.\n\n Once the questionnaire is filled, you can **start negotiating** [here](https://anac.cs.brown.edu/hanapp)."
 
 
 register_btn.on_click(register)
