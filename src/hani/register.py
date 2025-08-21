@@ -123,13 +123,13 @@ this form and/or the details of the research, please contact the Özyeğin
 University Ethics Committee at (216) 564 91 76.
 
 
-You **must** satisfy the following conditions to be considered for the official competition and the monetary prize:                                                                                                    
+You **must** satisfy the following conditions to be considered for the official competition and the monetary prize:
 
 - You must be at least 18 years old.
 - You must agree to the consent form you are reading now by writing your full name in the "Name" field and the current date in the "Date of Consent" field. The concatenation of these two fields will be considered your dated signature.
 - You must fill the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations with our system.
-- You must fill the [Post-Competition-Questionnaire](https://forms.gle/HEmb2CpruFD8aUvt8) **after** conducting all negotiations. We will email you the link to this questionnaire after the competition ends.                          
-- There are three different negotiation scenario types in HAN 2025 (Grocery, Island and Simple Trade). You need to log at least two negotiations on each scenario.                                                            
+- You must fill the [Post-Competition-Questionnaire](https://forms.gle/HEmb2CpruFD8aUvt8) **after** conducting all negotiations. We will email you the link to this questionnaire after the competition ends.
+- There are three different negotiation scenario types in HAN 2025 (Grocery, Island and Simple Trade). You need to log at least two negotiations on each scenario.
 
 You can check the methodology, data management conditions and information declaration [here](https://anac.cs.brown.edu/files/han/privacy_and_conditions.pdf).
 
@@ -192,7 +192,7 @@ def register(event):
         "date_of_signature": sig_date,
     }
     save_users(users)
-    reg_message.object = "Registration successful!\n\nPlease be sure to complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations.\n\n Once the questionnaire is filled, you can start negotiating [here](https://anac.cs.brown.edu/hanapp)."
+    reg_message.object = "Registration successful!\n\nPlease be sure to complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations.\n\n [You can start negotiating here](https://anac.cs.brown.edu/hanapp)."
 
 
 register_btn.on_click(register)
