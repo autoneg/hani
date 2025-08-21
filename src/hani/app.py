@@ -3,7 +3,7 @@ from rich import print
 from enum import Enum
 from negmas.helpers.inout import dump, load
 from negmas.inout import INFO_FILE_NAME
-from random import choice, randint
+from random import choice
 from negmas.helpers.inout import add_records
 import numpy as np
 from types import NoneType
@@ -451,9 +451,11 @@ def load_type(k: str, index: int):
         if not last_index:
             print(f"[red]No scenarios found in[/red] {type_base}. Creating a new one.")
             return MAKER_MAP[k](index)
+        # if index > last_index:
+        #     index = randint(1, last_index)
+        index = min(last_index, index % last_index + 1)
         if index > last_index:
             index = randint(1, last_index)
-        # index = max(last_index, index % last_index + 1)
         path = type_base / f"{index:04d}{k}"
         scenario = Scenario.load(path)
         if scenario is not None:
