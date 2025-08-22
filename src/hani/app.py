@@ -1291,7 +1291,7 @@ def read_announcements():
         session_state["announcements"] = ""
 
 
-def show_announcements():
+def show_announcements(event=None):
     txt = session_state["announcements"]
     if txt:
         session_state["history"].insert(0, pn.pane.Markdown(txt))
@@ -1385,7 +1385,7 @@ def main():
     session_state["history"] = hist
     session_state["showing_announcements"] = False
     read_announcements()
-    show_announcements()
+    show_announcements(None)
     session_state["received_utility"] = util
     session_state["toggles"] = dict()
     session_state["timing"] = dict()
