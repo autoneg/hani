@@ -11,7 +11,6 @@ from types import NoneType
 from attrs import define, field, asdict
 import traceback
 import time
-import threading
 import panel as pn
 from pathlib import Path
 
@@ -532,22 +531,30 @@ class CountdownTimer(pn.pane.HTML):
     def __init__(self, duration, update_interval=1, **params):
         super().__init__(**params)
         self.duration = duration
-        self.running = False
         self.update_interval = update_interval
-        self.thread = None
+        self._callback_handle = None
         self._start = None
+        self._end_time = None
 
     def start(self):
-        if self.running or not self.duration or np.isinf(self.duration):
+        if not self.duration or np.isinf(self.duration):
             self._start = time.perf_counter()
             return
-        self.running = True
+
         self._start = time.perf_counter()
-        self.thread = threading.Thread(target=self._run)
-        self.thread.start()
+        self._end_time = time.time() + self.duration
+
+        # Use Panel's periodic callback instead of threading for thread safety
+        self._callback_handle = pn.state.add_periodic_callback(
+            self._update,
+            period=int(self.update_interval * 1000),  # Convert to milliseconds
+        )
 
     def stop(self):
-        self.running = False
+        if self._callback_handle is not None:
+            pn.state.remove_periodic_callback(self._callback_handle)
+            self._callback_handle = None
+
         if self._start is None:
             self.object = f"<strong>Done on {time.time()}</strong>"
         else:
@@ -556,27 +563,32 @@ class CountdownTimer(pn.pane.HTML):
     def set_duration(self, duration):
         self._start = time.perf_counter()
         self.duration = duration
-        self.full_duration = duration
 
-    def _run(self):
-        if np.isinf(self.duration):
+    def _update(self):
+        """Periodic callback to update timer display."""
+        if self._end_time is None:
             return
-        end_time = time.time() + self.duration
-        while self.running and time.time() < end_time:
-            remaining = int(end_time - time.time())
-            color = "black" if remaining > 10 else "red"
-            self.object = f'<h5 style="color:{color}">{humanize_time(remaining).strip()}  remaining{self.relative()}</h5>'  # type: ignore
-            time.sleep(self.update_interval)
 
-        if self.running:  # if the timer finished naturally, rather than being stopped.
-            self.object = '<div style="color:red"><strong>Time\'s up!</strong>></div>'
-            self.running = False
+        current_time = time.time()
+        if current_time >= self._end_time:
+            # Timer expired
+            self.object = '<div style="color:red"><strong>Time\'s up!</strong></div>'
+
+            if self._callback_handle is not None:
+                pn.state.remove_periodic_callback(self._callback_handle)
+                self._callback_handle = None
+
             session_state["human_action"] = SAOResponse(
                 ResponseType.REJECT_OFFER,
                 session_state.get("human_last_offer", None),
                 None,
             )
             advance()
+        else:
+            # Update display
+            remaining = int(self._end_time - current_time)
+            color = "black" if remaining > 10 else "red"
+            self.object = f'<h5 style="color:{color}">{humanize_time(remaining).strip()}  remaining{self.relative()}</h5>'
 
     def relative(self) -> str:
         mech = session_state.get("mechanism", None)
