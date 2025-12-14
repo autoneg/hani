@@ -152,17 +152,22 @@ class UtilityPlot2DTool(Tool):
         return pn.pane.Plotly(fig, **self._config)
 
     def panel(self):
-        self.first_issue = first_issue = pn.widgets.Select.from_param(
+        # Set initial param values before creating widgets
+        if not self.first_issue:
+            self.first_issue = self.xcols[0]
+        if not self.second_issue and len(self.ycols) > 0:
+            self.second_issue = self.ycols[1] if len(self.ycols) > 1 else self.ycols[0]
+
+        first_issue = pn.widgets.Select.from_param(
             self.param.first_issue,
             name="X-axis" if len(self.ycols) > 1 else "",
-            value=self.xcols[0],
         )
         if len(self.ycols) > 1:
-            self.second_issue = second_issue = pn.widgets.Select.from_param(
-                self.param.second_issue, name="Y-axis", value=self.ycols[1]
+            second_issue = pn.widgets.Select.from_param(
+                self.param.second_issue, name="Y-axis"
             )
         else:
-            self.second_issue = second_issue = self.ycols[0]
+            second_issue = pn.pane.Str(self.ycols[0] if self.ycols else "")
         update_btn = pn.widgets.ButtonIcon(
             icon="refresh", on_click=lambda event: self.plot()
         )

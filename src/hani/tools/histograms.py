@@ -133,10 +133,13 @@ class OutcomeHistogramPlot(Tool):
         return pn.pane.Plotly(fig, **self._config)
 
     def panel(self):
-        self.selected_issue = selected_issue = pn.widgets.Select.from_param(
+        # Set initial param value before creating widget
+        if not self.selected_issue:
+            self.selected_issue = self.xcols[0]
+
+        selected_issue = pn.widgets.Select.from_param(
             self.param.selected_issue,
             name="X-axis" if len(self.xcols) > 1 else "",
-            value=self.xcols[0],
         )
         widgets = pn.Row(
             selected_issue,

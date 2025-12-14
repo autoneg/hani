@@ -151,13 +151,18 @@ class OutcomePlotTool(Tool):
         return pn.pane.Plotly(fig, **self._config)
 
     def panel(self):
-        self.first_issue = first_issue = pn.widgets.Select.from_param(
+        # Set initial param values before creating widgets
+        if not self.first_issue:
+            self.first_issue = self.xcols[0]
+        if not self.second_issue:
+            self.second_issue = self.xcols[1]
+
+        first_issue = pn.widgets.Select.from_param(
             self.param.first_issue,
             name="X-axis" if len(self.xcols) > 1 else "",
-            value=self.xcols[0],
         )
-        self.second_issue = second_issue = pn.widgets.Select.from_param(
-            self.param.second_issue, name="Y-axis", value=self.xcols[1]
+        second_issue = pn.widgets.Select.from_param(
+            self.param.second_issue, name="Y-axis"
         )
         widgets = pn.Row(
             first_issue,
