@@ -813,7 +813,7 @@ def end_session():
     # session_state["history"].clear()
 
 
-def display_state(state: SAOState, is_latest: bool = False) -> pn.Column:
+def display_state(state: SAOState) -> pn.Column:
     try:
         nmi = session_state["mechanism"].nmi
         steps = f" of {nmi.n_steps}" if nmi.n_steps else ""
@@ -862,14 +862,11 @@ def display_state(state: SAOState, is_latest: bool = False) -> pn.Column:
         else:
             s = "done"
         return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "12pt"})  # type: ignore
-    # Make older offers lighter by reducing opacity
-    opacity = "1.0" if is_latest else "0.5"
     border = {
         "border-radius": "10px",
         "border": "1px solid black",
         "background-color": background_color,
         "color": color,
-        "opacity": opacity,
     }
     outcome_display = pn.Column(styles=border | {"font-size": f"{font_size}px"})
     if state.current_data:
@@ -1238,14 +1235,9 @@ def add_to_history(state: SAOState | None = None):
     hist = session_state["history"]
 
     if session_state["display"]["reverse_offers"].value:
-        # Latest offer at top - mark first item (index 0) as latest
-        # First, update all existing items to not be latest
-        for i in range(len(hist.objects)):
-            # We'll need to rebuild them, but for now just insert the new one
-            pass
-        hist.insert(0, display_state(state, is_latest=True))
+        hist.insert(0, display_state(state))
     else:
-        hist.append(display_state(state, is_latest=True))
+        hist.append(display_state(state))
 
 
 def step_to_human(event=None):

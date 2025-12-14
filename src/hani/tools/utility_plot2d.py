@@ -22,6 +22,7 @@ LAYOUT_OPTIONS = dict(
     margin=dict(l=0, r=0, t=0, b=0),
     height=200,
     font=dict(family="Segoe UI, sans-serif", color="#282D3C"),
+    autosize=False,  # Disable auto-resizing to prevent _guiEditing error
 )
 
 TRACE_COLUMNS = (
