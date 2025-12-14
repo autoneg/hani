@@ -861,7 +861,7 @@ def display_state(state: SAOState) -> pn.Column:
             s = "done"
         return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "12pt"})  # type: ignore
     # No background or border - keep it clean
-    outcome_display = pn.Column(margin=0, spacing=2)
+    outcome_display = pn.Column(margin=0)
     if state.current_data:
         data = {k: v for k, v in state.current_data.items()}
         if "text" in data:
@@ -892,11 +892,9 @@ def display_state(state: SAOState) -> pn.Column:
     )
 
     # Simple row with offer and utility inline - minimal spacing
-    row = pn.Row(outcome_display, utility_text, margin=0, spacing=4)
+    row = pn.Row(outcome_display, utility_text, margin=0)
 
-    return pn.Column(
-        row, pn.layout.Spacer(height=HISTORY_SEPARATION), margin=0, spacing=0
-    )
+    return pn.Column(row, pn.layout.Spacer(height=HISTORY_SEPARATION), margin=0)
 
 
 def load_form(selectable_scenario_type):
