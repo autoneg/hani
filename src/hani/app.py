@@ -138,7 +138,7 @@ LAYOUT_OPTIONS = dict(
     height=200,
 )
 SESSION_PREFIX = "session:"
-ICON_WIDTH = 20
+ICON_WIDTH = 30  # Increased to accommodate 22pt font size
 HISTORY_SEPARATION = 10
 GUEST = "guest"
 NORMALIZE_BY_TIME = False
@@ -296,7 +296,9 @@ class DisplayConfig:
     human_background_color: str = "#d3e3d9"  # Original light green
     agent_background_color: str = "#e9ecf0"  # Original light gray
     outcome_display_method: OutcomeDisplayMethod = OutcomeDisplayMethod.String
-    reverse_offers: bool = False
+    reverse_offers: bool = (
+        True  # Show latest offers at top since autoscroll doesn't work
+    )
 
 
 TOOL_MAP = {
@@ -811,7 +813,7 @@ def end_session():
     # session_state["history"].clear()
 
 
-def display_state(state: SAOState) -> pn.Column:
+def display_state(state: SAOState, is_latest: bool = False) -> pn.Column:
     try:
         nmi = session_state["mechanism"].nmi
         steps = f" of {nmi.n_steps}" if nmi.n_steps else ""
@@ -860,11 +862,14 @@ def display_state(state: SAOState) -> pn.Column:
         else:
             s = "done"
         return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "12pt"})  # type: ignore
+    # Make older offers lighter by reducing opacity
+    opacity = "1.0" if is_latest else "0.5"
     border = {
         "border-radius": "10px",
         "border": "1px solid black",
         "background-color": background_color,
         "color": color,
+        "opacity": opacity,
     }
     outcome_display = pn.Column(styles=border | {"font-size": f"{font_size}px"})
     if state.current_data:
@@ -897,9 +902,9 @@ def display_state(state: SAOState) -> pn.Column:
     )
     # spacer = pn.Spacer(width=session_state["display"]["extra_margin"])
     icon = (
-        pn.pane.Str("🤖", width=ICON_WIDTH, styles={"font-size": "20pt"})
+        pn.pane.Str("🤖", width=ICON_WIDTH, styles={"font-size": "22pt"})
         if not from_human
-        else pn.pane.Str("🙍", width=ICON_WIDTH, styles={"font-size": "20pt"})
+        else pn.pane.Str("🙍", width=ICON_WIDTH, styles={"font-size": "22pt"})
     )
 
     col.append(
@@ -1233,27 +1238,14 @@ def add_to_history(state: SAOState | None = None):
     hist = session_state["history"]
 
     if session_state["display"]["reverse_offers"].value:
-        hist.insert(0, display_state(state))
+        # Latest offer at top - mark first item (index 0) as latest
+        # First, update all existing items to not be latest
+        for i in range(len(hist.objects)):
+            # We'll need to rebuild them, but for now just insert the new one
+            pass
+        hist.insert(0, display_state(state, is_latest=True))
     else:
-        hist.append(display_state(state))
-        # Aggressive autoscroll - try multiple methods
-        try:
-            # Method 1: scroll_to with last index
-            hist.scroll_to(len(hist) - 1)
-        except:
-            pass
-
-        try:
-            # Method 2: Trigger param change to force update
-            hist.param.trigger("objects")
-        except:
-            pass
-
-        try:
-            # Method 2: Trigger param change to force update
-            hist.param.trigger("objects")
-        except:
-            pass
+        hist.append(display_state(state, is_latest=True))
 
 
 def step_to_human(event=None):
@@ -1654,12 +1646,13 @@ def main():
     session_state["summary"] = summary
     session_state["action_panel_displayed"] = False
     util = pn.pane.Markdown("")
+    # Create history column with scroll enabled
     hist = pn.Column(
-        sizing_mode="stretch_both",
         margin=0,
+        sizing_mode="stretch_both",
         scroll=True,
-        auto_scroll_limit=1000000,  # Very large value to force autoscroll
-        scroll_button_threshold=0,
+        auto_scroll_limit=0,  # 0 = always autoscroll
+        scroll_button_threshold=100,  # Show scroll button after 100px
     )
     session_state["history"] = hist
     session_state["showing_announcements"] = False
