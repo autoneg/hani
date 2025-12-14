@@ -153,7 +153,9 @@ def login(event):
     users = load_users()
     username = login_username.value.strip()
     password = login_password.value
-    if username in users and users[username]["password"] == hash_password(password):
+    # users_info.json stores plain text passwords for profile updates
+    # Compare plain text to plain text
+    if username in users and users[username]["password"] == password:
         current_user["username"] = username
         login_message.object = f"Welcome, {username}!"
         login_panel.visible = False
