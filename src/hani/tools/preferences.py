@@ -18,9 +18,10 @@ __all__ = ["PreferencesTool", "LAYOUT_OPTIONS"]
 LAYOUT_OPTIONS = dict(
     showlegend=False,
     modebar_remove=True,
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="white",
+    plot_bgcolor="white",
     margin=dict(l=0, r=0, t=0, b=0),
+    font=dict(family="Segoe UI, sans-serif", color="#282D3C"),
 )
 
 

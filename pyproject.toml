@@ -21,6 +21,7 @@ dependencies = [
     "negmas>=0.10.23",
     "panel>=1.6.1",
     "plotly>=6.0.0",
+    "rich>=13.0.0",
     "sqlalchemy>=2.0.39",
 ]
 
@@ -35,6 +36,8 @@ hani = "hani.run:main"
 hani-guest = "haniguest.run:main"
 hani-reg = "runregister.run:main"
 hani-app = "runapp.run:main"
+hani-analysis = "hani.runanalytics:main"
+hani-experiment = "hani.runexperiment:main"
 
 [tool.uv.sources]
 negmas = { path = "../negmas" , editable = true }

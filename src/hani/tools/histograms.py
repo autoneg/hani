@@ -21,10 +21,11 @@ __all__ = ["OutcomeHistogramPlot", "LAYOUT_OPTIONS"]
 
 LAYOUT_OPTIONS = dict(
     showlegend=True,
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="white",
+    plot_bgcolor="white",
     margin=dict(l=0, r=0, t=0, b=0),
     height=200,
+    font=dict(family="Segoe UI, sans-serif", color="#282D3C"),
 )
 
 TRACE_COLUMNS = (
@@ -132,10 +133,13 @@ class OutcomeHistogramPlot(Tool):
         return pn.pane.Plotly(fig, **self._config)
 
     def panel(self):
-        self.selected_issue = selected_issue = pn.widgets.Select.from_param(
+        # Set initial param value before creating widget
+        if not self.selected_issue:
+            self.selected_issue = self.xcols[0]
+
+        selected_issue = pn.widgets.Select.from_param(
             self.param.selected_issue,
             name="X-axis" if len(self.xcols) > 1 else "",
-            value=self.xcols[0],
         )
         widgets = pn.Row(
             selected_issue,

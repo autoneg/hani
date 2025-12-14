@@ -1,0 +1,29 @@
+{
+  "include": [
+    "src/hani"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.venv",
+    "**/node_modules",
+    "temp",
+    ".venv"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "defineConstant": {
+    "DEBUG": true
+  },
+  "stubPath": "typings",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportMissingModuleSource": "warning",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownParameterType": "none",
+  "reportAttributeAccessIssue": "warning",
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Darwin",
+  "typeCheckingMode": "basic"
+}

@@ -24,14 +24,59 @@ class Tool(pn.viewable.Viewable):
 
     def scenario_loaded(self, session_state: dict[str, Any], scenario: Scenario):
         """Called after a scenario is loaded"""
+        # Log tool opened event for scenario load
+        try:
+            from hani.event_tracking import get_current_session_id
+            from hani.events import EventType, log_event
+
+            session_id = get_current_session_id()
+            if session_id:
+                log_event(
+                    session_id=session_id,
+                    event_type=EventType.TOOL_INTERACTION,
+                    component=self.__class__.__name__,
+                    action="scenario_loaded",
+                )
+        except Exception as e:
+            print(f"Warning: Could not log tool scenario_loaded event: {e}")
         self.redraw()
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         """Called on the beginning of the negotiation."""
+        # Log tool opened event for negotiation start
+        try:
+            from hani.event_tracking import get_current_session_id
+            from hani.events import EventType, log_event
+
+            session_id = get_current_session_id()
+            if session_id:
+                log_event(
+                    session_id=session_id,
+                    event_type=EventType.TOOL_OPENED,
+                    component=self.__class__.__name__,
+                    action="negotiation_started",
+                )
+        except Exception as e:
+            print(f"Warning: Could not log tool negotiation_started event: {e}")
         self.redraw()
 
     def negotiation_ended(self, session_state: dict[str, Any], nmi: SAONMI):
         """Called on the beginning of the negotiation."""
+        # Log tool closed event for negotiation end
+        try:
+            from hani.event_tracking import get_current_session_id
+            from hani.events import EventType, log_event
+
+            session_id = get_current_session_id()
+            if session_id:
+                log_event(
+                    session_id=session_id,
+                    event_type=EventType.TOOL_CLOSED,
+                    component=self.__class__.__name__,
+                    action="negotiation_ended",
+                )
+        except Exception as e:
+            print(f"Warning: Could not log tool negotiation_ended event: {e}")
 
     def action_requested(self, session_state: dict[str, Any], nmi: SAONMI):
         """Called whenever the user is asked to act before they act."""
@@ -116,12 +161,22 @@ class OutcomeSelector(Tool):
         self.scenario = scenario
         self._widgets = widgets
         self._issues = self.scenario.outcome_space.issues
-        self.btn = pn.widgets.Button(
-            name="Set Offer",
-            on_click=self.set_outcome,
-            icon="chevron-left",
-            button_type="success",
-        )
+        # Use tracked button
+        try:
+            from hani.event_tracking import create_tracked_button
+
+            self.btn = create_tracked_button(
+                name="Set Offer",
+                icon="chevron-left",
+                button_type="success",
+            )
+        except:
+            self.btn = pn.widgets.Button(
+                name="Set Offer",
+                icon="chevron-left",
+                button_type="success",
+            )
+        self.btn.on_click(self.set_outcome)
         self._disabled = False
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
