@@ -860,26 +860,20 @@ def display_state(state: SAOState) -> pn.Column:
         else:
             s = "done"
         return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "12pt"})  # type: ignore
-    # No border, just background color
-    styles = {
-        "background-color": background_color,
-        "color": color,
-        "font-size": f"{font_size}px",
-        "padding": "5px",
-    }
-    outcome_display = pn.Column(styles=styles)
+    # No background or border - keep it clean
+    outcome_display = pn.Column(margin=0, spacing=2)
     if state.current_data:
         data = {k: v for k, v in state.current_data.items()}
         if "text" in data:
             txt = data.pop("text")
             txt = txt.strip()
             if txt:
-                spacer = pn.Spacer(width=session_state["display"]["extra_margin"])
                 outcome_display.append(pn.pane.Markdown(txt))
         if data:
             outcome_display.append(pn.pane.Str("**Data:**"))
             outcome_display.append(pn.pane.DataFrame(pd.DataFrame([data])))
 
+    # Add the offer content
     outcome_display.append(
         display_outcome(
             state.current_offer,
@@ -888,23 +882,21 @@ def display_state(state: SAOState) -> pn.Column:
             is_done=state.done,
         )
     )
+
+    # Add utility value inline with smaller font
     uval = session_state["human_ufun"](state.current_offer)
     irrational = uval < session_state["human_ufun"].reserved_value
     ucolor = "red" if irrational else "blue"
-    spacer = pn.pane.HTML(
-        f'<div style="color:{ucolor};">{uval:0.1%}</div>',
-        width=session_state["display"]["extra_margin"],
-        styles={"font-size": "9pt"},  # Smaller font size
+    utility_text = pn.pane.HTML(
+        f'<span style="color:{ucolor}; font-size:9pt; margin-left:8px;">({uval:0.1%})</span>',
     )
-    # No icons - ChatFeed already provides user/avatar indicators
-    col.append(
-        pn.Row(outcome_display, spacer)
-        if not from_human
-        else pn.Row(spacer, outcome_display)
-    )
-    row = pn.Row(col)
 
-    return pn.Column(row, pn.layout.Spacer(height=HISTORY_SEPARATION))
+    # Simple row with offer and utility inline - minimal spacing
+    row = pn.Row(outcome_display, utility_text, margin=0, spacing=4)
+
+    return pn.Column(
+        row, pn.layout.Spacer(height=HISTORY_SEPARATION), margin=0, spacing=0
+    )
 
 
 def load_form(selectable_scenario_type):
@@ -1658,6 +1650,37 @@ def main():
         scroll_button_threshold=0,
         auto_scroll_limit=0,  # Always auto-scroll
         view_latest=True,  # Always show latest messages
+        # Remove default message styling for cleaner look
+        message_params={
+            "show_avatar": False,
+            "show_user": True,
+            "show_timestamp": False,
+        },
+        styles={
+            "background": "transparent",
+        },
+        stylesheets=[
+            """
+            /* Remove message bubble backgrounds and reduce padding */
+            .message {
+                background: transparent !important;
+                border: none !important;
+                padding: 2px 4px !important;
+                margin: 2px 0 !important;
+            }
+            .message-row {
+                background: transparent !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            /* Make user labels smaller and less prominent */
+            .name {
+                font-size: 10pt !important;
+                font-weight: normal !important;
+                margin-bottom: 2px !important;
+            }
+            """
+        ],
     )
     session_state["history"] = hist
     session_state["showing_announcements"] = False
