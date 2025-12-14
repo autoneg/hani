@@ -212,4 +212,4 @@ main = pn.Column(
     profile_panel,
 )
 
-main.servable()
+main.servable(title="HAN Registration & Profile Management")
