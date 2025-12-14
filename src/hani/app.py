@@ -186,6 +186,13 @@ pn.extension(
 )
 pn.config.throttled = True
 
+# Override gray background with white
+pn.config.raw_css.append("""
+    body, .bk-root, #main, .main, .container-fluid {
+        background-color: #ffffff !important;
+    }
+""")
+
 if not genius_bridge_is_running():
     SELECTED_AGENT_TYPES = [
         _ for _ in SELECTED_AGENT_TYPES if not _.startswith("genius.")
@@ -1641,6 +1648,7 @@ def main():
     # Create history column with scroll enabled
     hist = pn.Column(
         margin=0,
+        styles={"gap": "5px"},  # Reduce vertical spacing between offers
         sizing_mode="stretch_both",
         scroll=True,
         auto_scroll_limit=0,  # 0 = always autoscroll

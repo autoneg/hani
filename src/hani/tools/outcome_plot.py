@@ -18,8 +18,8 @@ __all__ = ["OutcomePlotTool", "LAYOUT_OPTIONS"]
 
 LAYOUT_OPTIONS = dict(
     showlegend=True,
-    paper_bgcolor="white",
-    plot_bgcolor="white",
+    paper_bgcolor="rgba(0,0,0,0)",  # Transparent background
+    plot_bgcolor="rgba(0,0,0,0)",  # Transparent plot area
     margin=dict(l=0, r=0, t=0, b=0),
     height=200,
     font=dict(family="Segoe UI, sans-serif", color="#282D3C"),
