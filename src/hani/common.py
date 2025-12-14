@@ -4,8 +4,17 @@ from negmas import Outcome, Scenario
 from typing import Protocol
 from pathlib import Path
 
-
-SAMPLE_SCENRIOS = Path(__file__).parent / "sample_scenarios"
+HANI_GUEST_PORT = 5008
+REG_PORT = 5007
+HANI_PORT = 5006
+SCENARIO_ORDER_FILE = (
+    Path.home() / "negmas" / "hani" / "settings" / "scenario_order.txt"
+)
+CONSENT_FILE = Path.home() / "negmas" / "hani" / "settings" / "consent.md"
+ENV_FILE = Path.home() / "negmas" / "hani" / "settings" / "env.json"
+USERS_FILE = Path.home() / "negmas" / "hani" / "settings" / "users_info.json"
+LOGIN_FILE = Path.home() / "negmas" / "hani" / "settings" / "users.json"
+SAMPLE_SCENRIOS = Path.home() / "negmas" / "hani" / "settings" / "scenarios"
 DEFAULT_SCENRIOS = Path(__file__).parent / "sample_scenarios" / "Default"
 INFO_FILE_NAME = "_info.yaml"
 

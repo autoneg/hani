@@ -1,5 +1,6 @@
 from datetime import datetime
 from rich import print
+from copy import deepcopy
 from enum import Enum
 from negmas.helpers.inout import dump, load
 from negmas.inout import INFO_FILE_NAME
@@ -57,9 +58,9 @@ from negmas.inout import Mechanism, Scenario
 from negmas.sao import all_negotiator_types
 import negmas.genius.gnegotiators as gneg
 
-from hani.scenarios.trade import TradeOutcomeDisplay
-from hani.scenarios.island import IslandOutcomeDisplay
-from hani.scenarios.grocery import GroceryOutcomeDisplay
+from hani.scenarios.trade import TradeOutcomeDisplay, make_trade_scenario
+from hani.scenarios.island import IslandOutcomeDisplay, make_island_scenario
+from hani.scenarios.grocery import GroceryOutcomeDisplay, make_grocery_scenario
 from hani.tools import Tool
 from hani.tools.history import NegotiationTraceTool
 from hani.tools.preferences import PreferencesTool
@@ -70,7 +71,14 @@ from hani.tools.urange import UtilityInverterTool
 from hani.tools.utility_plot2d import UtilityPlot2DTool
 from hani.tools.outcome_plot import OutcomePlotTool
 from hani.tools.histograms import OutcomeHistogramPlot
-from hani.common import DB_PATH, SAMPLE_SCENRIOS, DefaultOutcomeDisplay, OutcomeDisplay
+from hani.common import (
+    DB_PATH,
+    ENV_FILE,
+    SAMPLE_SCENRIOS,
+    DefaultOutcomeDisplay,
+    OutcomeDisplay,
+    SCENARIO_ORDER_FILE,
+)
 
 
 GENIUS_NEGOTITORS = [f"genius.{x}" for x in gneg.__all__]
@@ -435,40 +443,76 @@ INFO_FILE = f"{INFO_FILE_NAME}.yml"
 
 def load_type(k: str, index: int):
     type_base = Path(CONFIG.scenarios_base) / k
-    path = type_base / f"{index + 1:04d}{k}"
-    if path.exists():
-        scenario = Scenario.load(path)
-        if scenario is None:
-            print(f"[red]Cannot load scenario[/red] from {path}. Creating a new one.")
-    else:
-        last_index = 0
+    _indx = index
+    last_index = 0
+    allow_load = session_state["scenarios"]["load"].value
+
+    if type_base.exists() and allow_load:
         numbers = [int(_.name[:4]) for _ in type_base.glob("*") if _.is_dir()]
         if numbers:
             last_index = max(numbers)
-            print(
-                f"Found {last_index} scenarios in {type_base}. Will start from {last_index + 1}"
-            )
-        if not last_index:
+    # if we do not want to load or cannot load, generate
+    if (
+        not last_index
+        or not allow_load
+        or (
+            session_state["scenarios"]["generate-on-load-done"] and (index > last_index)
+        )
+    ):
+        if not allow_load:
+            print("Loading is not allowed. Creating a new scenario")
+        elif not last_index:
             print(f"[red]No scenarios found in[/red] {type_base}. Creating a new one.")
-            return MAKER_MAP[k](index)
-        # if index > last_index:
-        #     index = randint(1, last_index)
-        index = min(last_index, index % last_index + 1)
-        if index > last_index:
-            index = randint(1, last_index)
-        path = type_base / f"{index:04d}{k}"
-        scenario = Scenario.load(path)
-        if scenario is not None:
-            print(f"No scenarios found in {type_base}. Creating a new one.")
-    print(
-        f"Will load scenario from {path.name}... with index {index} for {session_state['user']}"
-    )
-    scenario.info = load(path / INFO_FILE)
+        else:
+            print(
+                f"Done loading scenarios at index {last_index} will generate a new one with index {index}"
+            )
+        path = None
+        scenario = MAKER_MAP[k](_indx)
+        basic_info = dict(
+            index=_indx,
+            load_index=None,
+            load_path=None,
+            scenario_name=scenario.outcome_space.name,
+            generated=True,
+        )
+        session_state["scenario_info"] = deepcopy(scenario.info)
+        return scenario
 
+    # load the given index
+    index = index % (last_index + 1)
+    path = type_base / f"{index:04d}{k}"
+    scenario = Scenario.load(path)
+    if scenario is None:
+        if session_state["scenarios"]["generate-on-load-failure"]:
+            print(f"[red]Cannot load scenario[/red] from {path}. Creating a new one.")
+            scenario = MAKER_MAP[k](_indx)
+        else:
+            print(f"[red]Cannot load scenario[/red] from {path}. Will fail.")
+            raise ValueError(f"Cannot load scenario from {path}. Will fail.")
+    scenario.info = load(path / INFO_FILE)
+    print(
+        f"Loaded scenario from {path.name}... with index {index} for {session_state['user']}"
+    )
+    if not scenario.info:
+        scenario.info = dict()
+    basic_info = dict(
+        index=_indx,
+        load_index=index,
+        load_path=str(path),
+        scenario_name=path.name,
+        generated=False,
+    )
+    session_state["scenario_info"] = basic_info
     return scenario
 
 
 MAKER_MAP = {
+    "Trade": make_trade_scenario,
+    "Island": make_island_scenario,
+    "Grocery": make_grocery_scenario,
+}
+LOADER_MAP = {
     "Trade": lambda index: load_type(k="Trade", index=index),
     "Island": lambda index: load_type(k="Island", index=index),
     "Grocery": lambda index: load_type(k="Grocery", index=index),
@@ -644,7 +688,8 @@ def save_result(m: SAOMechanism):
     if "." in scenario_name:
         scenario_name = scenario_name.split(".")[0]
     result = serialize(
-        dict(
+        session_state.get("scenario_info", dict())
+        | dict(
             scenario=scenario_name,
             human_index=human_index,
             human_id=session_state["human_id"],
@@ -655,9 +700,15 @@ def save_result(m: SAOMechanism):
             welfare=human_utility + agent_utility,
             ended_at=str(datetime.now()),
             status=get_status(m.state),
+            mechanism_name=m.name,
+            mechanism_id=m.id,
         )
         | asdict(m.state)
-        | {k: v for k, v in asdict(m.nmi).items() if not k.startswith("_")}
+        | {
+            k: v
+            for k, v in asdict(m.nmi).items()
+            if not k.startswith("_") and not k.startswith("outcome_space")
+        }
         | asdict(
             calc_outcome_optimality(
                 calc_outcome_distances(utils, stats), stats, max_dist
@@ -716,7 +767,9 @@ def end_session():
     session_state["human_action"] = None
     session_state["action_panel_displayed"] = False
     session_state["action_panel"].clear()
-    session_state["action_panel"].append(load_button())
+    session_state["action_panel"].append(
+        load_form(session_state["selectable_scenario_type"])
+    )
     # session_state["history"].clear()
 
 
@@ -828,7 +881,15 @@ def display_state(state: SAOState) -> pn.Column:
 def do_logout(event=None): ...
 
 
-def load_button():
+def load_form(selectable_scenario_type):
+    has_user = pn.state.user is not None
+    new_scenario_loaded = session_state["new_scenario_loaded"]
+    # if selectable_scenario_type:
+    #     type_selector = session_state["selected_scenario_type"] = pn.widgets.Select(
+    #         name="Scenario Type", options=MAKER_MAP, value=list(MAKER_MAP.keys())[0]
+    #     )
+    # else:
+    #     type_selector = None
     logout = pn.widgets.Button(name="Log out", icon="logout", button_type="danger")
     logout.js_on_click(code="""window.location.href = './logout'""")
     logout.on_click(do_logout)
@@ -839,13 +900,15 @@ def load_button():
     strt_btn = pn.widgets.Button(
         name="Start", icon="player-play", button_type="primary"
     )
-    strt_btn.disabled = True
+    load_btn.disabled = new_scenario_loaded
+    strt_btn.disabled = not new_scenario_loaded
     strt_btn.on_click(start_negotiation)
     pn.bind(start_negotiation, strt_btn)
-    session_state["logout_btn"] = logout
     session_state["strt_btn"] = strt_btn
     session_state["load_btn"] = load_btn
     session_state["action_panel_displayed"] = False
+
+    logout.disabled = not has_user
     return pn.Column(logout, load_btn, strt_btn)
     # return pn.Column(logout, strt_btn)
 
@@ -1185,6 +1248,7 @@ def send_event_to_tools(event):
 
 
 def start_negotiation(event=None):
+    session_state["new_scenario_loaded"] = False
     session_state["history"].clear()
     types = session_state["partners"]["partner_types"].value
     if not types:
@@ -1234,7 +1298,7 @@ def generate_scenario() -> Scenario:
     return choice(generators)(session_state["next_scenario"])
 
 
-SCENARIO_LIST = (Path(__file__).parent / "scenario_order.txt").read_text().splitlines()
+SCENARIO_LIST = (SCENARIO_ORDER_FILE).read_text().splitlines()
 LAST_SCENARIO_FILE = "last_scenario.txt"
 
 
@@ -1245,18 +1309,22 @@ def get_scenario() -> Scenario:
     if not path.exists():
         index = 0
     else:
-        index = int(path.read_text())
-    type_ = SCENARIO_LIST[index % len(SCENARIO_LIST)]
-    path.write_text(str(index + 1))
-    session_state["next_scenario"] = index + 1
-
-    return MAKER_MAP[type_](session_state["next_scenario"])  # type: ignore
+        index = int(path.read_text()) + 1
+    if session_state["scenarios"]["predefined_order"].value:
+        type_ = SCENARIO_LIST[index % len(SCENARIO_LIST)]
+    else:
+        type_ = choice(list(LOADER_MAP.keys()))
+    path.write_text(str(index))
+    session_state["next_scenario"] = index
+    return LOADER_MAP[type_](index)  # type: ignore
 
 
 def load_scenario(event=None):
+    session_state["new_scenario_loaded"] = True
     session_state["scenario"] = get_scenario()
-    session_state["outcome_display"] = DISPLAY_MAP.get(
-        session_state["scenario"].outcome_space.name, CONFIG.outcome_display
+    session_state["outcome_display"] = DISPLAY_MAP.get(  # type: ignore
+        session_state["scenario"].outcome_space.name,  # type: ignore
+        CONFIG.outcome_display,
     )
 
     session_state["human_index"] = CONFIG.human_index
@@ -1284,11 +1352,28 @@ def load_scenario(event=None):
 
 def read_announcements():
     announcements_path = Path(__file__).parent / "announcements.md"
+    txt = ""
     if announcements_path:
         txt = announcements_path.read_text()
-        session_state["announcements"] = txt
-    else:
-        session_state["announcements"] = ""
+
+    user = session_state.get("user", pn.state.user)
+    session_state["announcements"] = (
+        (
+            ""
+            if pn.state.user
+            else (
+                "#### Welcome to HAN Playground.\n\n"
+                "##### You can start experimenting with the user-interface and available "
+                "tools by pressing the 'Start' button below."
+                "\n\n\n\n##### You can load new exmaple scenarios using the 'Load' button "
+                "(after you finish a negotiation).\n\n\n##### To start competing, please "
+                f"[login]({session_state['env'].get('app', 'https://localhost:{HANI_PORT}')}) or "
+                f"[register]({session_state['env'].get('registration', 'https://localhost:{REG_PORT}')})."
+            )
+        )
+        + "\n\n\n\n\n"
+        + txt
+    )
 
 
 def show_announcements(event=None):
@@ -1311,7 +1396,11 @@ def remove_announcemnents():
 
 
 def main():
+    session_state["env"] = load(ENV_FILE)
     pn.extension(sizing_mode="stretch_width")
+    selectable_scenario_type = False
+    session_state["selectable_scenario_type"] = selectable_scenario_type
+    session_state["new_scenario_loaded"] = False
 
     # # Define your custom templates
     # login_template_path = Path(__file__).parent / "tempates" / "basic_login.html"
@@ -1377,9 +1466,7 @@ def main():
         margin=0,
     )
     session_state["summary"] = summary
-    offer = load_button()
     session_state["action_panel_displayed"] = False
-    session_state["action_panel"] = offer
     util = pn.pane.Markdown("")
     hist = pn.Column(sizing_mode="stretch_both", margin=0)
     session_state["history"] = hist
@@ -1446,7 +1533,25 @@ def main():
         name="File Sources", options=folders, size=2, value=list(folders.values())[0]
     )
     session_state["scenarios"]["generators"] = pn.widgets.MultiSelect(
-        name="Generators", options=MAKER_MAP, size=3, value=list(MAKER_MAP.values())
+        name="Loaders", options=MAKER_MAP, size=3, value=list(LOADER_MAP.values())
+    )
+    session_state["scenarios"]["predefined_order"] = pn.widgets.Checkbox(
+        name="Predefined Scenario Type Order", value=pn.state.user is not None
+    )
+    session_state["scenarios"]["selectable-scenario"] = pn.widgets.Checkbox(
+        name="Allow Scenario Selection", value=selectable_scenario_type
+    )
+    session_state["scenarios"]["load"] = pn.widgets.Checkbox(
+        name="Load Existing Scenarios", value=pn.state.user is not None
+    )
+    session_state["scenarios"]["generate-on-load-failure"] = pn.widgets.Checkbox(
+        name="Generate if load failed", value=True
+    )
+    session_state["scenarios"]["generate-on-load-done"] = pn.widgets.Checkbox(
+        name="Generate when all are loaded", value=True
+    )
+    session_state["scenarios"]["loaders"] = pn.widgets.MultiSelect(
+        name="Generators", options=LOADER_MAP, size=3, value=list(LOADER_MAP.values())
     )
     session_state["timing"]["n_steps"] = pn.widgets.NumberInput(
         name="Allowed Number of Offers", value=CONFIG.n_steps
@@ -1558,11 +1663,10 @@ def main():
     else:
         template.main[0:2, 0:5] = upper_tabs  # type: ignore
         template.main[2:4, 0:5] = lower_tabs  # type: ignore
-    # template.main[2:4, 0:5] = PreferencesTool(
-    #     ufun=session_state["human_ufun"]
-    #     # issue_index=session_state["human_index"],
-    # )
-    # template.main[2:4, 0:5] = prefs
+
+    load_scenario()
+    offer = load_form(selectable_scenario_type)
+    session_state["action_panel"] = offer
     template.main[4:5, 0:5] = summary  # type: ignore
     template.main[0:3, 5:12] = hist  # type: ignore
     if CONFIG.has_side_tabs:
@@ -1571,8 +1675,8 @@ def main():
     else:
         template.main[3:5, 5:12] = offer  # type: ignore
     # template.main[0:5, 10:12] = tools_pane
+
     session_state["template"] = template
-    load_scenario()
     template.servable(title="Human Agent Negotiation Interface")
 
 

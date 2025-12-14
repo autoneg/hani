@@ -31,6 +31,9 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 hani = "hani.run:main"
+hani-guest = "haniguest.run:main"
+hani-reg = "runregister.run:main"
+hani-app = "runapp.run:main"
 
 [tool.uv.sources]
 negmas = { path = "../negmas" , editable = true }

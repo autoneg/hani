@@ -1,11 +1,8 @@
 import panel as pn
 import json
-from pathlib import Path
+from hani.common import CONSENT_FILE, USERS_FILE, LOGIN_FILE
 
 pn.extension()
-
-USERS_FILE = Path(__file__).parent / "users_info.json"
-LOGIN_FILE = Path(__file__).parent / "users.json"
 
 
 def hash_password(password):
@@ -29,113 +26,7 @@ def save_users(users):
 
 
 # Registration form
-reg_consent = pn.pane.Markdown(
-    """
-**Participation Consent Form**
-
-**Project Name:** Human-Agent Negotiation Competition
-
-**Name and contact information of primary investigator of the project:**
-
-Yasser Mohammad
-
-E-mail: <y.mohammad@nec.com>
-
-Reyhan Aydoğan
-
-E-mail:
-[reyhan.aydogan@ozyegin.edu.tr](mailto:reyhan.aydogan@ozyegin.edu.tr)
-
-**Sources of funding or institutional support received for this study:**
-
-[NEC-AIST Collaborative AI Research Laboratory](https://www.airc.aist.go.jp/en/project/overview.html) sponsors the [Human-Agent
-                                                                                                                    Negotiation League](https://anac.cs.brown.edu/han) as part of the [ANAC 2025 competition](https://anac.cs.brown.edu).
-
-**Project Purpose:** This competition is a pilot study for the
-Human-Agent Negotiation League, which is a part of Automated
-Negotiating Agents Competition (ANAC). The ANAC 2025 is held in
-conjunction with the International Joint Conference of Artificial
-Intelligence (IJCAI 2025), in Montreal, Canada. The goal is to
-investigate how to develop AI agents and interfaces that can improve the
-outcomes of human-agent negotiations. In this competition, we will
-compare the performance of human negotiators when negotiating with AI
-agents. We would like to use the collected data in the design of new
-virtual agents.
-
-**Process:** The procedure is as follows:
-
-(1) Register a user-name, email and password at the ANAC booth to be
-    able to participate in the competition. At the same time, fill the
-    [pre-study questionnaire (Q1)](https://forms.gle/c4tNxYof1Gm7ezmC7). The email address is then used to
-    announce the winners.
-
-(2) Participants can visit the ANAC booth during its opening hours and
-    use the HANI interface to negotiate as many times as they like
-    within 30 minutes in each session. All scores will be saved. The
-    participant can always check their accumulated score. They can
-    conduct as many sessions as they want subject to availability of the
-    machines and requests of other participants for participation. After
-    the first session, the participant fills a [post-session
-    questionnaire (Q2)](https://forms.gle/qT8VtQYrV5RuodML6).
-
-(3) After the completion of all sessions, the organizers will send a
-    [post-study questionnaire (Q3)](https://forms.gle/HEmb2CpruFD8aUvt8) to all participants to fill.
-
-(4) The score of each participant will be calculated as the truncated
-    mean of their scores (i.e. using only top 10 scores for each
-    participant). Because we use the top-10 scores only, we do not
-    conduct separate familiarization sessions as the participant can
-    familiarize herself/himself with the interface for as long as they
-    want provided that they conduct 10 negotiations after that that will
-    be used in their scoring.
-
-(5) The winners (i.e. participants with highest scores) will be
-    announced during IJCAI and will be published in the ANAC webpage at
-    <https://anac.brown.edu.eg/han>
-
-(6) All the negotiation data and the HANI interface source code will be
-    made publicly available after IJCAI. Questionnaires will NOT be made
-    publicly available.
-
-**Privacy:** We take the privacy of participants seriously:
-
-1.  The emails collected will only be used to send the post-study
-    questionnaire and announced the winners. It will be deleted from the
-    system one month later. No emails will ever be published.
-
-2.  We will not collect identifying information from the participants
-    other than the name (signed with in this form) and will not publish
-    any such information.
-
-3.  The users can register any user-name they like.
-
-4.  All data will be anonymized before being made publicly available. Negotiation logs and results will e saved without any identification of the competitors. The anonymized data will be published to help the research community to develop better negotiation agents and interfaces. Usernames will also be anonymized so feel free to use any username.
-
-5.  Demographical data such as age, gender and education level could be
-    saved for further analysis without any identification of the
-    participants.
-
-**Voluntary participation:** Participation in this study is voluntary.
-Participants can seize participation at any point of the study with no
-negative consequences. If you have any questions, concerns, or
-suggestions regarding the ethical aspects of the research described in
-this form and/or the details of the research, please contact the Özyeğin
-University Ethics Committee at (216) 564 91 76.
-
-
-You **must** satisfy the following conditions to be considered for the official competition and the monetary prize:
-
-- You must be at least 18 years old.
-- You must agree to the consent form you are reading now by writing your full name in the "Name" field and the current date in the "Date of Consent" field. The concatenation of these two fields will be considered your dated signature.
-- You must fill the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations with our system.
-- You must fill the [Post-Competition-Questionnaire](https://forms.gle/HEmb2CpruFD8aUvt8) **after** conducting all negotiations. We will email you the link to this questionnaire after the competition ends.
-- There are three different negotiation scenario types in HAN 2025 (Grocery, Island and Simple Trade). You need to log at least two negotiations on each scenario.
-
-You can check the methodology, data management conditions and information declaration [here](https://anac.cs.brown.edu/files/han/privacy_and_conditions.pdf).
-
-Please visit us at the ANAC competition booth if you have any further questions or for support in filling this form (Booth 7) from 9am to 12pm and 2pm to 5pm on August 20th, and 201st 2025 or from 9am to 12pm on August 22nd, 2025.
-""",
-)
+reg_consent = pn.pane.Markdown(CONSENT_FILE.read_text())
 reg_signature = pn.widgets.Checkbox(
     name="I hereby confirm that I have read relevant details of Human Agent Negotiation Competition and all my questions (if any) were answered by the researcher. I consent to participate in this study voluntarily. "
 )
@@ -148,7 +39,7 @@ reg_username = pn.widgets.TextInput(name="Username")
 reg_password = pn.widgets.PasswordInput(name="Password")
 reg_email = pn.widgets.TextInput(name="Email")
 reg_email_confirm = pn.widgets.TextInput(name="Confirm Email")
-register_btn = pn.widgets.Button(name="Register", button_type="primary")
+register_btn = pn.widgets.Button(name=" Register", button_type="primary")
 reg_message = pn.pane.Markdown("")
 
 
@@ -203,7 +94,7 @@ def register(event):
 register_btn.on_click(register)
 
 registration_panel = pn.Column(
-    "## Register",
+    "## Register for HAN",
     reg_consent,
     reg_signature,
     reg_pre,
@@ -220,7 +111,7 @@ registration_panel = pn.Column(
 # Login form
 login_username = pn.widgets.TextInput(name="Username")
 login_password = pn.widgets.PasswordInput(name="Password")
-login_btn = pn.widgets.Button(name="Login", button_type="primary")
+login_btn = pn.widgets.Button(name="✏️ Edit Profile", button_type="primary")
 login_message = pn.pane.Markdown("")
 logout_btn = pn.widgets.Button(name="Logout", button_type="danger", visible=False)
 
@@ -289,11 +180,15 @@ logout_btn.on_click(logout)
 profile_save_btn.on_click(save_profile)
 
 login_panel = pn.Column(
-    "## Login", login_username, login_password, login_btn, login_message
+    "## Profile Update",
+    "After registration, you can update your profile here.",
+    login_username,
+    login_password,
+    login_btn,
+    login_message,
 )
 
 main = pn.Column(
-    "# User Registration and Login App",
     registration_panel,
     login_panel,
     logout_btn,

@@ -7,6 +7,7 @@ from pathlib import Path
 from hani.scenarios.trade import make_trade_scenario
 from hani.scenarios.island import make_island_scenario
 from hani.scenarios.grocery import make_grocery_scenario
+from hani.common import SAMPLE_SCENRIOS
 
 app = typer.Typer()
 
@@ -15,7 +16,7 @@ MAKER_MAP = {
     "Island": make_island_scenario,
     "Grocery": make_grocery_scenario,
 }
-BASE = Path(__file__).parent / "sample_scenarios"
+BASE = SAMPLE_SCENRIOS
 SRC = Path(__file__).parent / "sample_scenarios" / "Default"
 files = ["display.py"]
 
@@ -37,7 +38,7 @@ def main(
     ] = False,
     verbose: bool = False,
 ):
-    last_index = 0
+    last_index = -1
     type_base = base / scenario_type
     if type_base.exists():
         numbers = [int(_.name[:4]) for _ in type_base.iterdir() if _.is_dir()]
