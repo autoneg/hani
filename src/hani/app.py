@@ -14,14 +14,29 @@ import time
 import panel as pn
 from pathlib import Path
 
-# Patch Panel authentication to use hashed passwords
-# This must happen BEFORE Panel loads the auth file
-try:
-    from hani.auth import patch_panel_auth
 
-    patch_panel_auth()
-except Exception as e:
-    print(f"Warning: Could not patch Panel authentication: {e}")
+def init_authentication():
+    """
+    Initialize authentication by patching Panel's BasicLoginHandler.
+
+    This MUST be called at module load time (before main()) because:
+    - Panel loads auth configuration when the server subprocess starts
+    - The patch must be in place before Panel reads the auth file
+    - This happens automatically when app.py is imported by 'panel serve'
+    """
+    try:
+        from hani.auth import patch_panel_auth
+
+        patch_panel_auth()
+    except Exception as e:
+        print(f"Warning: Could not patch Panel authentication: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+
+# Initialize authentication at module load time
+init_authentication()
 from negmas import (
     Negotiator,
     SAOMechanism,
