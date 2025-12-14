@@ -912,7 +912,6 @@ def load_form(selectable_scenario_type):
     load_btn.disabled = new_scenario_loaded
     strt_btn.disabled = not new_scenario_loaded
     strt_btn.on_click(start_negotiation)
-    pn.bind(start_negotiation, strt_btn)
     session_state["strt_btn"] = strt_btn
     session_state["load_btn"] = load_btn
     session_state["action_panel_displayed"] = False
@@ -925,7 +924,6 @@ def load_form(selectable_scenario_type):
 def start_button():
     strt_btn = pn.widgets.Button(name="Start", icon="player-play")
     strt_btn.on_click(start_negotiation)
-    pn.bind(start_negotiation, strt_btn)
     session_state["action_panel_displayed"] = False
     if session_state["strt_btn"]:
         session_state["strt_btn"].disabled = True
@@ -1047,9 +1045,6 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
     session_state["reject_btn"] = reject_btn
     session_state["accept_btn"] = accept_btn
     session_state["end_btn"] = end_btn
-    pn.bind(on_reject, reject_btn)
-    pn.bind(on_accept, accept_btn)
-    pn.bind(on_end, end_btn)
     row = pn.Row(reject_btn, accept_btn, end_btn)
 
     def offer_util(*widgets):
