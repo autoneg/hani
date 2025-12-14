@@ -1231,17 +1231,25 @@ def add_to_history(state: SAOState | None = None):
         state = mechanism.state
 
     hist = session_state["history"]
+    display = display_state(state)
+
+    # Determine who made the offer for user/avatar
+    if state.current_proposer is None:
+        user = "System"
+        avatar = "⚙️"
+    elif state.current_proposer == session_state.get("human_id"):
+        user = "You"
+        avatar = "👤"
+    else:
+        user = "Agent"
+        avatar = "🤖"
 
     if session_state["display"]["reverse_offers"].value:
-        hist.insert(0, display_state(state))
+        # For reverse order, we'll need to use objects directly since send() appends
+        hist.objects.insert(0, display)
     else:
-        hist.append(display_state(state))
-        # Aggressive autoscroll - try multiple methods
-        try:
-            # Method 1: scroll_to with last index
-            hist.scroll_to(len(hist) - 1)
-        except:
-            pass
+        # Use ChatFeed's send method which auto-scrolls
+        hist.send(value=display, user=user, avatar=avatar, respond=False)
 
         try:
             # Method 2: Trigger param change to force update
@@ -1654,12 +1662,14 @@ def main():
     session_state["summary"] = summary
     session_state["action_panel_displayed"] = False
     util = pn.pane.Markdown("")
-    hist = pn.Column(
+    # Use ChatFeed for better auto-scrolling behavior
+    hist = pn.chat.ChatFeed(
         sizing_mode="stretch_both",
         margin=0,
-        scroll=True,
-        auto_scroll_limit=1000000,  # Very large value to force autoscroll
+        height=600,  # Set explicit height for scrolling
         scroll_button_threshold=0,
+        auto_scroll_limit=0,  # Always auto-scroll
+        view_latest=True,  # Always show latest messages
     )
     session_state["history"] = hist
     session_state["showing_announcements"] = False
