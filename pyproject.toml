@@ -84,6 +84,9 @@ exclude = ["docs"]
 [dependency-groups]
 dev = [
     "alembic>=1.15.1",
+    "playwright>=1.57.0",
+    "pytest>=9.0.2",
+    "pytest-playwright>=0.7.2",
     "sqlalchemy-schemadisplay>=2.0",
     "twine>=6.1.0",
 ]

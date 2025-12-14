@@ -912,9 +912,6 @@ def display_state(state: SAOState) -> pn.Column:
     return pn.Column(row, pn.layout.Spacer(height=HISTORY_SEPARATION))
 
 
-def do_logout(event=None): ...
-
-
 def load_form(selectable_scenario_type):
     has_user = pn.state.user is not None
     new_scenario_loaded = session_state["new_scenario_loaded"]
@@ -926,7 +923,6 @@ def load_form(selectable_scenario_type):
     #     type_selector = None
     logout = pn.widgets.Button(name="Log out", icon="logout", button_type="danger")
     logout.js_on_click(code="""window.location.href = './logout'""")
-    logout.on_click(do_logout)
     load_btn = pn.widgets.Button(name="Load", icon="loader-3", button_type="primary")
     load_btn.on_click(show_announcements)
     load_btn.js_on_click(code="""window.location.reload();""")
