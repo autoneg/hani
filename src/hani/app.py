@@ -1168,7 +1168,9 @@ def add_to_history(state: SAOState | None = None):
         session_state["history"].insert(0, display_state(state))
     else:
         session_state["history"].append(display_state(state))
-        session_state["history"].scroll_to(len(session_state["history"]))
+        # Scroll to last item (length - 1)
+        if len(session_state["history"]) > 0:
+            session_state["history"].scroll_to(len(session_state["history"]) - 1)
 
 
 def step_to_human(event=None):
@@ -1477,7 +1479,12 @@ def main():
     session_state["summary"] = summary
     session_state["action_panel_displayed"] = False
     util = pn.pane.Markdown("")
-    hist = pn.Column(sizing_mode="stretch_both", margin=0)
+    hist = pn.Column(
+        sizing_mode="stretch_both",
+        margin=0,
+        scroll=True,  # Enable scrolling
+        auto_scroll_limit=0,  # Always auto-scroll to bottom
+    )
     session_state["history"] = hist
     session_state["showing_announcements"] = False
     read_announcements()
