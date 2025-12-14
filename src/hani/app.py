@@ -860,13 +860,14 @@ def display_state(state: SAOState) -> pn.Column:
         else:
             s = "done"
         return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "12pt"})  # type: ignore
-    border = {
-        "border-radius": "10px",
-        "border": "1px solid black",
+    # No border, just background color
+    styles = {
         "background-color": background_color,
         "color": color,
+        "font-size": f"{font_size}px",
+        "padding": "5px",
     }
-    outcome_display = pn.Column(styles=border | {"font-size": f"{font_size}px"})
+    outcome_display = pn.Column(styles=styles)
     if state.current_data:
         data = {k: v for k, v in state.current_data.items()}
         if "text" in data:
@@ -893,25 +894,15 @@ def display_state(state: SAOState) -> pn.Column:
     spacer = pn.pane.HTML(
         f'<div style="color:{ucolor};">{uval:0.1%}</div>',
         width=session_state["display"]["extra_margin"],
-        styles={"font-size": "12pt"},
+        styles={"font-size": "9pt"},  # Smaller font size
     )
-    # spacer = pn.Spacer(width=session_state["display"]["extra_margin"])
-    icon = (
-        pn.pane.Str("🤖", width=ICON_WIDTH, styles={"font-size": "20pt"})
-        if not from_human
-        else pn.pane.Str("🙍", width=ICON_WIDTH, styles={"font-size": "20pt"})
-    )
-
+    # No icons - ChatFeed already provides user/avatar indicators
     col.append(
         pn.Row(outcome_display, spacer)
         if not from_human
         else pn.Row(spacer, outcome_display)
     )
-    row = (
-        (pn.Row(col, icon) if from_human else pn.Row(icon, col))
-        if not state.done
-        else pn.Row(col)
-    )
+    row = pn.Row(col)
 
     return pn.Column(row, pn.layout.Spacer(height=HISTORY_SEPARATION))
 
@@ -1233,23 +1224,20 @@ def add_to_history(state: SAOState | None = None):
     hist = session_state["history"]
     display = display_state(state)
 
-    # Determine who made the offer for user/avatar
+    # Determine who made the offer for user label (no avatars needed)
     if state.current_proposer is None:
         user = "System"
-        avatar = "⚙️"
     elif state.current_proposer == session_state.get("human_id"):
         user = "You"
-        avatar = "👤"
     else:
         user = "Agent"
-        avatar = "🤖"
 
     if session_state["display"]["reverse_offers"].value:
         # For reverse order, we'll need to use objects directly since send() appends
         hist.objects.insert(0, display)
     else:
-        # Use ChatFeed's send method which auto-scrolls
-        hist.send(value=display, user=user, avatar=avatar, respond=False)
+        # Use ChatFeed's send method which auto-scrolls (no avatar to avoid duplication)
+        hist.send(value=display, user=user, respond=False)
 
         try:
             # Method 2: Trigger param change to force update
