@@ -8,6 +8,7 @@ from hani.common import (
     OAUTH_KEY,
     OAUTH_SECRET,
     OAUTH_REDIRECT_URI,
+    OAUTH_ENCRYPTION_KEY,
     COOKIE_SECRET,
 )
 
@@ -60,6 +61,14 @@ def main():
             print("   Or use password authentication (unset HANI_OAUTH_KEY)")
             sys.exit(1)
 
+        if not OAUTH_ENCRYPTION_KEY:
+            print("❌ ERROR: OAuth encryption key not configured!")
+            print("   Set HANI_OAUTH_ENCRYPTION_KEY environment variable")
+            print(
+                '   Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
+            sys.exit(1)
+
         auth_args = [
             "--oauth-provider",
             OAUTH_PROVIDER,
@@ -69,6 +78,8 @@ def main():
             OAUTH_SECRET,
             "--oauth-redirect-uri",
             OAUTH_REDIRECT_URI,
+            "--oauth-encryption-key",
+            OAUTH_ENCRYPTION_KEY,
             "--cookie-secret",
             COOKIE_SECRET,
         ]
@@ -95,10 +106,8 @@ def main():
             create_hashed_users_file(LOGIN_FILE, hashed_file)
             print(f"✓ Created hashed password file: {hashed_file}")
 
-        # Patch Panel's authentication to use hashed passwords
-        patch_panel_auth()
-
         # Use hashed file if it exists, otherwise fall back to plain
+        # Note: Panel authentication patching happens in app.py when the app is loaded
         auth_file = hashed_file if hashed_file.exists() else LOGIN_FILE
 
         auth_args = [

@@ -1,13 +1,14 @@
 import panel as pn
 import json
-from hani.common import CONSENT_FILE, USERS_FILE, LOGIN_FILE
+from hani.common import CONSENT_FILE, USERS_FILE, LOGIN_FILE, APP_URLS, HANI_ENV
+from hani.auth import hash_password as hash_password_secure
 
 pn.extension()
 
 
 def hash_password(password):
-    return password
-    # return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password using the same method as main app authentication"""
+    return hash_password_secure(password)
 
 
 def load_users():
@@ -18,11 +19,21 @@ def load_users():
 
 
 def save_users(users):
+    """Save users to both users_info.json and create hashed password files"""
+    # Save full user info (includes plain text password for profile updates)
     with open(USERS_FILE, "w") as f:
         json.dump(users, f, indent=2)
-    d = {k: hash_password(v["password"]) for k, v in users.items()}
+
+    # Create plain text passwords file (for reference)
+    plain_passwords = {k: v["password"] for k, v in users.items()}
     with open(LOGIN_FILE, "w") as f:
-        json.dump(d, f, indent=2)
+        json.dump(plain_passwords, f, indent=2)
+
+    # Create hashed passwords file (used for authentication)
+    hashed_file = LOGIN_FILE.parent / "users_hashed.json"
+    hashed_passwords = {k: hash_password(v["password"]) for k, v in users.items()}
+    with open(hashed_file, "w") as f:
+        json.dump(hashed_passwords, f, indent=2)
 
 
 # Registration form
@@ -81,14 +92,18 @@ def register(event):
         reg_message.object = "Username already exists."
         return
     users[username] = {
-        "password": hash_password(reg_password.value),
+        "password": reg_password.value,  # Store plain text in users_info.json
         "email": email,
         "name": name,
         "signature": signature,
         "date_of_signature": sig_date,
     }
     save_users(users)
-    reg_message.object = "Registration successful!🎉🎉\n\nPlease be sure to complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations.\n\n [You can start negotiating here](https://anac.cs.brown.edu/hanapp)."
+
+    # Get main app URL from env.json
+    main_app_url = APP_URLS.get("app", "http://localhost:5006")
+
+    reg_message.object = f"Registration successful!🎉🎉\n\nPlease be sure to complete the [Pre-Competition-Questionnaire](https://forms.gle/c4tNxYof1Gm7ezmC7) **before** conducting any negotiations.\n\n[You can start negotiating here]({main_app_url})."
 
 
 register_btn.on_click(register)

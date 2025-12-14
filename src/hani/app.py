@@ -14,6 +14,15 @@ import time
 import threading
 import panel as pn
 from pathlib import Path
+
+# Patch Panel authentication to use hashed passwords
+# This must happen BEFORE Panel loads the auth file
+try:
+    from hani.auth import patch_panel_auth
+
+    patch_panel_auth()
+except Exception as e:
+    print(f"Warning: Could not patch Panel authentication: {e}")
 from negmas import (
     Negotiator,
     SAOMechanism,

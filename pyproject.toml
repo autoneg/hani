@@ -16,6 +16,7 @@ classifiers = [
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "cryptography>=44.0.2",
     "hvplot>=0.11.2",
     "negmas>=0.10.23",
     "panel>=1.6.1",
