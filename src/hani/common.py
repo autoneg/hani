@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import panel as pn
 from negmas import Outcome, Scenario
@@ -19,6 +20,18 @@ DEFAULT_SCENRIOS = Path(__file__).parent / "sample_scenarios" / "Default"
 INFO_FILE_NAME = "_info.yaml"
 
 DB_PATH = Path.home() / "negmas" / "hani" / "db"
+
+# OAuth Configuration (from environment variables)
+OAUTH_PROVIDER = os.getenv(
+    "HANI_OAUTH_PROVIDER", "github"
+)  # github, google, azure, etc.
+OAUTH_KEY = os.getenv("HANI_OAUTH_KEY", "")  # Client ID
+OAUTH_SECRET = os.getenv("HANI_OAUTH_SECRET", "")  # Client Secret
+OAUTH_REDIRECT_URI = os.getenv("HANI_OAUTH_REDIRECT_URI", "http://localhost:5006")
+COOKIE_SECRET = os.getenv("HANI_COOKIE_SECRET", "hani-super-secret-co-4653322hjhj")
+
+# Authentication mode: 'password' or 'oauth' or 'auto' (auto detects based on OAuth credentials)
+AUTH_MODE = os.getenv("HANI_AUTH_MODE", "auto")
 
 
 class OutcomeDisplay(Protocol):

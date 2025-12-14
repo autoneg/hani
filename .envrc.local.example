@@ -1,0 +1,15 @@
+# .envrc.local - Local environment variables (NOT committed to git)
+# Copy this file to .envrc.local and add your secrets
+
+# OAuth Configuration for HANI
+# Get these from: https://github.com/settings/developers
+export HANI_OAUTH_PROVIDER=github
+export HANI_OAUTH_KEY=your_github_client_id_here
+export HANI_OAUTH_SECRET=your_github_client_secret_here
+export HANI_OAUTH_REDIRECT_URI=http://localhost:5006
+
+# Optional: Force specific auth mode
+# export HANI_AUTH_MODE=oauth  # or 'password' or 'auto' (default)
+
+# Optional: Custom cookie secret (generate with: python -c "import secrets; print(secrets.token_urlsafe(32))")
+# export HANI_COOKIE_SECRET=your_random_secret_here

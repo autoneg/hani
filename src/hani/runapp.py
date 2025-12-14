@@ -2,41 +2,123 @@ import sys
 import subprocess
 from pathlib import Path
 
-from hani.common import LOGIN_FILE
+from hani.common import (
+    LOGIN_FILE,
+    OAUTH_PROVIDER,
+    OAUTH_KEY,
+    OAUTH_SECRET,
+    OAUTH_REDIRECT_URI,
+    COOKIE_SECRET,
+)
 
 
 def main():
+    # Determine authentication mode
+    from hani.auth import get_auth_mode, patch_panel_auth, create_hashed_users_file
+
+    auth_mode = get_auth_mode()
+
+    print(f"🔐 Authentication mode: {auth_mode.upper()}")
+
+    # Build base command
+    base_cmd = [
+        "panel",
+        "serve",
+        str(Path(__file__).parent / "app.py"),
+    ]
+
+    # Add templates
+    template_args = [
+        "--logout-template",
+        "src/hani/templates/logout.html",
+        "--basic-login-template",
+        "src/hani/templates/basic_login.html",
+    ]
+
+    # Add dev flag if requested
+    dev_args = (
+        ["--dev"]
+        if len(sys.argv) > 1 and any(_ in sys.argv[1:] for _ in ("dev",))
+        else []
+    )
+
+    # Add extra user args (excluding our special keywords)
+    extra_args = (
+        [_ for _ in sys.argv[1:] if _ not in ("dev", "login", "port")]
+        if len(sys.argv) > 1
+        else []
+    )
+
+    if auth_mode == "oauth":
+        # OAuth mode - use GitHub/Google/etc authentication
+        print(f"  Provider: {OAUTH_PROVIDER}")
+        print(f"  Redirect URI: {OAUTH_REDIRECT_URI}")
+
+        if not OAUTH_KEY or not OAUTH_SECRET:
+            print("❌ ERROR: OAuth credentials not configured!")
+            print("   Set HANI_OAUTH_KEY and HANI_OAUTH_SECRET environment variables")
+            print("   Or use password authentication (unset HANI_OAUTH_KEY)")
+            sys.exit(1)
+
+        auth_args = [
+            "--oauth-provider",
+            OAUTH_PROVIDER,
+            "--oauth-key",
+            OAUTH_KEY,
+            "--oauth-secret",
+            OAUTH_SECRET,
+            "--oauth-redirect-uri",
+            OAUTH_REDIRECT_URI,
+            "--cookie-secret",
+            COOKIE_SECRET,
+        ]
+
+        print("✓ OAuth authentication configured")
+
+    else:
+        # Password mode - use hashed password file
+        print(f"  Using password file: {LOGIN_FILE}")
+
+        # Check if we need to convert plain text passwords to hashed
+        hashed_file = LOGIN_FILE.parent / "users_hashed.json"
+        plain_backup = LOGIN_FILE.parent / "users_plain_backup.json"
+
+        if not hashed_file.exists() and LOGIN_FILE.exists():
+            print("⚠️  Converting plain text passwords to hashed format...")
+            # Create backup of plain text file
+            import shutil
+
+            shutil.copy(LOGIN_FILE, plain_backup)
+            print(f"✓ Backed up plain text passwords to {plain_backup}")
+
+            # Create hashed version
+            create_hashed_users_file(LOGIN_FILE, hashed_file)
+            print(f"✓ Created hashed password file: {hashed_file}")
+
+        # Patch Panel's authentication to use hashed passwords
+        patch_panel_auth()
+
+        # Use hashed file if it exists, otherwise fall back to plain
+        auth_file = hashed_file if hashed_file.exists() else LOGIN_FILE
+
+        auth_args = [
+            "--basic-auth",
+            str(auth_file),
+            "--cookie-secret",
+            COOKIE_SECRET,
+        ]
+
+        print("✓ Password authentication configured")
+
+    # Build final command
+    final_cmd = base_cmd + template_args + dev_args + auth_args + extra_args
+
+    print(f"\n🚀 Starting HANI server...\n")
+
     try:
-        subprocess.run(
-            [
-                "panel",
-                "serve",
-                str(Path(__file__).parent / "app.py"),
-                # "--port",
-                # str(HANI_PORT),
-            ]
-            + ["--logout-template", "src/hani/templates/logout.html"]
-            + ["--basic-login-template", "src/hani/templates/basic_login.html"]
-            + (
-                ["--dev"]
-                if len(sys.argv) > 1 and any(_ in sys.argv[1:] for _ in ("dev",))
-                else []
-            )
-            + [
-                "--basic-auth",
-                str(LOGIN_FILE),
-                "--cookie-secret",
-                "hani-super-secret-co-4653322hjhj",
-            ]
-            + (
-                [_ for _ in sys.argv[1:] if _ not in ("dev", "login", "port")]
-                if len(sys.argv) > 1
-                else []
-            ),
-            check=True,
-        )
+        subprocess.run(final_cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"Error running Panel app: {e}")
+        print(f"❌ Error running Panel app: {e}")
 
 
 if __name__ == "__main__":

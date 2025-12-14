@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables (secrets)
+.envrc.local
+.env
+.env.local
+*.secret
+.env.local

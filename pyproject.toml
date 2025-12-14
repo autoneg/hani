@@ -8,9 +8,9 @@ authors = [
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 readme = "README.md"
@@ -69,7 +69,7 @@ collect_ignore = ['setup.py']
 warn_unused_configs = false
 warn_incomplete_stub = true
 check_untyped_defs = true
-python_version = "3.10"
+python_version = "3.13"
 strict_optional = false
 ignore_missing_imports = false
 
