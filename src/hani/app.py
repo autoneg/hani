@@ -148,13 +148,11 @@ FEW_SELECTED_AGENT_TYPES = [
 #     FEW_SELECTED_AGENT_TYPES.append(FAST_MICRO_NEGOTIATOR)
 session_state = dict()
 
-pn.extension(design="bootstrap", sizing_mode="stretch_width")
-pn.extension("modal")
-pn.extension("plotly")
-pn.extension("tabulator")
+# Load all Panel extensions in one call for better performance
+pn.extension(
+    "modal", "plotly", "tabulator", design="bootstrap", sizing_mode="stretch_width"
+)
 pn.config.throttled = True
-# pn.extension("fontawesome")  # Ensure fontawesome is loaded
-# pn.extension("tabulator")
 
 if not genius_bridge_is_running():
     SELECTED_AGENT_TYPES = [
