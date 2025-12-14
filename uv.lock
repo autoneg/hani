@@ -526,6 +526,7 @@ dependencies = [
     { name = "negmas" },
     { name = "panel" },
     { name = "plotly" },
+    { name = "rich" },
     { name = "sqlalchemy" },
 ]
 
@@ -569,6 +570,7 @@ requires-dist = [
     { name = "negmas", editable = "../negmas" },
     { name = "panel", specifier = ">=1.6.1" },
     { name = "plotly", specifier = ">=6.0.0" },
+    { name = "rich", specifier = ">=13.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.39" },
     { name = "watchfiles", marker = "extra == 'dev'", specifier = ">=1.0.4" },
 ]

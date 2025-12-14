@@ -11,6 +11,7 @@ from types import NoneType
 from attrs import define, field, asdict
 import traceback
 import time
+import threading
 import panel as pn
 from pathlib import Path
 
@@ -37,6 +38,18 @@ def init_authentication():
 
 # Initialize authentication at module load time
 init_authentication()
+
+# Import event tracking modules
+from hani.events import EventType, create_session, end_session
+from hani.event_tracking import (
+    get_current_session_id,
+    set_current_session_id,
+    log_negotiation_event,
+    log_scenario_event,
+    log_page_view,
+    create_tracked_button,
+)
+
 from negmas import (
     Negotiator,
     SAOMechanism,
@@ -165,7 +178,11 @@ session_state = dict()
 
 # Load all Panel extensions in one call for better performance
 pn.extension(
-    "modal", "plotly", "tabulator", design="bootstrap", sizing_mode="stretch_width"
+    "modal",
+    "plotly",
+    "tabulator",
+    design="bootstrap",
+    sizing_mode="stretch_width",
 )
 pn.config.throttled = True
 
@@ -272,12 +289,12 @@ class OutcomeDisplayMethod(Enum):
 class DisplayConfig:
     history_margin: int = 100
     sidebar_width: int = 250
-    human_color: str = "#0072B5"
-    agent_color: str = "#B543B5"
+    human_color: str = "#0072B5"  # Original blue
+    agent_color: str = "#B543B5"  # Original purple
     human_font_size: int = 18
     agent_font_size: int = 18
-    human_background_color: str = "#d3e3d9"
-    agent_background_color: str = "#e9ecf0"
+    human_background_color: str = "#d3e3d9"  # Original light green
+    agent_background_color: str = "#e9ecf0"  # Original light gray
     outcome_display_method: OutcomeDisplayMethod = OutcomeDisplayMethod.String
     reverse_offers: bool = False
 
@@ -544,30 +561,22 @@ class CountdownTimer(pn.pane.HTML):
     def __init__(self, duration, update_interval=1, **params):
         super().__init__(**params)
         self.duration = duration
+        self.running = False
         self.update_interval = update_interval
-        self._callback_handle = None
+        self.thread = None
         self._start = None
-        self._end_time = None
 
     def start(self):
-        if not self.duration or np.isinf(self.duration):
+        if self.running or not self.duration or np.isinf(self.duration):
             self._start = time.perf_counter()
             return
-
+        self.running = True
         self._start = time.perf_counter()
-        self._end_time = time.time() + self.duration
-
-        # Use Panel's periodic callback instead of threading for thread safety
-        self._callback_handle = pn.state.add_periodic_callback(
-            self._update,
-            period=int(self.update_interval * 1000),  # Convert to milliseconds
-        )
+        self.thread = threading.Thread(target=self._run)
+        self.thread.start()
 
     def stop(self):
-        if self._callback_handle is not None:
-            pn.state.remove_periodic_callback(self._callback_handle)
-            self._callback_handle = None
-
+        self.running = False
         if self._start is None:
             self.object = f"<strong>Done on {time.time()}</strong>"
         else:
@@ -576,32 +585,27 @@ class CountdownTimer(pn.pane.HTML):
     def set_duration(self, duration):
         self._start = time.perf_counter()
         self.duration = duration
+        self.full_duration = duration
 
-    def _update(self):
-        """Periodic callback to update timer display."""
-        if self._end_time is None:
+    def _run(self):
+        if np.isinf(self.duration):
             return
+        end_time = time.time() + self.duration
+        while self.running and time.time() < end_time:
+            remaining = int(end_time - time.time())
+            color = "black" if remaining > 10 else "red"
+            self.object = f'<h5 style="color:{color}">{humanize_time(remaining).strip()}  remaining{self.relative()}</h5>'  # type: ignore
+            time.sleep(self.update_interval)
 
-        current_time = time.time()
-        if current_time >= self._end_time:
-            # Timer expired
+        if self.running:  # if the timer finished naturally, rather than being stopped.
             self.object = '<div style="color:red"><strong>Time\'s up!</strong></div>'
-
-            if self._callback_handle is not None:
-                pn.state.remove_periodic_callback(self._callback_handle)
-                self._callback_handle = None
-
+            self.running = False
             session_state["human_action"] = SAOResponse(
                 ResponseType.REJECT_OFFER,
                 session_state.get("human_last_offer", None),
                 None,
             )
             advance()
-        else:
-            # Update display
-            remaining = int(self._end_time - current_time)
-            color = "black" if remaining > 10 else "red"
-            self.object = f'<h5 style="color:{color}">{humanize_time(remaining).strip()}  remaining{self.relative()}</h5>'
 
     def relative(self) -> str:
         mech = session_state.get("mechanism", None)
@@ -921,13 +925,15 @@ def load_form(selectable_scenario_type):
     #     )
     # else:
     #     type_selector = None
-    logout = pn.widgets.Button(name="Log out", icon="logout", button_type="danger")
+    logout = create_tracked_button(name="Log out", icon="logout", button_type="danger")
     logout.js_on_click(code="""window.location.href = './logout'""")
-    load_btn = pn.widgets.Button(name="Load", icon="loader-3", button_type="primary")
+    load_btn = create_tracked_button(
+        name="Load", icon="loader-3", button_type="primary"
+    )
     load_btn.on_click(show_announcements)
     load_btn.js_on_click(code="""window.location.reload();""")
     # pn.bind(load_scenario, load_btn)
-    strt_btn = pn.widgets.Button(
+    strt_btn = create_tracked_button(
         name="Start", icon="player-play", button_type="primary"
     )
     load_btn.disabled = new_scenario_loaded
@@ -943,7 +949,7 @@ def load_form(selectable_scenario_type):
 
 
 def start_button():
-    strt_btn = pn.widgets.Button(name="Start", icon="player-play")
+    strt_btn = create_tracked_button(name="Start", icon="player-play")
     strt_btn.on_click(start_negotiation)
     session_state["action_panel_displayed"] = False
     if session_state["strt_btn"]:
@@ -997,6 +1003,28 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
         session_state["human_action"] = SAOResponse(
             ResponseType.ACCEPT_OFFER, current_offer
         )
+
+        # Log acceptance event
+        try:
+            utility = (
+                session_state.get("human_ufun")(current_offer)
+                if current_offer
+                else None
+            )
+            log_negotiation_event(
+                event_type=EventType.OFFER_ACCEPTED,
+                offer={"outcome": str(current_offer)} if current_offer else None,
+                utility_value=float(utility) if utility is not None else None,
+                round_number=session_state.get("mechanism", {}).state.step
+                if hasattr(session_state.get("mechanism", {}), "state")
+                else None,  # type: ignore
+                scenario_id=session_state.get("scenario", {}).outcome_space.name
+                if hasattr(session_state.get("scenario", {}), "outcome_space")
+                else "unknown",  # type: ignore
+            )
+        except Exception as e:
+            print(f"Warning: Could not log accept event: {e}")
+
         advance()
 
     def on_reject(event=None):
@@ -1012,6 +1040,28 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
         session_state["human_action"] = SAOResponse(
             ResponseType.REJECT_OFFER, session_state["human_last_offer"], data
         )
+
+        # Log counter-offer event
+        try:
+            utility = (
+                session_state.get("human_ufun")(session_state["human_last_offer"])
+                if session_state["human_last_offer"]
+                else None
+            )
+            log_negotiation_event(
+                event_type=EventType.COUNTER_OFFER,
+                offer={"outcome": str(session_state["human_last_offer"])},
+                utility_value=float(utility) if utility is not None else None,
+                round_number=session_state.get("mechanism", {}).state.step
+                if hasattr(session_state.get("mechanism", {}), "state")
+                else None,  # type: ignore
+                scenario_id=session_state.get("scenario", {}).outcome_space.name
+                if hasattr(session_state.get("scenario", {}), "outcome_space")
+                else "unknown",  # type: ignore
+            )
+        except Exception as e:
+            print(f"Warning: Could not log counter-offer event: {e}")
+
         advance()
 
     widgets = []
@@ -1048,15 +1098,15 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
         session_state[f"issue_{issue.name}"] = widget
         widgets.append(widget)
 
-    reject_btn = pn.widgets.Button(
+    reject_btn = create_tracked_button(
         name="Send offer", icon="send", button_type="primary"
     )
     reject_btn.on_click(on_reject)
-    accept_btn = pn.widgets.Button(
+    accept_btn = create_tracked_button(
         name="Accept", icon="circle-check", button_type="success"
     )
     accept_btn.on_click(on_accept)
-    end_btn = pn.widgets.Button(
+    end_btn = create_tracked_button(
         name="End Negotiation", icon="circle-x", button_type="warning"
     )
     end_btn.on_click(on_end)
@@ -1180,13 +1230,30 @@ def add_to_history(state: SAOState | None = None):
         mechanism: SAOMechanism = session_state["mechanism"]
         state = mechanism.state
 
+    hist = session_state["history"]
+
     if session_state["display"]["reverse_offers"].value:
-        session_state["history"].insert(0, display_state(state))
+        hist.insert(0, display_state(state))
     else:
-        session_state["history"].append(display_state(state))
-        # Scroll to last item (length - 1)
-        if len(session_state["history"]) > 0:
-            session_state["history"].scroll_to(len(session_state["history"]) - 1)
+        hist.append(display_state(state))
+        # Aggressive autoscroll - try multiple methods
+        try:
+            # Method 1: scroll_to with last index
+            hist.scroll_to(len(hist) - 1)
+        except:
+            pass
+
+        try:
+            # Method 2: Trigger param change to force update
+            hist.param.trigger("objects")
+        except:
+            pass
+
+        try:
+            # Method 2: Trigger param change to force update
+            hist.param.trigger("objects")
+        except:
+            pass
 
 
 def step_to_human(event=None):
@@ -1309,6 +1376,17 @@ def start_negotiation(event=None):
     add_tools(Timing.Start)
     send_event_to_tools("negotiation_started")
 
+    # Log negotiation started event
+    try:
+        log_scenario_event(
+            event_type=EventType.SCENARIO_STARTED,
+            scenario_id=session_state.get("scenario", {}).outcome_space.name
+            if hasattr(session_state.get("scenario", {}), "outcome_space")
+            else "unknown",  # type: ignore
+        )
+    except Exception as e:
+        print(f"Warning: Could not log negotiation started event: {e}")
+
 
 def get_subfolders(path: Path):
     folders = list(_ for _ in path.glob("*") if _.is_dir())
@@ -1367,6 +1445,19 @@ def load_scenario(event=None):
     if "human_best_offer" in session_state:
         del session_state["human_best_offer"]
     session_state["action_panel_displayed"] = False
+
+    # Log scenario loaded event
+    try:
+        log_scenario_event(
+            event_type=EventType.SCENARIO_LOADED,
+            scenario_id=session_state["scenario"].outcome_space.name,  # type: ignore
+            scenario_data={
+                "name": session_state["scenario"].outcome_space.name,  # type: ignore
+                "n_outcomes": session_state["scenario"].outcome_space.cardinality,  # type: ignore
+            },
+        )
+    except Exception as e:
+        print(f"Warning: Could not log scenario loaded event: {e}")
 
     # session_state["tools"] = []
     # session_state["upper_tabs"] = pn.Tabs()
@@ -1429,6 +1520,72 @@ def main():
     session_state["selectable_scenario_type"] = selectable_scenario_type
     session_state["new_scenario_loaded"] = False
 
+    # Initialize event tracking session (skip for guest/playground mode)
+    import os
+
+    is_guest_mode = os.getenv("HANI_GUEST_MODE", "false").lower() == "true"
+
+    try:
+        if pn.state.user and not is_guest_mode:
+            user_id = str(pn.state.user)
+
+            # Get or select experiment
+            from hani.experiment_selector import ensure_experiment_selected
+
+            try:
+                experiment_id = ensure_experiment_selected(user_id)
+            except RuntimeError as e:
+                print(f"Error: Could not determine experiment: {e}")
+                if hasattr(pn.state, "notifications") and pn.state.notifications:
+                    pn.state.notifications.error(
+                        f"Configuration error: {e}",
+                        duration=0,  # Persistent
+                    )
+                # Use a default experiment ID as fallback (should not happen in production)
+                experiment_id = "default"
+
+            # Try to get request info
+            ip_address = None
+            user_agent = None
+            try:
+                if hasattr(pn.state, "headers"):
+                    user_agent = pn.state.headers.get("User-Agent")
+            except:
+                pass
+
+            # Create session with experiment_id
+            session_id = create_session(
+                user_id=user_id,
+                experiment_id=experiment_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+
+            # Store session ID and experiment ID
+            set_current_session_id(session_id)
+            session_state["experiment_id"] = experiment_id
+
+            # Get experiment name for display
+            from hani.events import get_db_session, Experiment
+
+            with get_db_session() as db:
+                exp = (
+                    db.query(Experiment).filter(Experiment.id == experiment_id).first()
+                )
+                session_state["experiment_name"] = (
+                    exp.name if exp else "Unknown Experiment"
+                )
+
+            # Log page view
+            log_page_view("MainApp", session_id=session_id)
+            print(
+                f"✓ Event tracking initialized for user {user_id} in experiment {experiment_id}: {session_id}"
+            )
+        elif is_guest_mode:
+            print("✓ Event tracking disabled (guest/playground mode)")
+    except Exception as e:
+        print(f"Warning: Could not initialize event tracking: {e}")
+
     # # Define your custom templates
     # login_template_path = Path(__file__).parent / "tempates" / "basic_login.html"
     # logout_template_path = Path(__file__).parent / "tempates" / "logout.html"
@@ -1468,7 +1625,7 @@ def main():
         CONFIG.display.human_background_color
     )
     session_state["display"]["reverse_offers"] = CONFIG.display.reverse_offers
-    logout = pn.widgets.Button(name="Log out", icon="logout")
+    logout = create_tracked_button(name="Log out", icon="logout")
     logout.js_on_click(code="""window.location.href = './logout'""")
     images_base = Path(__file__).parent / "images"
 
@@ -1476,7 +1633,9 @@ def main():
     images_file = choice([_ for _ in images_base.glob("*.JPG") if _.is_file()])
 
     image = pn.Column(
-        pn.pane.JPG(images_file, width=100, sizing_mode="scale_width"),
+        pn.pane.JPG(
+            images_file, min_width=100, max_width=150, sizing_mode="scale_width"
+        ),
         pn.pane.Markdown(f"## HAN2025\n## `{session_state['user']}`"),
         logout if pn.state.user else None,
         align="center",
@@ -1498,8 +1657,9 @@ def main():
     hist = pn.Column(
         sizing_mode="stretch_both",
         margin=0,
-        scroll=True,  # Enable scrolling
-        auto_scroll_limit=0,  # Always auto-scroll to bottom
+        scroll=True,
+        auto_scroll_limit=1000000,  # Very large value to force autoscroll
+        scroll_button_threshold=0,
     )
     session_state["history"] = hist
     session_state["showing_announcements"] = False
@@ -1676,13 +1836,20 @@ def main():
         pn.Card(*session_state["partners"].values(), title="Partner", collapsed=True),
     )
 
+    # Build title with experiment name if available
+    experiment_name = session_state.get("experiment_name", "")
+    title_html = "Human Agent Negotiation"
+    if experiment_name:
+        title_html = f'Human Agent Negotiation <span class="experiment-badge">{experiment_name}</span>'
+
     template = pn.template.FastGridTemplate(
         site="",
-        title="Human Agent Negotiation",
+        title=title_html,
         prevent_collision=False,
         sidebar=sidebar,
         sidebar_width=CONFIG.display.sidebar_width,
         collapsed_sidebar=True,
+        header_background="#282D3C",  # Dark primary color from theme
     )
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()

@@ -2,47 +2,51 @@
 Event tracing system for HANI.
 
 This module provides comprehensive event tracking and session management:
-- User session tracking (login/logout)
+- Experiment management
+- User tracking
+- Session tracking (login/logout)
 - Negotiation event tracking (offers, accepts, rejects, etc.)
 - Button click tracking across all tools
 - Tool interaction tracking
 - Timestamped event logs
 - Database storage with SQLite
 
-Architecture:
-- Session: Represents a user's login session
+Architecture (SQLAlchemy 2.0):
+- Experiment: Represents a research experiment/study
+- User: Represents a user in the system
+- Session: Represents a user's login session within an experiment
 - Event: Represents any tracked action (button click, negotiation move, etc.)
 - EventLogger: Centralized logging service
-- SessionManager: Manages user sessions
 """
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
-from dataclasses import dataclass, asdict
+from typing import Optional
+from contextlib import contextmanager
 
-try:
-    from sqlalchemy import (
-        create_engine,
-        Column,
-        String,
-        Integer,
-        DateTime,
-        Float,
-        Text,
-        ForeignKey,
-        Boolean,
-    )
-    from sqlalchemy.ext.declarative import declarative_base
-    from sqlalchemy.orm import sessionmaker, relationship
-
-    SQLALCHEMY_AVAILABLE = True
-except ImportError:
-    SQLALCHEMY_AVAILABLE = False
-    print("Warning: SQLAlchemy not available. Event tracing will use JSON fallback.")
+from sqlalchemy import (
+    create_engine,
+    String,
+    Integer,
+    DateTime,
+    Float,
+    Text,
+    ForeignKey,
+    Boolean,
+    Engine,
+    select,
+)
+from sqlalchemy.orm import (
+    Session as DBSession,
+    relationship,
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+)
+from typing import Generator
 
 from hani.common import DB_PATH
 
@@ -51,13 +55,13 @@ DB_PATH.mkdir(parents=True, exist_ok=True)
 
 # Database configuration
 DATABASE_URL = f"sqlite:///{DB_PATH / 'events.db'}"
-JSON_BACKUP_PATH = DB_PATH / "events_backup.json"
 
-# Create SQLAlchemy base
-if SQLALCHEMY_AVAILABLE:
-    Base = declarative_base()
-else:
-    Base = object
+
+# Create SQLAlchemy base using modern DeclarativeBase
+class Base(DeclarativeBase):
+    """Base class for all database models."""
+
+    pass
 
 
 class EventType(str, Enum):
@@ -107,102 +111,124 @@ class EventType(str, Enum):
     WARNING = "warning"
 
 
-if SQLALCHEMY_AVAILABLE:
+class Experiment(Base):
+    """Represents an experiment/study."""
 
-    class Session(Base):
-        """Represents a user session (login to logout)."""
+    __tablename__ = "experiments"
 
-        __tablename__ = "sessions"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    start_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
-        id = Column(String, primary_key=True)
-        user_id = Column(String, nullable=False, index=True)
-        start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
-        end_time = Column(DateTime, nullable=True)
-        ip_address = Column(String, nullable=True)
-        user_agent = Column(String, nullable=True)
-        is_active = Column(Boolean, default=True)
+    # Relationships
+    sessions: Mapped[list["Session"]] = relationship(
+        back_populates="experiment", cascade="all, delete-orphan"
+    )
 
-        # Relationship to events
-        events = relationship(
-            "Event", back_populates="session", cascade="all, delete-orphan"
-        )
-
-        def __repr__(self):
-            return (
-                f"<Session(id={self.id}, user={self.user_id}, active={self.is_active})>"
-            )
-
-    class Event(Base):
-        """Represents a single tracked event."""
-
-        __tablename__ = "events"
-
-        id = Column(Integer, primary_key=True, autoincrement=True)
-        session_id = Column(
-            String, ForeignKey("sessions.id"), nullable=False, index=True
-        )
-        event_type = Column(String, nullable=False, index=True)
-        timestamp = Column(
-            DateTime, nullable=False, default=datetime.utcnow, index=True
-        )
-
-        # Event details
-        component = Column(
-            String, nullable=True
-        )  # e.g., "PreferencesTool", "RejectButton"
-        action = Column(String, nullable=True)  # e.g., "click", "hover", "change"
-        value = Column(Text, nullable=True)  # JSON string of event-specific data
-
-        # Negotiation-specific fields
-        scenario_id = Column(String, nullable=True, index=True)
-        round_number = Column(Integer, nullable=True)
-        utility_value = Column(Float, nullable=True)
-
-        # Performance tracking
-        duration_ms = Column(Float, nullable=True)  # Duration of action in milliseconds
-
-        # Relationship to session
-        session = relationship("Session", back_populates="events")
-
-        def __repr__(self):
-            return (
-                f"<Event(id={self.id}, type={self.event_type}, time={self.timestamp})>"
-            )
+    def __repr__(self) -> str:
+        return f"<Experiment(id={self.id}, name={self.name}, active={self.is_active})>"
 
 
-# Fallback data classes for when SQLAlchemy is not available
-@dataclass
-class SessionData:
-    """Fallback session data structure."""
+class User(Base):
+    """Represents a user in the system."""
 
-    id: str
-    user_id: str
-    start_time: str
-    end_time: Optional[str] = None
-    ip_address: Optional[str] = None
-    user_agent: Optional[str] = None
-    is_active: bool = True
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # username
+    full_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    first_login: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    login_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # User metadata (can be extended)
+    user_metadata: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # JSON string
+
+    # Relationships
+    sessions: Mapped[list["Session"]] = relationship(back_populates="user")
+
+    def __repr__(self) -> str:
+        return f"<User(id={self.id}, name={self.full_name}, logins={self.login_count})>"
 
 
-@dataclass
-class EventData:
-    """Fallback event data structure."""
+class Session(Base):
+    """Represents a user session (login to logout) within an experiment."""
 
-    id: int
-    session_id: str
-    event_type: str
-    timestamp: str
-    component: Optional[str] = None
-    action: Optional[str] = None
-    value: Optional[str] = None
-    scenario_id: Optional[str] = None
-    round_number: Optional[int] = None
-    utility_value: Optional[float] = None
-    duration_ms: Optional[float] = None
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id"), nullable=False, index=True
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        String, ForeignKey("experiments.id"), nullable=False, index=True
+    )
+    start_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="sessions")
+    experiment: Mapped["Experiment"] = relationship(back_populates="sessions")
+    events: Mapped[list["Event"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Session(id={self.id}, user={self.user_id}, experiment={self.experiment_id}, active={self.is_active})>"
+
+
+class Event(Base):
+    """Represents a single tracked event."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(
+        String, ForeignKey("sessions.id"), nullable=False, index=True
+    )
+    event_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+    )
+
+    # Event details
+    component: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    action: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Negotiation-specific fields
+    scenario_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
+    )
+    round_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    utility_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Performance tracking
+    duration_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Relationship to session
+    session: Mapped["Session"] = relationship(back_populates="events")
+
+    def __repr__(self) -> str:
+        return f"<Event(id={self.id}, type={self.event_type}, time={self.timestamp})>"
 
 
 class EventLogger:
-    """Centralized event logging service."""
+    """Centralized event logging service using SQLAlchemy 2.0."""
 
     _instance = None
     _initialized = False
@@ -218,97 +244,143 @@ class EventLogger:
         if self._initialized:
             return
 
-        self.use_database = SQLALCHEMY_AVAILABLE
-
-        if self.use_database:
-            # Initialize database
-            self.engine = create_engine(DATABASE_URL, echo=False)
-            Base.metadata.create_all(self.engine)
-            self.SessionLocal = sessionmaker(bind=self.engine)
-            self.events_cache = []
-        else:
-            # Use JSON fallback
-            self.sessions = {}
-            self.events = []
-            self._load_from_json()
+        # Initialize database with SQLAlchemy 2.0 best practices
+        self.engine: Engine = create_engine(
+            DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            connect_args={"check_same_thread": False},  # For SQLite threading
+        )
+        # Create tables only if they don't exist (checkfirst=True)
+        Base.metadata.create_all(self.engine, checkfirst=True)
 
         self._initialized = True
-        print(
-            f"EventLogger initialized (database={'SQLite' if self.use_database else 'JSON fallback'})"
-        )
+        print(f"EventLogger initialized (database=SQLite at {DATABASE_URL})")
 
-    def _load_from_json(self):
-        """Load events from JSON backup."""
-        if JSON_BACKUP_PATH.exists():
-            try:
-                with open(JSON_BACKUP_PATH, "r") as f:
-                    data = json.load(f)
-                    self.sessions = data.get("sessions", {})
-                    self.events = data.get("events", [])
-            except Exception as e:
-                print(f"Error loading JSON backup: {e}")
-
-    def _save_to_json(self):
-        """Save events to JSON backup."""
+    @contextmanager
+    def _session(self) -> Generator[DBSession, None, None]:  # type: ignore[misc]
+        """Context manager for database sessions."""
+        session = DBSession(self.engine)
         try:
-            with open(JSON_BACKUP_PATH, "w") as f:
-                json.dump(
-                    {"sessions": self.sessions, "events": self.events},
-                    f,
-                    indent=2,
-                    default=str,
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def create_or_update_user(
+        self,
+        user_id: str,
+        full_name: Optional[str] = None,
+        email: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> User:
+        """Create or update a user record."""
+        with self._session() as db:
+            user = db.scalar(select(User).where(User.id == user_id))
+
+            if user:
+                # Update existing user
+                user.last_login = datetime.now(timezone.utc)
+                user.login_count += 1
+                if full_name:
+                    user.full_name = full_name
+                if email:
+                    user.email = email
+                if metadata:
+                    user.user_metadata = json.dumps(metadata)
+            else:
+                # Create new user
+                user = User(
+                    id=user_id,
+                    full_name=full_name,
+                    email=email,
+                    first_login=datetime.now(timezone.utc),
+                    last_login=datetime.now(timezone.utc),
+                    login_count=1,
+                    user_metadata=json.dumps(metadata) if metadata else None,
                 )
-        except Exception as e:
-            print(f"Error saving JSON backup: {e}")
+                db.add(user)
+
+            db.commit()
+            db.refresh(user)
+            return user
+
+    def create_experiment(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+    ) -> str:
+        """Create a new experiment."""
+        experiment_id = str(uuid.uuid4())
+
+        with self._session() as db:
+            experiment = Experiment(
+                id=experiment_id,
+                name=name,
+                description=description,
+                start_time=start_time or datetime.now(timezone.utc),
+                is_active=True,
+            )
+            db.add(experiment)
+            return experiment_id
+
+    def get_active_experiments(self) -> list[dict]:
+        """Get all active experiments."""
+        with self._session() as db:
+            experiments = db.scalars(
+                select(Experiment).where(Experiment.is_active == True)
+            ).all()
+            return [
+                {
+                    "id": exp.id,
+                    "name": exp.name,
+                    "description": exp.description,
+                    "start_time": exp.start_time.isoformat(),
+                    "is_active": exp.is_active,
+                }
+                for exp in experiments
+            ]
+
+    def end_experiment(self, experiment_id: str) -> None:
+        """End an experiment by marking it inactive."""
+        with self._session() as db:
+            experiment = db.scalar(
+                select(Experiment).where(Experiment.id == experiment_id)
+            )
+            if experiment:
+                experiment.end_time = datetime.now(timezone.utc)
+                experiment.is_active = False
 
     def create_session(
         self,
         user_id: str,
+        experiment_id: str,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
+        full_name: Optional[str] = None,
+        email: Optional[str] = None,
     ) -> str:
-        """
-        Create a new user session.
+        """Create a new user session."""
+        # Create or update user record
+        self.create_or_update_user(user_id, full_name, email)
 
-        Args:
-            user_id: The user identifier
-            ip_address: User's IP address
-            user_agent: User's browser user agent
-
-        Returns:
-            Session ID (UUID)
-        """
         session_id = str(uuid.uuid4())
 
-        if self.use_database:
-            db = self.SessionLocal()
-            try:
-                session = Session(
-                    id=session_id,
-                    user_id=user_id,
-                    start_time=datetime.utcnow(),
-                    ip_address=ip_address,
-                    user_agent=user_agent,
-                    is_active=True,
-                )
-                db.add(session)
-                db.commit()
-            except Exception as e:
-                print(f"Error creating session in database: {e}")
-                db.rollback()
-            finally:
-                db.close()
-        else:
-            # JSON fallback
-            self.sessions[session_id] = {
-                "id": session_id,
-                "user_id": user_id,
-                "start_time": datetime.utcnow().isoformat(),
-                "ip_address": ip_address,
-                "user_agent": user_agent,
-                "is_active": True,
-            }
-            self._save_to_json()
+        with self._session() as db:
+            session = Session(
+                id=session_id,
+                user_id=user_id,
+                experiment_id=experiment_id,
+                start_time=datetime.now(timezone.utc),
+                ip_address=ip_address,
+                user_agent=user_agent,
+                is_active=True,
+            )
+            db.add(session)
 
         # Log session start event
         self.log_event(
@@ -316,37 +388,18 @@ class EventLogger:
             event_type=EventType.SESSION_START,
             component="SessionManager",
             action="create",
-            value=json.dumps({"user_id": user_id}),
+            value=json.dumps({"user_id": user_id, "experiment_id": experiment_id}),
         )
 
         return session_id
 
-    def end_session(self, session_id: str):
-        """
-        End a user session.
-
-        Args:
-            session_id: The session identifier
-        """
-        if self.use_database:
-            db = self.SessionLocal()
-            try:
-                session = db.query(Session).filter(Session.id == session_id).first()
-                if session:
-                    session.end_time = datetime.utcnow()
-                    session.is_active = False
-                    db.commit()
-            except Exception as e:
-                print(f"Error ending session in database: {e}")
-                db.rollback()
-            finally:
-                db.close()
-        else:
-            # JSON fallback
-            if session_id in self.sessions:
-                self.sessions[session_id]["end_time"] = datetime.utcnow().isoformat()
-                self.sessions[session_id]["is_active"] = False
-                self._save_to_json()
+    def end_session(self, session_id: str) -> None:
+        """End a user session."""
+        with self._session() as db:
+            session = db.scalar(select(Session).where(Session.id == session_id))
+            if session:
+                session.end_time = datetime.now(timezone.utc)
+                session.is_active = False
 
         # Log session end event
         self.log_event(
@@ -367,21 +420,8 @@ class EventLogger:
         round_number: Optional[int] = None,
         utility_value: Optional[float] = None,
         duration_ms: Optional[float] = None,
-    ):
-        """
-        Log an event.
-
-        Args:
-            session_id: Session identifier
-            event_type: Type of event (from EventType enum)
-            component: Component name (e.g., "PreferencesTool", "RejectButton")
-            action: Action taken (e.g., "click", "hover")
-            value: Event-specific data (dict will be JSON-serialized)
-            scenario_id: Associated scenario ID
-            round_number: Negotiation round number
-            utility_value: Utility value for offers
-            duration_ms: Duration of action in milliseconds
-        """
+    ) -> None:
+        """Log an event."""
         # Convert dict to JSON string
         if isinstance(value, dict):
             value = json.dumps(value)
@@ -390,160 +430,163 @@ class EventLogger:
         if isinstance(event_type, EventType):
             event_type = event_type.value
 
-        if self.use_database:
-            db = self.SessionLocal()
-            try:
-                event = Event(
-                    session_id=session_id,
-                    event_type=event_type,
-                    timestamp=datetime.utcnow(),
-                    component=component,
-                    action=action,
-                    value=value,
-                    scenario_id=scenario_id,
-                    round_number=round_number,
-                    utility_value=utility_value,
-                    duration_ms=duration_ms,
-                )
-                db.add(event)
-                db.commit()
-            except Exception as e:
-                print(f"Error logging event to database: {e}")
-                db.rollback()
-            finally:
-                db.close()
-        else:
-            # JSON fallback
-            event_dict = {
-                "id": len(self.events) + 1,
-                "session_id": session_id,
-                "event_type": event_type,
-                "timestamp": datetime.utcnow().isoformat(),
-                "component": component,
-                "action": action,
-                "value": value,
-                "scenario_id": scenario_id,
-                "round_number": round_number,
-                "utility_value": utility_value,
-                "duration_ms": duration_ms,
-            }
-            self.events.append(event_dict)
-            self._save_to_json()
+        with self._session() as db:
+            event = Event(
+                session_id=session_id,
+                event_type=event_type,
+                timestamp=datetime.now(timezone.utc),
+                component=component,
+                action=action,
+                value=value,
+                scenario_id=scenario_id,
+                round_number=round_number,
+                utility_value=utility_value,
+                duration_ms=duration_ms,
+            )
+            db.add(event)
 
-    def get_session_events(self, session_id: str) -> list:
+    def get_session_events(self, session_id: str) -> list[dict]:
         """Get all events for a session."""
-        if self.use_database:
-            db = self.SessionLocal()
-            try:
-                events = (
-                    db.query(Event)
-                    .filter(Event.session_id == session_id)
-                    .order_by(Event.timestamp)
-                    .all()
-                )
-                return [
-                    {
-                        "id": e.id,
-                        "event_type": e.event_type,
-                        "timestamp": e.timestamp.isoformat(),
-                        "component": e.component,
-                        "action": e.action,
-                        "value": e.value,
-                        "scenario_id": e.scenario_id,
-                        "round_number": e.round_number,
-                        "utility_value": e.utility_value,
-                        "duration_ms": e.duration_ms,
-                    }
-                    for e in events
-                ]
-            finally:
-                db.close()
-        else:
-            # JSON fallback
-            return [e for e in self.events if e["session_id"] == session_id]
+        with self._session() as db:
+            events = db.scalars(
+                select(Event)
+                .where(Event.session_id == session_id)
+                .order_by(Event.timestamp)
+            ).all()
+            return [
+                {
+                    "id": e.id,
+                    "event_type": e.event_type,
+                    "timestamp": e.timestamp.isoformat(),
+                    "component": e.component,
+                    "action": e.action,
+                    "value": e.value,
+                    "scenario_id": e.scenario_id,
+                    "round_number": e.round_number,
+                    "utility_value": e.utility_value,
+                    "duration_ms": e.duration_ms,
+                }
+                for e in events
+            ]
 
-    def get_user_sessions(self, user_id: str) -> list:
-        """Get all sessions for a user."""
-        if self.use_database:
-            db = self.SessionLocal()
-            try:
-                sessions = (
-                    db.query(Session)
-                    .filter(Session.user_id == user_id)
-                    .order_by(Session.start_time.desc())
-                    .all()
-                )
-                return [
-                    {
-                        "id": s.id,
-                        "user_id": s.user_id,
-                        "start_time": s.start_time.isoformat(),
-                        "end_time": s.end_time.isoformat() if s.end_time else None,
-                        "ip_address": s.ip_address,
-                        "user_agent": s.user_agent,
-                        "is_active": s.is_active,
-                    }
-                    for s in sessions
+    def get_user_sessions(
+        self, user_id: str, experiment_id: Optional[str] = None
+    ) -> list[dict]:
+        """Get all sessions for a user, optionally filtered by experiment."""
+        with self._session() as db:
+            stmt = select(Session).where(Session.user_id == user_id)
+
+            if experiment_id:
+                stmt = stmt.where(Session.experiment_id == experiment_id)
+
+            sessions = db.scalars(stmt.order_by(Session.start_time.desc())).all()
+
+            return [
+                {
+                    "id": s.id,
+                    "user_id": s.user_id,
+                    "experiment_id": s.experiment_id,
+                    "start_time": s.start_time.isoformat(),
+                    "end_time": s.end_time.isoformat() if s.end_time else None,
+                    "ip_address": s.ip_address,
+                    "user_agent": s.user_agent,
+                    "is_active": s.is_active,
+                }
+                for s in sessions
+            ]
+
+    def get_all_users(self) -> list[str]:
+        """Get list of all unique users."""
+        with self._session() as db:
+            users = db.scalars(select(User)).all()
+            return [u.id for u in users]
+
+    def get_user_info(self, user_id: str) -> Optional[dict]:
+        """Get detailed information about a user."""
+        with self._session() as db:
+            user = db.scalar(select(User).where(User.id == user_id))
+            if not user:
+                return None
+
+            return {
+                "id": user.id,
+                "full_name": user.full_name,
+                "email": user.email,
+                "first_login": user.first_login.isoformat(),
+                "last_login": user.last_login.isoformat() if user.last_login else None,
+                "login_count": user.login_count,
+                "metadata": json.loads(user.user_metadata)
+                if user.user_metadata
+                else None,
+            }
+
+    def get_event_stats(
+        self, session_id: Optional[str] = None, user_id: Optional[str] = None
+    ) -> dict:
+        """Get statistics about events."""
+        with self._session() as db:
+            stmt = select(Event)
+
+            if session_id:
+                stmt = stmt.where(Event.session_id == session_id)
+            elif user_id:
+                # Get all sessions for user
+                session_ids = [
+                    s.id
+                    for s in db.scalars(
+                        select(Session).where(Session.user_id == user_id)
+                    ).all()
                 ]
-            finally:
-                db.close()
-        else:
-            # JSON fallback
-            return [s for s in self.sessions.values() if s["user_id"] == user_id]
+                stmt = stmt.where(Event.session_id.in_(session_ids))
+
+            events = db.scalars(stmt).all()
+
+            # Count by event type
+            event_counts: dict[str, int] = {}
+            for event in events:
+                event_counts[event.event_type] = (
+                    event_counts.get(event.event_type, 0) + 1
+                )
+
+            # Calculate average duration
+            durations = [e.duration_ms for e in events if e.duration_ms is not None]
+            avg_duration = sum(durations) / len(durations) if durations else 0
+
+            return {
+                "total_events": len(events),
+                "event_counts": event_counts,
+                "avg_duration_ms": avg_duration,
+                "first_event": events[0].timestamp.isoformat() if events else None,
+                "last_event": events[-1].timestamp.isoformat() if events else None,
+            }
 
     def export_session_data(
         self, session_id: str, output_path: Optional[Path] = None
     ) -> dict:
-        """
-        Export complete session data including all events.
-
-        Args:
-            session_id: Session identifier
-            output_path: Optional path to save JSON export
-
-        Returns:
-            Dictionary containing session and all events
-        """
-        if self.use_database:
-            db = self.SessionLocal()
-            try:
-                session = db.query(Session).filter(Session.id == session_id).first()
-                if not session:
-                    return {"error": "Session not found"}
-
-                events = self.get_session_events(session_id)
-
-                data = {
-                    "session": {
-                        "id": session.id,
-                        "user_id": session.user_id,
-                        "start_time": session.start_time.isoformat(),
-                        "end_time": session.end_time.isoformat()
-                        if session.end_time
-                        else None,
-                        "is_active": session.is_active,
-                        "ip_address": session.ip_address,
-                        "user_agent": session.user_agent,
-                    },
-                    "events": events,
-                    "event_count": len(events),
-                    "exported_at": datetime.utcnow().isoformat(),
-                }
-            finally:
-                db.close()
-        else:
-            # JSON fallback
-            session = self.sessions.get(session_id)
+        """Export complete session data including all events."""
+        with self._session() as db:
+            session = db.scalar(select(Session).where(Session.id == session_id))
             if not session:
                 return {"error": "Session not found"}
 
             events = self.get_session_events(session_id)
 
             data = {
-                "session": session,
+                "session": {
+                    "id": session.id,
+                    "user_id": session.user_id,
+                    "experiment_id": session.experiment_id,
+                    "start_time": session.start_time.isoformat(),
+                    "end_time": session.end_time.isoformat()
+                    if session.end_time
+                    else None,
+                    "is_active": session.is_active,
+                    "ip_address": session.ip_address,
+                    "user_agent": session.user_agent,
+                },
                 "events": events,
                 "event_count": len(events),
-                "exported_at": datetime.utcnow().isoformat(),
+                "exported_at": datetime.now(timezone.utc).isoformat(),
             }
 
         # Save to file if path provided
@@ -566,40 +609,37 @@ def get_event_logger() -> EventLogger:
     return _event_logger
 
 
-def log_event(session_id: str, event_type: EventType | str, **kwargs):
-    """
-    Convenience function to log an event.
-
-    Args:
-        session_id: Session identifier
-        event_type: Type of event
-        **kwargs: Additional event parameters
-    """
+def log_event(session_id: str, event_type: EventType | str, **kwargs) -> None:
+    """Log an event (convenience function)."""
     logger = get_event_logger()
     logger.log_event(session_id, event_type, **kwargs)
 
 
-def create_session(user_id: str, **kwargs) -> str:
-    """
-    Convenience function to create a session.
-
-    Args:
-        user_id: User identifier
-        **kwargs: Additional session parameters
-
-    Returns:
-        Session ID
-    """
+def create_session(user_id: str, experiment_id: str, **kwargs) -> str:
+    """Convenience function to create a session."""
     logger = get_event_logger()
-    return logger.create_session(user_id, **kwargs)
+    return logger.create_session(user_id, experiment_id, **kwargs)
 
 
-def end_session(session_id: str):
-    """
-    Convenience function to end a session.
-
-    Args:
-        session_id: Session identifier
-    """
+def end_session(session_id: str) -> None:
+    """End a session (convenience function)."""
     logger = get_event_logger()
     logger.end_session(session_id)
+
+
+def create_experiment(name: str, description: Optional[str] = None, **kwargs) -> str:
+    """Convenience function to create an experiment."""
+    logger = get_event_logger()
+    return logger.create_experiment(name, description, **kwargs)
+
+
+def get_active_experiments() -> list[dict]:
+    """Convenience function to get active experiments."""
+    logger = get_event_logger()
+    return logger.get_active_experiments()
+
+
+def end_experiment(experiment_id: str) -> None:
+    """End an experiment (convenience function)."""
+    logger = get_event_logger()
+    logger.end_experiment(experiment_id)

@@ -132,10 +132,58 @@ def patch_panel_auth(salt: str = "hani-secure-salt-2025"):
 
         if isinstance(auth_info, dict):
             if username not in auth_info:
+                # Log failed login attempt
+                try:
+                    from hani.events import EventType, log_event
+                    from hani.event_tracking import get_current_session_id
+
+                    session_id = get_current_session_id()
+                    if session_id:
+                        log_event(
+                            session_id=session_id,
+                            event_type=EventType.LOGIN_FAILED,
+                            component="Auth",
+                            action="login",
+                            value=json.dumps(
+                                {"username": username, "reason": "user_not_found"}
+                            ),
+                        )
+                except:
+                    pass
                 return False
             # Compare hashed password
             password_hash = hash_password(password, salt)
-            return password_hash == auth_info[username]
+            success = password_hash == auth_info[username]
+
+            # Log login attempt
+            try:
+                from hani.events import EventType, log_event
+                from hani.event_tracking import get_current_session_id
+
+                session_id = get_current_session_id()
+                if session_id:
+                    if success:
+                        log_event(
+                            session_id=session_id,
+                            event_type=EventType.LOGIN,
+                            component="Auth",
+                            action="login",
+                            value=json.dumps({"username": username}),
+                        )
+                    else:
+                        log_event(
+                            session_id=session_id,
+                            event_type=EventType.LOGIN_FAILED,
+                            component="Auth",
+                            action="login",
+                            value=json.dumps(
+                                {"username": username, "reason": "invalid_password"}
+                            ),
+                        )
+            except:
+                pass
+
+            return success
         elif isinstance(auth_info, str):
             # Single password case - hash and compare
             password_hash = hash_password(password, salt)
