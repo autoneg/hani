@@ -11,7 +11,7 @@ These tests verify:
 
 import pytest
 from playwright.sync_api import Page, expect
-from tests.conftest import (
+from conftest import (
     TEST_USER,
     TEST_PASSWORD,
     ADMIN_USER,
