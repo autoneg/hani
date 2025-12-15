@@ -139,7 +139,7 @@ LAYOUT_OPTIONS = dict(
 )
 SESSION_PREFIX = "session:"
 ICON_WIDTH = 30  # Increased to accommodate 22pt font size
-HISTORY_SEPARATION = 10
+HISTORY_SEPARATION = 0  # No extra spacing between history items
 GUEST = "guest"
 NORMALIZE_BY_TIME = False
 TRACE_COLUMNS = [
@@ -294,12 +294,12 @@ class OutcomeDisplayMethod(Enum):
 
 @define
 class DisplayConfig:
-    history_margin: int = 100
+    history_margin: int = 50  # Reduced utility display width (was 100)
     sidebar_width: int = 250
     human_color: str = "#0072B5"  # Original blue
     agent_color: str = "#B543B5"  # Original purple
-    human_font_size: int = 18
-    agent_font_size: int = 18
+    human_font_size: int = 14  # Reduced for more compact history
+    agent_font_size: int = 14  # Reduced for more compact history
     human_background_color: str = "#d3e3d9"  # Original light green
     agent_background_color: str = "#e9ecf0"  # Original light gray
     outcome_display_method: OutcomeDisplayMethod = OutcomeDisplayMethod.String
@@ -853,7 +853,7 @@ def display_state(state: SAOState) -> pn.Column:
         if not from_human
         else session_state["display"]["human_background_color"]
     )
-    col = pn.Column()
+    col = pn.Column(margin=0)
 
     if state.done:
         if state.agreement:
@@ -868,14 +868,18 @@ def display_state(state: SAOState) -> pn.Column:
             s = f"broken after {humanize_time(state.time)}"
         else:
             s = "done"
-        return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "12pt"})  # type: ignore
+        return pn.pane.Markdown(f"Negotiation {s}", styles={"font-size": "10pt"})  # type: ignore
     border = {
-        "border-radius": "10px",
+        "border-radius": "5px",  # Smaller radius for more compact look
         "border": "1px solid black",
         "background-color": background_color,
         "color": color,
+        "padding": "3px",  # Minimal internal padding
+        "margin-bottom": "0px",  # No margin below
     }
-    outcome_display = pn.Column(styles=border | {"font-size": f"{font_size}px"})
+    outcome_display = pn.Column(
+        styles=border | {"font-size": f"{font_size}px", "gap": "0px"}, margin=0
+    )
     if state.current_data:
         data = {k: v for k, v in state.current_data.items()}
         if "text" in data:
@@ -883,7 +887,9 @@ def display_state(state: SAOState) -> pn.Column:
             txt = txt.strip()
             if txt:
                 spacer = pn.Spacer(width=session_state["display"]["extra_margin"])
-                outcome_display.append(pn.pane.Markdown(txt))
+                outcome_display.append(
+                    pn.pane.Markdown(txt, styles={"font-size": f"{font_size}px"})
+                )
         if data:
             outcome_display.append(pn.pane.Str("**Data:**"))
             outcome_display.append(pn.pane.DataFrame(pd.DataFrame([data])))
@@ -902,7 +908,7 @@ def display_state(state: SAOState) -> pn.Column:
     spacer = pn.pane.HTML(
         f'<div style="color:{ucolor};">{uval:0.1%}</div>',
         width=session_state["display"]["extra_margin"],
-        styles={"font-size": "12pt"},
+        styles={"font-size": "10pt"},
     )
     # spacer = pn.Spacer(width=session_state["display"]["extra_margin"])
     icon = (
@@ -912,17 +918,17 @@ def display_state(state: SAOState) -> pn.Column:
     )
 
     col.append(
-        pn.Row(outcome_display, spacer)
+        pn.Row(outcome_display, spacer, margin=0)
         if not from_human
-        else pn.Row(spacer, outcome_display)
+        else pn.Row(spacer, outcome_display, margin=0)
     )
     row = (
-        (pn.Row(col, icon) if from_human else pn.Row(icon, col))
+        (pn.Row(col, icon, margin=0) if from_human else pn.Row(icon, col, margin=0))
         if not state.done
-        else pn.Row(col)
+        else pn.Row(col, margin=0)
     )
 
-    return pn.Column(row, pn.layout.Spacer(height=HISTORY_SEPARATION))
+    return pn.Column(row, pn.layout.Spacer(height=HISTORY_SEPARATION), margin=0)
 
 
 def load_form(selectable_scenario_type):
@@ -1136,7 +1142,7 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
         # ), f"{outcome=} not in {human_ufun.outcome_space.issues}"
         return pn.pane.Markdown(
             f"Your Utility if this offer is accepted by your partner: **{human_ufun(outcome):0.1%}**",
-            styles={"font-size": "10pt"},
+            styles={"font-size": "9pt"},
         )
 
     def util_display():
@@ -1144,7 +1150,7 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
             (
                 f"Your Utility if you accept partner offer: **{session_state['human_ufun'](current_offer):0.03}**"
             ),
-            styles={"font-size": "10pt"},
+            styles={"font-size": "9pt"},
         )
 
     my_util = pn.bind(offer_util, *widgets)
@@ -1153,7 +1159,7 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
         *(
             pn.Row(
                 pn.pane.Markdown(
-                    f"**{i.name}**", styles={"font-size": "12pt"}, width=None
+                    f"**{i.name}**", styles={"font-size": "10pt"}, width=None
                 ),
                 w,
                 align="center",
@@ -1648,7 +1654,7 @@ def main():
     # Create history column with scroll enabled
     hist = pn.Column(
         margin=0,
-        styles={"gap": "5px"},  # Reduce vertical spacing between offers
+        styles={"gap": "0px"},  # No vertical spacing between offers
         sizing_mode="stretch_both",
         scroll=True,
         auto_scroll_limit=0,  # 0 = always autoscroll
