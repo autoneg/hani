@@ -2321,21 +2321,59 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     extraction_prompt_editor = pn.widgets.TextAreaInput(
         name="Extraction Prompt",
         value=llm_settings.get("extraction_prompt", ""),
-        height=200,
+        height=400,
+        sizing_mode="stretch_both",
     )
     generation_prompt_editor = pn.widgets.TextAreaInput(
         name="Generation Prompt",
         value=llm_settings.get("generation_prompt", ""),
-        height=200,
+        height=400,
+        sizing_mode="stretch_both",
     )
 
-    # Template tags documentation (collapsible)
-    tags_doc = pn.pane.Markdown(PROMPT_TEMPLATE_TAGS, styles={"font-size": "9pt"})
+    # Template tags documentation
+    tags_doc = pn.pane.Markdown(PROMPT_TEMPLATE_TAGS, styles={"font-size": "10pt"})
+
+    # Create modals for prompt editing
+    extraction_modal = pn.Modal(
+        pn.pane.Markdown("## Edit Extraction Prompt"),
+        pn.pane.Markdown("*This prompt is used to extract offers from text messages.*"),
+        extraction_prompt_editor,
+        pn.Card(
+            pn.Column(tags_doc, scroll=True, height=300),
+            title="Template Tags Reference",
+            collapsed=True,
+        ),
+        name="extraction_modal",
+    )
+    extraction_modal_btn = extraction_modal.create_button(
+        "show", name="Edit Extraction Prompt", button_type="default"
+    )
+
+    generation_modal = pn.Modal(
+        pn.pane.Markdown("## Edit Generation Prompt"),
+        pn.pane.Markdown("*This prompt is used to generate text messages for offers.*"),
+        generation_prompt_editor,
+        pn.Card(
+            pn.Column(
+                pn.pane.Markdown(PROMPT_TEMPLATE_TAGS, styles={"font-size": "10pt"}),
+                scroll=True,
+                height=300,
+            ),
+            title="Template Tags Reference",
+            collapsed=True,
+        ),
+        name="generation_modal",
+    )
+    generation_modal_btn = generation_modal.create_button(
+        "show", name="Edit Generation Prompt", button_type="default"
+    )
 
     # Store editors in session state for saving
     session_state["llm"]["extraction_prompt"] = extraction_prompt_editor
     session_state["llm"]["generation_prompt"] = generation_prompt_editor
-    session_state["llm"]["tags_doc"] = tags_doc
+    session_state["llm"]["extraction_modal"] = extraction_modal
+    session_state["llm"]["generation_modal"] = generation_modal
 
     # Disable LLM settings for non-admin users
     if not is_admin():
@@ -2350,14 +2388,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         session_state["llm"]["ollama_base_url"],
         session_state["llm"]["api_key_env"],
         session_state["llm"]["temperature"],
-        session_state["llm"]["extraction_prompt"],
-        session_state["llm"]["generation_prompt"],
-        pn.Card(
-            session_state["llm"]["tags_doc"],
-            title="Template Tags Reference",
-            collapsed=True,
-        ),
+        extraction_modal_btn,
+        generation_modal_btn,
         session_state["llm"]["save_btn"],
+        extraction_modal,
+        generation_modal,
         title="LLM Settings (Admin)",
         collapsed=True,
         visible=is_admin(),
