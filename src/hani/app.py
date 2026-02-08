@@ -516,6 +516,16 @@ def default_tools():
             bottom=False,
         ),
         ToolConfig(
+            "LLM",
+            TOOL_MAP["Response Generator"],
+            Timing.Start,
+            params=dict(
+                scenario="session:scenario",
+                widgets="session:offer_widgets",
+            ),
+            side=True,
+        ),
+        ToolConfig(
             "Inverter",
             TOOL_MAP["Utility Inverter"],
             Timing.Start,
@@ -523,16 +533,6 @@ def default_tools():
                 scenario="session:scenario",
                 widgets="session:offer_widgets",
                 human_index="session:human_index",
-            ),
-            side=True,
-        ),
-        ToolConfig(
-            "LLM",
-            TOOL_MAP["Response Generator"],
-            Timing.Start,
-            params=dict(
-                scenario="session:scenario",
-                widgets="session:offer_widgets",
             ),
             side=True,
         ),
