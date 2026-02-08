@@ -2321,14 +2321,12 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     extraction_prompt_editor = pn.widgets.TextAreaInput(
         name="Extraction Prompt",
         value=llm_settings.get("extraction_prompt", ""),
-        height=400,
-        sizing_mode="stretch_both",
+        height=250,
     )
     generation_prompt_editor = pn.widgets.TextAreaInput(
         name="Generation Prompt",
         value=llm_settings.get("generation_prompt", ""),
-        height=400,
-        sizing_mode="stretch_both",
+        height=250,
     )
 
     # Template tags documentation
@@ -2345,6 +2343,8 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             collapsed=True,
         ),
         name="extraction_modal",
+        width=1000,
+        height=800,
     )
     extraction_modal_btn = extraction_modal.create_button(
         "show", name="Edit Extraction Prompt", button_type="default"
@@ -2364,6 +2364,8 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             collapsed=True,
         ),
         name="generation_modal",
+        width=1000,
+        height=800,
     )
     generation_modal_btn = generation_modal.create_button(
         "show", name="Edit Generation Prompt", button_type="default"
@@ -2391,8 +2393,6 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         extraction_modal_btn,
         generation_modal_btn,
         session_state["llm"]["save_btn"],
-        extraction_modal,
-        generation_modal,
         title="LLM Settings (Admin)",
         collapsed=True,
         visible=is_admin(),
@@ -2421,6 +2421,9 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         pn.Card(*session_state["scenarios"].values(), title="Scenario", collapsed=True),
         pn.Card(*session_state["partners"].values(), title="Partner", collapsed=True),
         llm_card,
+        # Add modals at end of sidebar (they're overlays, won't affect width)
+        extraction_modal,
+        generation_modal,
     )
 
     # Build title with experiment name if available
@@ -2445,6 +2448,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         collapsed_sidebar=True,
         header_background="#282D3C",  # Dark primary color from theme
     )
+
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
     session_state["side_tabs"] = side_tabs = pn.Tabs()
