@@ -2370,12 +2370,16 @@ Extract any offer from this message: {message}
     def open_extraction_modal(event):
         template = session_state.get("template")
         if template:
-            template.open_modal(session_state["llm"]["extraction_modal"])
+            template.modal.clear()
+            template.modal.append(session_state["llm"]["extraction_modal"])
+            template.open_modal()
 
     def open_generation_modal(event):
         template = session_state.get("template")
         if template:
-            template.open_modal(session_state["llm"]["generation_modal"])
+            template.modal.clear()
+            template.modal.append(session_state["llm"]["generation_modal"])
+            template.open_modal()
 
     extraction_btn = pn.widgets.Button(
         name="Edit Extraction Prompt...", button_type="default"
