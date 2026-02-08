@@ -42,7 +42,6 @@ init_authentication()
 # Import event tracking modules
 from hani.events import EventType, create_session, end_session
 from hani.event_tracking import (
-    get_current_session_id,
     set_current_session_id,
     log_negotiation_event,
     log_scenario_event,
@@ -80,6 +79,29 @@ try:
     from negmas.sao import HybridNegotiator as DefaultNegotiator
 except:
     from negmas.sao import AspirationNegotiator as DefaultNegotiator
+
+# Import LLM negotiators from negmas-llm
+LLM_NEGOTIATORS = []
+try:
+    from negmas_llm import (
+        LLMBoulwareTBNegotiator,
+        LLMConcederTBNegotiator,
+        LLMLinearTBNegotiator,
+        LLMHybridNegotiator,
+    )
+
+    LLM_NEGOTIATORS = [
+        "LLMHybridNegotiator",
+        "LLMBoulwareTBNegotiator",
+        "LLMConcederTBNegotiator",
+        "LLMLinearTBNegotiator",
+    ]
+except ImportError:
+    LLMBoulwareTBNegotiator = None
+    LLMConcederTBNegotiator = None
+    LLMLinearTBNegotiator = None
+    LLMHybridNegotiator = None
+
 FAST_MICRO_NEGOTIATOR = None
 try:
     from negmas.sao import FastMiCRONegotiator
@@ -99,7 +121,7 @@ from hani.scenarios.island import IslandOutcomeDisplay, make_island_scenario
 from hani.scenarios.grocery import GroceryOutcomeDisplay, make_grocery_scenario
 from hani.tools import Tool
 from hani.tools.history import NegotiationTraceTool
-from hani.tools.preferences import PreferencesTool
+from hani.tools.preferences import PreferencesTool, AgentPreferencesTool
 from hani.tools.results import AllResultsTool, SessionResultsTool, UserResultsTool
 from hani.tools.scenario_info import ScenarioInfoTool
 from hani.tools.random import RandomOutcomeTool
@@ -107,6 +129,7 @@ from hani.tools.urange import UtilityInverterTool
 from hani.tools.utility_plot2d import UtilityPlot2DTool
 from hani.tools.outcome_plot import OutcomePlotTool
 from hani.tools.histograms import OutcomeHistogramPlot
+from hani.tools.generator import ResponseGeneratorTool
 from hani.common import (
     DB_PATH,
     ENV_FILE,
@@ -114,6 +137,15 @@ from hani.common import (
     DefaultOutcomeDisplay,
     OutcomeDisplay,
     SCENARIO_ORDER_FILE,
+    load_llm_settings,
+    save_llm_settings,
+)
+from hani.llm_service import (
+    extract_outcome_from_text,
+    generate_text_from_outcome,
+    is_llm_configured,
+    get_llm_status,
+    NegotiationContext,
 )
 
 
@@ -126,6 +158,12 @@ HANI_NEGOTIATORS = [
     "helpers.Atlas3",
     "helpers.CUHKAgent",
     "helpers.AgentGG",
+]
+LLM_NEGOTIATORS = [
+    "LLMHybridNegotiator",
+    "LLMBoulwareTBNegotiator",
+    "LLMConcederTBNegotiator",
+    "LLMLinearTBNegotiator",
 ]
 
 
@@ -150,27 +188,60 @@ TRACE_COLUMNS = [
     "offer",
     "responses",
     "state",
-]
-
-SELECTED_AGENT_TYPES = [
-    "HybridNegotiator",
-    # "BoulwareTBNegotiator",
-    # "LinearTBNegotiator",
-    # "ConcederTBNegotiator",
-    "helpers.AverageTitForTat",
-    "helpers.HardHeaded",
-    "helpers.AgentK",
-    "helpers.Atlas3",
-    "helpers.CUHKAgent",
-    "helpers.AgentGG",
-    "genius.Atlas3",
-    "genius.NiceTitForTat",
+    "text",
+    "data",
 ]
 
 
-FEW_SELECTED_AGENT_TYPES = [
-    "HybridNegotiator",
-]
+def build_negotiation_context(
+    current_offer: Outcome | None = None,
+) -> NegotiationContext:
+    """
+    Build a NegotiationContext from the current session state.
+
+    This provides full context (ufun, outcome space, history) for LLM calls.
+    """
+    scenario = session_state.get("scenario")
+    mechanism = session_state.get("mechanism")
+
+    issues = []
+    outcome_space = None
+    ufun = None
+    history = []
+
+    if scenario:
+        outcome_space = scenario.outcome_space
+        issues = list(outcome_space.issues) if outcome_space else []
+
+    ufun = session_state.get("human_ufun")
+
+    # Build history from mechanism state if available
+    if mechanism and hasattr(mechanism, "state"):
+        state = mechanism.state
+        if hasattr(state, "offers") and state.offers:
+            human_index = session_state.get("human_index", 0)
+            for i, offer in enumerate(state.offers):
+                role = "You" if (i % 2) == human_index else "Partner"
+                history.append(
+                    {
+                        "role": role,
+                        "outcome": offer,
+                        "response_type": "offer",
+                    }
+                )
+
+    return NegotiationContext(
+        issues=issues,
+        outcome_space=outcome_space,
+        ufun=ufun,
+        history=history if history else None,
+        current_offer=current_offer,
+    )
+
+
+SELECTED_AGENT_TYPES = []  # Controlled by toggles now
+
+FEW_SELECTED_AGENT_TYPES = []  # Controlled by toggles now
 # if FAST_MICRO_NEGOTIATOR:
 #     SELECTED_AGENT_TYPES.append(FAST_MICRO_NEGOTIATOR)
 #     FEW_SELECTED_AGENT_TYPES.append(FAST_MICRO_NEGOTIATOR)
@@ -200,6 +271,16 @@ if not genius_bridge_is_running():
 
 
 def get_agent_type(x: Negotiator | str | None) -> Negotiator:
+    # Handle LLM negotiators from negmas-llm
+    if isinstance(x, str) and x.startswith("LLM"):
+        if x == "LLMHybridNegotiator" and LLMHybridNegotiator:
+            return LLMHybridNegotiator
+        elif x == "LLMBoulwareTBNegotiator" and LLMBoulwareTBNegotiator:
+            return LLMBoulwareTBNegotiator
+        elif x == "LLMConcederTBNegotiator" and LLMConcederTBNegotiator:
+            return LLMConcederTBNegotiator
+        elif x == "LLMLinearTBNegotiator" and LLMLinearTBNegotiator:
+            return LLMLinearTBNegotiator
     if isinstance(x, str) and "." not in x:
         x = f"negmas.sao.{x}"
     if isinstance(x, str) and x.startswith("helpers."):
@@ -219,8 +300,40 @@ def set_user(session_state=session_state) -> None:
 
 
 def is_admin(session_state=session_state):
+    """Check if the current user has admin privileges.
+
+    Admin access is granted if:
+    - Password auth: username is 'admin'
+    - OAuth auth: user's email is in ADMIN_EMAILS list
+    """
+    from hani.common import ADMIN_EMAILS
+    from hani.auth import get_auth_mode
+
     set_user()
-    return session_state["user"] == "admin"
+    user = session_state.get("user", "")
+
+    # Password auth: check if username is 'admin'
+    if user == "admin":
+        return True
+
+    # OAuth auth: check if user's email is in admin list
+    if get_auth_mode() == "oauth" and ADMIN_EMAILS:
+        # In OAuth mode, pn.state.user might be the email or username
+        # Also check pn.state.user_info for email
+        user_email = None
+
+        # Try to get email from Panel state
+        if hasattr(pn.state, "user_info") and pn.state.user_info:
+            user_email = pn.state.user_info.get("email", "")
+
+        # If no email in user_info, the user itself might be the email
+        if not user_email and user and "@" in str(user):
+            user_email = user
+
+        if user_email and user_email.lower() in ADMIN_EMAILS:
+            return True
+
+    return False
 
 
 class Timing(Enum):
@@ -311,6 +424,7 @@ class DisplayConfig:
 TOOL_MAP = {
     "Scenario Info": ScenarioInfoTool,
     "Preferences": PreferencesTool,
+    "Agent Preferences": AgentPreferencesTool,
     "Utility Plot": UtilityPlot2DTool,
     "Outcome Plot": OutcomePlotTool,
     "Value Histogram": OutcomeHistogramPlot,
@@ -320,6 +434,7 @@ TOOL_MAP = {
     "Session Results": SessionResultsTool,
     "User Results": UserResultsTool,
     "All Results": AllResultsTool,
+    "Response Generator": ResponseGeneratorTool,
 }
 
 DISPLAY_MAP = {
@@ -375,6 +490,7 @@ def default_tools():
             Timing.Start,
             params=dict(mechanism="session:mechanism", human_id="session:human_id"),
             bottom=True,
+            at_front=True,
         ),
         ToolConfig(
             "Trace",
@@ -400,7 +516,7 @@ def default_tools():
             bottom=False,
         ),
         ToolConfig(
-            "Utility Inverter",
+            "Inverter",
             TOOL_MAP["Utility Inverter"],
             Timing.Start,
             params=dict(
@@ -411,7 +527,17 @@ def default_tools():
             side=True,
         ),
         ToolConfig(
-            "Random Outcome",
+            "LLM",
+            TOOL_MAP["Response Generator"],
+            Timing.Start,
+            params=dict(
+                scenario="session:scenario",
+                widgets="session:offer_widgets",
+            ),
+            side=True,
+        ),
+        ToolConfig(
+            "Random",
             TOOL_MAP["Random Outcome"],
             Timing.Start,
             params=dict(scenario="session:scenario", widgets="session:offer_widgets"),
@@ -426,7 +552,14 @@ def default_tools():
                 Timing.Always,
                 params=dict(normalize_by_time=NORMALIZE_BY_TIME),
                 bottom=False,
-            )
+            ),
+            ToolConfig(
+                "Agent Preferences",
+                TOOL_MAP["Agent Preferences"],
+                Timing.Start,
+                params=dict(human_index="session:human_index"),
+                bottom=False,
+            ),
         ]
     return tools
 
@@ -453,10 +586,11 @@ class AppConfig:
     display: DisplayConfig = field(factory=DisplayConfig)
     tools: list[ToolConfig] = field(factory=default_tools)
     outcome_display: OutcomeDisplay = DefaultOutcomeDisplay()
-    genius: bool = True
+    genius: bool = False
     negmas: bool = False
     hani_helpers: bool = False
     allow_moving_tools: bool = False
+    allow_text_only_offers: bool = True
 
     @property
     def has_one_tool_pane(self):
@@ -681,10 +815,20 @@ def make_mechanism(
         | mech_params
         | dict(one_offer_per_step=one_offer_per_step, sync_calls=sync_calls)
     )
+    # Add allow_none_with_data if text-only offers are allowed
+    if session_state["toggles"]["allow_text_only_offers"].value:
+        scenario.mechanism_params["allow_none_with_data"] = True
     human_params["name"] = scenario.ufuns[human_index].name + " (You)"
     human_params["id"] = human_params["name"]
     agent_params["name"] = scenario.ufuns[1 - human_index].name + " (AI)"
     agent_params["id"] = agent_params["name"]
+
+    # Add LLM provider/model for LLM negotiators
+    if isinstance(agent_type, str) and agent_type.startswith("LLM"):
+        llm_settings = load_llm_settings()
+        agent_params["provider"] = llm_settings.get("provider", "ollama")
+        agent_params["model"] = llm_settings.get("model", "qwen3:1.7b")
+
     negotiators = []
     n_negotiators = 2
     for i in range(n_negotiators):
@@ -1043,18 +1187,50 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
         advance()
 
     def on_reject(event=None):
-        if session_state["toggles"]["allow_text_human"]:
-            data = dict(text=session_state["action_panel"][0][0].value)
-            session_state["action_panel"][0][0].value = ""
-        else:
-            data = None
+        text_input = session_state.get("text_input_widget")
+        text_only = session_state["toggles"]["text_only_mode"].value
+        auto_extract = session_state["toggles"]["auto_extract_outcome"].value
+        auto_generate = session_state["toggles"]["auto_generate_text"].value
 
-        session_state["human_last_offer"] = tuple(
-            session_state[f"issue_{i.name}"].value for i in issues
-        )
-        session_state["human_action"] = SAOResponse(
-            ResponseType.REJECT_OFFER, session_state["human_last_offer"], data
-        )
+        # Get text value if text input is allowed
+        text_value = ""
+        if session_state["toggles"]["allow_text_human"] and text_input:
+            text_value = text_input.value or ""
+            text_input.value = ""
+
+        # If auto_generate is on and we have an outcome, generate text
+        if auto_generate and not text_only and not text_value.strip():
+            current_outcome = tuple(
+                session_state[f"issue_{i.name}"].value for i in issues
+            )
+            if any(v is not None for v in current_outcome):
+                ctx = build_negotiation_context(current_offer)
+                result = generate_text_from_outcome(
+                    current_outcome, list(issues), context=ctx
+                )
+                if not result.error:
+                    text_value = result.text
+
+        if text_only:
+            # Text-only mode: send only text, no structured outcome
+            data = dict(text=text_value) if text_value else None
+            session_state["human_last_offer"] = None
+            session_state["human_action"] = SAOResponse(
+                ResponseType.REJECT_OFFER, None, data
+            )
+        else:
+            # Normal mode: include structured outcome
+            if session_state["toggles"]["allow_text_human"]:
+                data = dict(text=text_value)
+            else:
+                data = None
+
+            session_state["human_last_offer"] = tuple(
+                session_state[f"issue_{i.name}"].value for i in issues
+            )
+            session_state["human_action"] = SAOResponse(
+                ResponseType.REJECT_OFFER, session_state["human_last_offer"], data
+            )
 
         # Log counter-offer event
         try:
@@ -1065,7 +1241,10 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
             )
             log_negotiation_event(
                 event_type=EventType.COUNTER_OFFER,
-                offer={"outcome": str(session_state["human_last_offer"])},
+                offer={
+                    "outcome": str(session_state["human_last_offer"]),
+                    "text_only": text_only,
+                },
                 utility_value=float(utility) if utility is not None else None,
                 round_number=session_state.get("mechanism", {}).state.step
                 if hasattr(session_state.get("mechanism", {}), "state")
@@ -1078,6 +1257,81 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
             print(f"Warning: Could not log counter-offer event: {e}")
 
         advance()
+
+    # LLM-powered extraction function
+    def on_extract_outcome(event=None):
+        text_input = session_state.get("text_input_widget")
+        llm_status_widget = session_state.get("llm_status_widget")
+
+        if not text_input or not text_input.value.strip():
+            if llm_status_widget:
+                llm_status_widget.object = "No text to extract from"
+            return
+
+        if not is_llm_configured():
+            if llm_status_widget:
+                llm_status_widget.object = "LLM not configured (check API key)"
+            return
+
+        if llm_status_widget:
+            llm_status_widget.object = "Extracting..."
+
+        ctx = build_negotiation_context(current_offer)
+        result = extract_outcome_from_text(text_input.value, list(issues), context=ctx)
+
+        if result.error:
+            if llm_status_widget:
+                llm_status_widget.object = f"Error: {result.error}"
+            return
+
+        if not result.has_offer:
+            if llm_status_widget:
+                llm_status_widget.object = f"No offer found: {result.reasoning}"
+            return
+
+        # Apply extracted outcome to widgets
+        if result.outcome:
+            for i, (issue, value) in enumerate(zip(issues, result.outcome)):
+                widget = session_state.get(f"issue_{issue.name}")
+                if widget:
+                    widget.value = value
+            if llm_status_widget:
+                llm_status_widget.object = (
+                    f"Extracted (confidence: {result.confidence:.0%})"
+                )
+
+    # LLM-powered text generation function
+    def on_generate_text(event=None):
+        text_input = session_state.get("text_input_widget")
+        llm_status_widget = session_state.get("llm_status_widget")
+
+        if not is_llm_configured():
+            if llm_status_widget:
+                llm_status_widget.object = "LLM not configured (check API key)"
+            return
+
+        current_outcome = tuple(session_state[f"issue_{i.name}"].value for i in issues)
+
+        if all(v is None for v in current_outcome):
+            if llm_status_widget:
+                llm_status_widget.object = "No outcome to generate from"
+            return
+
+        if llm_status_widget:
+            llm_status_widget.object = "Generating..."
+
+        ctx = build_negotiation_context(current_offer)
+        result = generate_text_from_outcome(current_outcome, list(issues), context=ctx)
+
+        if result.error:
+            if llm_status_widget:
+                llm_status_widget.object = f"Error: {result.error}"
+            return
+
+        if text_input:
+            text_input.value = result.text
+            if llm_status_widget:
+                llm_status_widget.object = "Text generated!"
 
     widgets = []
     for i, issue in enumerate(issues):
@@ -1155,8 +1409,11 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
 
     my_util = pn.bind(offer_util, *widgets)
     session_state["offer_widgets"] = widgets
-    col = pn.Column(
-        *(
+
+    # Build the structured outcome section with generate text button
+    outcome_widgets_list = []
+    for i, w in zip(issues, widgets):
+        outcome_widgets_list.append(
             pn.Row(
                 pn.pane.Markdown(
                     f"**{i.name}**", styles={"font-size": "10pt"}, width=None
@@ -1164,13 +1421,102 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
                 w,
                 align="center",
             )
-            for i, w in zip(issues, widgets)
-        ),
+        )
+
+    # Add Generate Text button beside the outcome section
+    generate_text_btn = pn.widgets.Button(
+        name="Generate Text",
+        icon="wand",
+        button_type="light",
+        width=120,
+    )
+    generate_text_btn.on_click(on_generate_text)
+
+    # LLM status display
+    llm_status_widget = pn.pane.Markdown(
+        "", styles={"font-size": "8pt", "color": "#666"}
+    )
+    session_state["llm_status_widget"] = llm_status_widget
+
+    outcome_section = pn.Column(
+        *outcome_widgets_list,
+        pn.Row(llm_status_widget, pn.Spacer(), generate_text_btn, align="center"),
+    )
+
+    col = pn.Column(
+        outcome_section,
         my_util,
         row,
     )
+
+    # Add text input section if allowed
     if session_state["toggles"]["allow_text_human"]:
-        col.insert(0, pn.widgets.TextAreaInput())
+        text_input = pn.widgets.TextAreaInput(
+            placeholder="Type your message here...",
+            height=80,
+        )
+        session_state["text_input_widget"] = text_input
+
+        # Extract outcome button
+        extract_btn = pn.widgets.Button(
+            name="Extract Outcome",
+            icon="brain",
+            button_type="light",
+            width=130,
+        )
+        extract_btn.on_click(on_extract_outcome)
+
+        # Text only checkbox - only show if allow_text_only_offers is enabled
+        allow_text_only = session_state["toggles"]["allow_text_only_offers"].value
+        text_only_checkbox = None
+        if allow_text_only:
+            text_only_checkbox = pn.widgets.Checkbox(
+                name="Text Only",
+                value=session_state["toggles"]["text_only_mode"].value,
+            )
+
+            # Sync text_only_checkbox with the toggle
+            def sync_text_only(event):
+                session_state["toggles"]["text_only_mode"].value = event.new
+                # Hide/show outcome section and extract button based on text only mode
+                outcome_section.visible = not event.new
+                extract_btn.visible = not event.new
+
+            text_only_checkbox.param.watch(sync_text_only, "value")
+
+            # Set initial visibility of outcome section and extract button based on text_only_mode
+            text_only_initial = session_state["toggles"]["text_only_mode"].value
+            outcome_section.visible = not text_only_initial
+            extract_btn.visible = not text_only_initial
+
+        # Auto-extract on text change if enabled
+        def on_text_change(event):
+            if (
+                session_state["toggles"]["auto_extract_outcome"].value
+                and event.new
+                and event.new.strip()
+            ):
+                on_extract_outcome()
+
+        text_input.param.watch(on_text_change, "value")
+
+        # Build the text section row with text_only on left, extract on right
+        if text_only_checkbox is not None:
+            text_row = pn.Row(
+                text_only_checkbox,
+                pn.Spacer(),
+                extract_btn,
+                align="center",
+            )
+        else:
+            text_row = pn.Row(extract_btn, align="center")
+
+        text_section = pn.Column(
+            text_input,
+            text_row,
+        )
+        col.insert(0, text_section)
+
     session_state["action_panel"].append(col)
     return col
 
@@ -1564,10 +1910,11 @@ def main():
 
             # Get experiment name for display
             from hani.events import get_db_session, Experiment
+            from sqlalchemy import select
 
             with get_db_session() as db:
-                exp = (
-                    db.query(Experiment).filter(Experiment.id == experiment_id).first()
+                exp = db.scalar(
+                    select(Experiment).where(Experiment.id == experiment_id)
                 )
                 session_state["experiment_name"] = (
                     exp.name if exp else "Unknown Experiment"
@@ -1669,25 +2016,31 @@ def main():
     session_state["timing"] = dict()
     session_state["scenarios"] = dict()
     session_state["partners"] = dict()
+    session_state["partners"]["llm_negotiators"] = pn.widgets.Checkbox(
+        name="Allow LLM Negotiators", value=True
+    )
     session_state["partners"]["negmas_negotiators"] = pn.widgets.Checkbox(
-        name="Allow NegMAS Negotiators", value=CONFIG.negmas
+        name="Allow NegMAS Negotiators", value=True
     )
     session_state["partners"]["hani_negotiators"] = pn.widgets.Checkbox(
-        name="Selected HANI Negotiators", value=CONFIG.hani_helpers
+        name="Allow HANI Negotiators", value=CONFIG.hani_helpers
     )
     session_state["partners"]["genius_negotiators"] = pn.widgets.Checkbox(
         name="Allow Genius Negotiators",
-        value=CONFIG.genius and genius_bridge_is_running(),
+        value=False,
+        disabled=not genius_bridge_is_running(),
     )
 
     def make_agent_types():
-        all_agent_types = FEW_SELECTED_AGENT_TYPES
-        if session_state["partners"]["genius_negotiators"].value:
-            all_agent_types += GENIUS_NEGOTITORS
+        all_agent_types = []
+        if session_state["partners"]["llm_negotiators"].value:
+            all_agent_types += LLM_NEGOTIATORS
         if session_state["partners"]["negmas_negotiators"].value:
             all_agent_types += NEGMAS_NEGOTIATORS
         if session_state["partners"]["hani_negotiators"].value:
             all_agent_types += HANI_NEGOTIATORS
+        if session_state["partners"]["genius_negotiators"].value:
+            all_agent_types += GENIUS_NEGOTITORS
         all_agent_types = list(set(all_agent_types))
         print(f"Will use {all_agent_types} as agent types")
         return all_agent_types
@@ -1704,12 +2057,15 @@ def main():
     session_state["partners"]["partner_types"] = pn.widgets.MultiChoice(
         name="Partner Types",
         options=made_types,
-        value=list(set(SELECTED_AGENT_TYPES).intersection(made_types)),
+        value=made_types,  # Select all available types by default
     )
 
     def update_agent_types(event):
         session_state["partners"]["partner_types"].options = make_agent_types()
 
+    session_state["partners"]["llm_negotiators"].param.watch(
+        update_agent_types, "value"
+    )
     session_state["partners"]["genius_negotiators"].param.watch(
         update_agent_types, "value"
     )
@@ -1769,18 +2125,54 @@ def main():
     session_state["toggles"]["init_with_best"] = pn.widgets.Checkbox(
         name="Initialize with best offer", value=True
     )
-    session_state["toggles"]["allow_text_agent"] = pn.widgets.Checkbox(
-        name="Allow text from agent", value=True
-    )
-    session_state["toggles"]["allow_text_human"] = pn.widgets.Checkbox(
-        name="Allow text from human", value=True
-    )
     session_state["toggles"]["show_history"] = pn.widgets.Checkbox(
         name="Show History", value=True
     )
     session_state["toggles"]["show_human_offers"] = pn.widgets.Checkbox(
         name="Show Human Offers", value=True
     )
+    # Text & Offers settings (separate group)
+    session_state["text_offers"] = dict()
+    session_state["text_offers"]["allow_text_agent"] = pn.widgets.Checkbox(
+        name="Allow text from agent", value=True
+    )
+    session_state["text_offers"]["allow_text_human"] = pn.widgets.Checkbox(
+        name="Allow text from human", value=True
+    )
+    session_state["text_offers"]["text_only_mode"] = pn.widgets.Checkbox(
+        name="Text Only Mode", value=False
+    )
+    session_state["text_offers"]["auto_extract_outcome"] = pn.widgets.Checkbox(
+        name="Always extract outcome from text", value=False
+    )
+    session_state["text_offers"]["auto_generate_text"] = pn.widgets.Checkbox(
+        name="Always generate text from outcome", value=False
+    )
+    session_state["text_offers"]["allow_text_only_offers"] = pn.widgets.Checkbox(
+        name="Allow Text Only Offers (Admin)", value=CONFIG.allow_text_only_offers
+    )
+    # Make allow_text_only_offers admin-only
+    if not is_admin():
+        session_state["text_offers"]["allow_text_only_offers"].disabled = True
+    # Create aliases in toggles for backward compatibility
+    session_state["toggles"]["allow_text_agent"] = session_state["text_offers"][
+        "allow_text_agent"
+    ]
+    session_state["toggles"]["allow_text_human"] = session_state["text_offers"][
+        "allow_text_human"
+    ]
+    session_state["toggles"]["text_only_mode"] = session_state["text_offers"][
+        "text_only_mode"
+    ]
+    session_state["toggles"]["auto_extract_outcome"] = session_state["text_offers"][
+        "auto_extract_outcome"
+    ]
+    session_state["toggles"]["auto_generate_text"] = session_state["text_offers"][
+        "auto_generate_text"
+    ]
+    session_state["toggles"]["allow_text_only_offers"] = session_state["text_offers"][
+        "allow_text_only_offers"
+    ]
     session_state["display"]["extra_margin"] = pn.widgets.NumberInput(
         name="Side Margin", value=CONFIG.display.history_margin
     )
@@ -1822,10 +2214,218 @@ def main():
     # session_state["display"]["tools"] = pn.widgets.MultiSelect(
     #     name="Tools", options=TOOLS, size=1, value=TOOLS
     # )
+
+    # LLM Settings (admin only)
+    session_state["llm"] = dict()
+    llm_settings = load_llm_settings()
+    session_state["llm"]["provider"] = pn.widgets.Select(
+        name="LLM Provider",
+        options=["ollama", "openai", "anthropic"],
+        value=llm_settings.get("provider", "ollama"),
+    )
+    session_state["llm"]["model"] = pn.widgets.TextInput(
+        name="Model Name",
+        value=llm_settings.get("model", "qwen2.5:1.5b"),
+    )
+    session_state["llm"]["ollama_base_url"] = pn.widgets.TextInput(
+        name="Ollama Base URL",
+        value=llm_settings.get("ollama_base_url", "http://localhost:11434/v1"),
+    )
+    session_state["llm"]["api_key_env"] = pn.widgets.TextInput(
+        name="API Key Env Variable",
+        value=llm_settings.get("api_key_env", "OPENAI_API_KEY"),
+    )
+    session_state["llm"]["temperature"] = pn.widgets.FloatInput(
+        name="Temperature",
+        value=llm_settings.get("temperature", 0.3),
+        start=0.0,
+        end=2.0,
+    )
+    session_state["llm"]["extraction_prompt"] = pn.widgets.TextAreaInput(
+        name="Extraction Prompt",
+        value=llm_settings.get("extraction_prompt", ""),
+        height=150,
+    )
+    session_state["llm"]["generation_prompt"] = pn.widgets.TextAreaInput(
+        name="Generation Prompt",
+        value=llm_settings.get("generation_prompt", ""),
+        height=150,
+    )
+
+    def save_llm_settings_callback(event=None):
+        settings = {
+            "provider": session_state["llm"]["provider"].value,
+            "model": session_state["llm"]["model"].value,
+            "ollama_base_url": session_state["llm"]["ollama_base_url"].value,
+            "api_key_env": session_state["llm"]["api_key_env"].value,
+            "temperature": session_state["llm"]["temperature"].value,
+            "extraction_prompt": session_state["llm"]["extraction_prompt"].value,
+            "generation_prompt": session_state["llm"]["generation_prompt"].value,
+        }
+        save_llm_settings(settings)
+        session_state["llm"]["status"].object = "Settings saved!"
+
+    session_state["llm"]["save_btn"] = pn.widgets.Button(
+        name="Save LLM Settings", button_type="primary"
+    )
+    session_state["llm"]["save_btn"].on_click(save_llm_settings_callback)
+
+    llm_status = get_llm_status()
+    status_text = f"Configured: {'Yes' if llm_status['configured'] else 'No'}"
+    session_state["llm"]["status"] = pn.pane.Markdown(status_text)
+
+    # Template tags documentation for prompt editing
+    PROMPT_TEMPLATE_TAGS = """
+## Available Template Tags
+
+Use these `{tag}` placeholders in your prompts. They will be replaced with actual values at runtime.
+
+### Negotiation Context
+| Tag | Description |
+|-----|-------------|
+| `{issues_description}` | List of all negotiation issues with their possible values |
+| `{outcome_space_json}` | Full outcome space as JSON (all possible combinations) |
+| `{ufun_json}` | Your utility function as JSON (your preferences) |
+| `{negotiation_history}` | Full history of all offers exchanged |
+| `{current_offer_description}` | The partner's current offer you're responding to |
+| `{current_offer_utility}` | Your utility for the partner's current offer (as %) |
+
+### For Text Generation (additional tags)
+| Tag | Description |
+|-----|-------------|
+| `{outcome_description}` | Your proposed counter-offer |
+| `{rejected_outcome_description}` | The partner's offer you're rejecting |
+| `{utility_context}` | Qualitative description of utilities (favorable/unfavorable) |
+
+### For Extraction (additional tags)
+| Tag | Description |
+|-----|-------------|
+| `{message}` | The text message to extract an offer from |
+
+### Example Usage
+```
+You are negotiating. The issues are:
+{issues_description}
+
+History so far:
+{negotiation_history}
+
+Extract any offer from this message: {message}
+```
+"""
+
+    # Create modal for extraction prompt editing
+    extraction_prompt_editor = pn.widgets.TextAreaInput(
+        name="Extraction Prompt",
+        value=llm_settings.get("extraction_prompt", ""),
+        height=400,
+        sizing_mode="stretch_width",
+    )
+    extraction_tags_doc = pn.pane.Markdown(
+        PROMPT_TEMPLATE_TAGS, sizing_mode="stretch_width"
+    )
+    extraction_modal_content = pn.Column(
+        pn.pane.Markdown("### Edit Extraction Prompt"),
+        pn.pane.Markdown(
+            "*This prompt is used to extract structured offers from natural language text.*"
+        ),
+        extraction_prompt_editor,
+        extraction_tags_doc,
+        sizing_mode="stretch_width",
+        scroll=True,
+    )
+    extraction_modal = pn.Column(extraction_modal_content, width=800, height=700)
+
+    # Create modal for generation prompt editing
+    generation_prompt_editor = pn.widgets.TextAreaInput(
+        name="Generation Prompt",
+        value=llm_settings.get("generation_prompt", ""),
+        height=400,
+        sizing_mode="stretch_width",
+    )
+    generation_tags_doc = pn.pane.Markdown(
+        PROMPT_TEMPLATE_TAGS, sizing_mode="stretch_width"
+    )
+    generation_modal_content = pn.Column(
+        pn.pane.Markdown("### Edit Generation Prompt"),
+        pn.pane.Markdown(
+            "*This prompt is used to generate persuasive text from structured offers.*"
+        ),
+        generation_prompt_editor,
+        generation_tags_doc,
+        sizing_mode="stretch_width",
+        scroll=True,
+    )
+    generation_modal = pn.Column(generation_modal_content, width=800, height=700)
+
+    # Store editors in session state for saving
+    session_state["llm"]["extraction_prompt"] = extraction_prompt_editor
+    session_state["llm"]["generation_prompt"] = generation_prompt_editor
+
+    # Store modals in session state
+    session_state["llm"]["extraction_modal"] = extraction_modal
+    session_state["llm"]["generation_modal"] = generation_modal
+
+    # Create buttons to open modals
+    def open_extraction_modal(event):
+        template = session_state.get("template")
+        if template:
+            template.open_modal(session_state["llm"]["extraction_modal"])
+
+    def open_generation_modal(event):
+        template = session_state.get("template")
+        if template:
+            template.open_modal(session_state["llm"]["generation_modal"])
+
+    extraction_btn = pn.widgets.Button(
+        name="Edit Extraction Prompt...", button_type="default"
+    )
+    extraction_btn.on_click(open_extraction_modal)
+
+    generation_btn = pn.widgets.Button(
+        name="Edit Generation Prompt...", button_type="default"
+    )
+    generation_btn.on_click(open_generation_modal)
+
+    session_state["llm"]["extraction_btn"] = extraction_btn
+    session_state["llm"]["generation_btn"] = generation_btn
+
+    # Disable LLM settings for non-admin users
+    if not is_admin():
+        for widget in session_state["llm"].values():
+            if hasattr(widget, "disabled"):
+                widget.disabled = True
+
+    llm_card = pn.Card(
+        session_state["llm"]["status"],
+        session_state["llm"]["provider"],
+        session_state["llm"]["model"],
+        session_state["llm"]["ollama_base_url"],
+        session_state["llm"]["api_key_env"],
+        session_state["llm"]["temperature"],
+        session_state["llm"]["extraction_btn"],
+        session_state["llm"]["generation_btn"],
+        session_state["llm"]["save_btn"],
+        title="LLM Settings (Admin)",
+        collapsed=True,
+        visible=is_admin(),
+    )
+
+    # Separate toggles into groups
+    display_toggle_keys = ["show_history", "show_human_offers"]
+    display_toggles = [session_state["toggles"][k] for k in display_toggle_keys]
+
+    offer_init_keys = ["init_with_last", "init_with_best"]
+    offer_init_toggles = [session_state["toggles"][k] for k in offer_init_keys]
+
     sidebar = pn.Column(
         image,
+        pn.Card(*display_toggles, title="Display Toggles", collapsed=True),
+        pn.Card(*offer_init_toggles, title="Offer Initialization", collapsed=True),
         pn.Card(
-            *session_state["toggles"].values(), title="Display Toogles", collapsed=True
+            *session_state["text_offers"].values(),
+            title="Text & Offers",
+            collapsed=True,
         ),
         pn.Card(
             *session_state["display"].values(), title="Display Control", collapsed=True
@@ -1833,13 +2433,21 @@ def main():
         pn.Card(*session_state["timing"].values(), title="Timing", collapsed=True),
         pn.Card(*session_state["scenarios"].values(), title="Scenario", collapsed=True),
         pn.Card(*session_state["partners"].values(), title="Partner", collapsed=True),
+        llm_card,
     )
 
     # Build title with experiment name if available
     experiment_name = session_state.get("experiment_name", "")
     title_html = "Human Agent Negotiation"
     if experiment_name:
-        title_html = f'Human Agent Negotiation <span class="experiment-badge">{experiment_name}</span>'
+        # Escape HTML special characters in experiment name
+        import html
+
+        safe_name = html.escape(experiment_name)
+        title_html = (
+            f"Human Agent Negotiation: {safe_name}"
+            # safe_name
+        )
 
     template = pn.template.FastGridTemplate(
         site="",

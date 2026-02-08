@@ -24,6 +24,8 @@ TRACE_COLUMNS = (
     "offer",
     "responses",
     "state",
+    "text",
+    "data",
 )
 
 VISIBLE_COLUMNS = (
@@ -31,6 +33,7 @@ VISIBLE_COLUMNS = (
     "relative_time",
     "negotiator",
     "offer",
+    "text",
 )
 
 
@@ -97,4 +100,7 @@ class NegotiationTraceTool(Tool):
         return pn.pane.DataFrame(df, index=False)
 
     def panel(self):
-        return pn.Column(self.table)
+        show_agent_checkbox = pn.widgets.Checkbox.from_param(
+            self.param.show_agent_ufun, name="Show Agent Utility"
+        )
+        return pn.Column(show_agent_checkbox, self.table)

@@ -112,7 +112,7 @@ class Tool(pn.viewable.Viewable):
         )
         self.close_button = pn.widgets.ButtonIcon(
             name="Close",
-            on_click=self.move_side,
+            on_click=self.close,
             icon="square-rounded-x",
         )
 

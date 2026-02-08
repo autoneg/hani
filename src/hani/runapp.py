@@ -15,7 +15,7 @@ from hani.common import (
 
 def main():
     # Determine authentication mode
-    from hani.auth import get_auth_mode, patch_panel_auth, create_hashed_users_file
+    from hani.auth import get_auth_mode, create_hashed_users_file, ensure_admin_user
 
     auth_mode = get_auth_mode()
 
@@ -89,6 +89,9 @@ def main():
     else:
         # Password mode - use hashed password file
         print(f"  Using password file: {LOGIN_FILE}")
+
+        # Ensure admin user exists with password from ADMIN_PASS env var
+        ensure_admin_user()
 
         # Check if we need to convert plain text passwords to hashed
         hashed_file = LOGIN_FILE.parent / "users_hashed.json"

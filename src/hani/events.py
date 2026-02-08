@@ -643,3 +643,11 @@ def end_experiment(experiment_id: str) -> None:
     """End an experiment (convenience function)."""
     logger = get_event_logger()
     logger.end_experiment(experiment_id)
+
+
+@contextmanager
+def get_db_session() -> Generator[DBSession, None, None]:
+    """Get a database session context manager (convenience function)."""
+    logger = get_event_logger()
+    with logger._session() as session:
+        yield session

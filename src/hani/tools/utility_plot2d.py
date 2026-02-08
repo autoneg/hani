@@ -33,15 +33,17 @@ TRACE_COLUMNS = (
     "offer",
     "responses",
     "state",
+    "text",
+    "data",
 )
 
 
 class UtilityPlot2DTool(Tool):
     mechanism = param.ClassSelector(class_=SAOMechanism)
     history = param.List(item_type=TraceElement)
-    first_issue = param.Selector(objects=dict())
-    second_issue = param.Selector(objects=dict())
-    show_agent_ufun = param.Boolean()
+    first_issue = param.Selector(objects=[])
+    second_issue = param.Selector(objects=[])
+    show_agent_ufun = param.Boolean(default=False)
     human_index = param.Integer()
 
     def __init__(
@@ -70,8 +72,12 @@ class UtilityPlot2DTool(Tool):
             self.ycols.append(neg.name)
             self._minmax[neg.name] = neg.ufun.minmax()  # type: ignore
         self.xcols = self.time_cols + self.ycols
-        self.param.first_issue.objects = list(self.xcols)
-        self.param.second_issue.objects = list(self.ycols)
+        self.param.first_issue.objects = self.xcols
+        self.param.second_issue.objects = self.ycols
+        if self.xcols and not self.first_issue:
+            self.first_issue = self.xcols[0]
+        if self.ycols and not self.second_issue:
+            self.second_issue = self.ycols[0]
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         self.mechanism = session_state["mechanism"]
@@ -85,7 +91,9 @@ class UtilityPlot2DTool(Tool):
     def action_requested(self, session_state: dict[str, Any], nmi: SAONMI):
         self.history = self.mechanism.full_trace
 
-    @param.depends("mechanism", "first_issue", "second_issue", "history")
+    @param.depends(
+        "mechanism", "first_issue", "second_issue", "history", "show_agent_ufun"
+    )
     def plot(self):
         self._update_cols()
         x_col = self.first_issue
@@ -168,11 +176,15 @@ class UtilityPlot2DTool(Tool):
             )
         else:
             second_issue = pn.pane.Str(self.ycols[0] if self.ycols else "")
+        show_agent_checkbox = pn.widgets.Checkbox.from_param(
+            self.param.show_agent_ufun, name="Show Agent Utility"
+        )
         update_btn = pn.widgets.ButtonIcon(
             icon="refresh", on_click=lambda event: self.plot()
         )
         widgets = pn.Row(first_issue)
         if len(self.ycols) > 1:
             widgets.append(second_issue)
+        widgets.append(show_agent_checkbox)
         widgets.append(update_btn)
         return pn.Column(widgets, self.plot)

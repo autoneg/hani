@@ -5,6 +5,7 @@ This module provides:
 - Secure password hashing for Panel authentication
 - OAuth configuration detection
 - Dual authentication mode support
+- Admin user management via ADMIN_PASS environment variable
 """
 
 from __future__ import annotations
@@ -45,6 +46,62 @@ def hash_password(password: str, salt: str = "hani-secure-salt-2025") -> str:
         Hex digest of hashed password
     """
     return hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+
+
+def ensure_admin_user(salt: str = "hani-secure-salt-2025") -> None:
+    """Ensure admin user exists in the hashed users file with password from ADMIN_PASS env var.
+
+    This function creates or updates the admin user with the password specified
+    in the ADMIN_PASS environment variable. If ADMIN_PASS is not set, it defaults to 'admin'.
+
+    Args:
+        salt: Salt to use for password hashing
+    """
+    from hani.common import SETTINGS_DIR, LOGIN_FILE, ADMIN_PASS
+
+    # Ensure settings directory exists
+    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    hashed_file = LOGIN_FILE.parent / "users_hashed.json"
+
+    # Load existing hashed users or create empty dict
+    if hashed_file.exists():
+        try:
+            with open(hashed_file) as f:
+                hashed_users = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            hashed_users = {}
+    else:
+        hashed_users = {}
+
+    # Hash the admin password
+    admin_password_hash = hash_password(ADMIN_PASS, salt)
+
+    # Update admin user
+    hashed_users["admin"] = admin_password_hash
+
+    # Save hashed users file
+    with open(hashed_file, "w") as f:
+        json.dump(hashed_users, f, indent=2)
+
+    # Also update plain text file for reference (optional, for register.py compatibility)
+    if LOGIN_FILE.exists():
+        try:
+            with open(LOGIN_FILE) as f:
+                plain_users = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            plain_users = {}
+    else:
+        plain_users = {}
+
+    plain_users["admin"] = ADMIN_PASS
+
+    with open(LOGIN_FILE, "w") as f:
+        json.dump(plain_users, f, indent=2)
+
+    print(
+        f"✓ Admin user configured (password from {'ADMIN_PASS env var' if os.getenv('ADMIN_PASS') else 'default'})"
+    )
 
 
 def create_hashed_users_file(

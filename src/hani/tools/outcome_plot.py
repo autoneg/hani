@@ -34,6 +34,8 @@ TRACE_COLUMNS = (
     "offer",
     "responses",
     "state",
+    "text",
+    "data",
 )
 
 USED_COLUMNS = [
@@ -47,20 +49,21 @@ USED_COLUMNS = [
 class OutcomePlotTool(Tool):
     mechanism = param.ClassSelector(class_=SAOMechanism)
     history = param.List(item_type=TraceElement)
-    first_issue = param.Selector(objects=dict())
-    second_issue = param.Selector(objects=dict())
+    first_issue = param.Selector(objects=[])
+    second_issue = param.Selector(objects=[])
     show_human_trace = param.Boolean()
     human_id = param.String()
 
     def __init__(
         self,
         mechanism: SAOMechanism,
-        human_id: int,
+        human_id: str,
         show_human_trace: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.human_id = human_id
+        self.show_human_trace = show_human_trace
         self.mechanism = mechanism
         self._update_cols()
         self._config = dict(sizing_mode="stretch_width")
@@ -70,8 +73,12 @@ class OutcomePlotTool(Tool):
         issue_names = [_.name for _ in self._issues]
         self.time_cols = ["relative_time", "step", "time"]
         self.xcols = issue_names + self.time_cols
-        self.param.first_issue.objects = [_ for _ in self.xcols]
-        self.param.second_issue.objects = [_ for _ in self.xcols]
+        self.param.first_issue.objects = self.xcols
+        self.param.second_issue.objects = self.xcols
+        if self.xcols and not self.first_issue:
+            self.first_issue = self.xcols[0]
+        if len(self.xcols) > 1 and not self.second_issue:
+            self.second_issue = self.xcols[1]
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         self.mechanism = session_state["mechanism"]
@@ -168,7 +175,7 @@ class OutcomePlotTool(Tool):
             first_issue,
             second_issue,
             pn.widgets.Checkbox.from_param(
-                self.param.show_human_trace, value=self.show_human_trace
+                self.param.show_human_trace, name="Show Human Trace"
             ),
         )
         return pn.Column(widgets, self.plot)
