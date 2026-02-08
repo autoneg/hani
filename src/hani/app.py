@@ -2318,67 +2318,57 @@ Extract any offer from this message: {message}
     extraction_prompt_editor = pn.widgets.TextAreaInput(
         name="Extraction Prompt",
         value=llm_settings.get("extraction_prompt", ""),
-        height=400,
-        sizing_mode="stretch_width",
+        height=300,
+        width=750,
     )
-    extraction_tags_doc = pn.pane.Markdown(
-        PROMPT_TEMPLATE_TAGS, sizing_mode="stretch_width"
-    )
-    extraction_modal_content = pn.Column(
-        pn.pane.Markdown("### Edit Extraction Prompt"),
-        pn.pane.Markdown(
-            "*This prompt is used to extract structured offers from natural language text.*"
-        ),
-        extraction_prompt_editor,
-        extraction_tags_doc,
-        sizing_mode="stretch_width",
-        scroll=True,
-    )
-    extraction_modal = pn.Column(extraction_modal_content, width=800, height=700)
+    extraction_tags_doc = pn.pane.Markdown(PROMPT_TEMPLATE_TAGS, width=750)
 
     # Create modal for generation prompt editing
     generation_prompt_editor = pn.widgets.TextAreaInput(
         name="Generation Prompt",
         value=llm_settings.get("generation_prompt", ""),
-        height=400,
-        sizing_mode="stretch_width",
+        height=300,
+        width=750,
     )
-    generation_tags_doc = pn.pane.Markdown(
-        PROMPT_TEMPLATE_TAGS, sizing_mode="stretch_width"
-    )
-    generation_modal_content = pn.Column(
-        pn.pane.Markdown("### Edit Generation Prompt"),
-        pn.pane.Markdown(
-            "*This prompt is used to generate persuasive text from structured offers.*"
-        ),
-        generation_prompt_editor,
-        generation_tags_doc,
-        sizing_mode="stretch_width",
-        scroll=True,
-    )
-    generation_modal = pn.Column(generation_modal_content, width=800, height=700)
+    generation_tags_doc = pn.pane.Markdown(PROMPT_TEMPLATE_TAGS, width=750)
 
     # Store editors in session state for saving
     session_state["llm"]["extraction_prompt"] = extraction_prompt_editor
     session_state["llm"]["generation_prompt"] = generation_prompt_editor
-
-    # Store modals in session state
-    session_state["llm"]["extraction_modal"] = extraction_modal
-    session_state["llm"]["generation_modal"] = generation_modal
 
     # Create buttons to open modals
     def open_extraction_modal(event):
         template = session_state.get("template")
         if template:
             template.modal.clear()
-            template.modal.append(session_state["llm"]["extraction_modal"])
+            template.modal.extend(
+                [
+                    pn.pane.Markdown("## Edit Extraction Prompt"),
+                    pn.pane.Markdown(
+                        "*This prompt extracts structured offers from natural language text.*"
+                    ),
+                    extraction_prompt_editor,
+                    pn.layout.Divider(),
+                    extraction_tags_doc,
+                ]
+            )
             template.open_modal()
 
     def open_generation_modal(event):
         template = session_state.get("template")
         if template:
             template.modal.clear()
-            template.modal.append(session_state["llm"]["generation_modal"])
+            template.modal.extend(
+                [
+                    pn.pane.Markdown("## Edit Generation Prompt"),
+                    pn.pane.Markdown(
+                        "*This prompt generates persuasive text from structured offers.*"
+                    ),
+                    generation_prompt_editor,
+                    pn.layout.Divider(),
+                    generation_tags_doc,
+                ]
+            )
             template.open_modal()
 
     extraction_btn = pn.widgets.Button(
