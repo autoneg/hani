@@ -2286,7 +2286,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
 | `{issues_description}` | List of all negotiation issues with their possible values |
 | `{outcome_space_json}` | Full outcome space as JSON (all possible combinations) |
 | `{ufun_json}` | Your utility function as JSON (your preferences) |
+| `{ufun_description}` | Human-readable description of your preferences |
 | `{negotiation_history}` | Full history of all offers exchanged |
+| `{last_offer}` | The most recent offer from history |
+| `{last_5_offers}` | The last 5 offers from history |
+| `{last_10_offers}` | The last 10 offers from history |
 | `{current_offer_description}` | The partner's current offer you're responding to |
 | `{current_offer_utility}` | Your utility for the partner's current offer (as %) |
 
@@ -2303,86 +2307,35 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
 | `{message}` | The text message to extract an offer from |
 
 ### Example Usage
-```
-You are negotiating. The issues are:
-{issues_description}
 
-History so far:
-{negotiation_history}
+*You are negotiating. The issues are:*
+*{issues_description}*
 
-Extract any offer from this message: {message}
-```
+*History so far:*
+*{negotiation_history}*
+
+*Extract any offer from this message: {message}*
 """
 
-    # Create modal for extraction prompt editing
+    # Create prompt editors with documentation
     extraction_prompt_editor = pn.widgets.TextAreaInput(
         name="Extraction Prompt",
         value=llm_settings.get("extraction_prompt", ""),
-        height=300,
-        width=750,
+        height=200,
     )
-    extraction_tags_doc = pn.pane.Markdown(PROMPT_TEMPLATE_TAGS, width=750)
-
-    # Create modal for generation prompt editing
     generation_prompt_editor = pn.widgets.TextAreaInput(
         name="Generation Prompt",
         value=llm_settings.get("generation_prompt", ""),
-        height=300,
-        width=750,
+        height=200,
     )
-    generation_tags_doc = pn.pane.Markdown(PROMPT_TEMPLATE_TAGS, width=750)
+
+    # Template tags documentation (collapsible)
+    tags_doc = pn.pane.Markdown(PROMPT_TEMPLATE_TAGS, styles={"font-size": "9pt"})
 
     # Store editors in session state for saving
     session_state["llm"]["extraction_prompt"] = extraction_prompt_editor
     session_state["llm"]["generation_prompt"] = generation_prompt_editor
-
-    # Create buttons to open modals
-    def open_extraction_modal(event):
-        template = session_state.get("template")
-        if template:
-            template.modal.clear()
-            template.modal.extend(
-                [
-                    pn.pane.Markdown("## Edit Extraction Prompt"),
-                    pn.pane.Markdown(
-                        "*This prompt extracts structured offers from natural language text.*"
-                    ),
-                    extraction_prompt_editor,
-                    pn.layout.Divider(),
-                    extraction_tags_doc,
-                ]
-            )
-            template.open_modal()
-
-    def open_generation_modal(event):
-        template = session_state.get("template")
-        if template:
-            template.modal.clear()
-            template.modal.extend(
-                [
-                    pn.pane.Markdown("## Edit Generation Prompt"),
-                    pn.pane.Markdown(
-                        "*This prompt generates persuasive text from structured offers.*"
-                    ),
-                    generation_prompt_editor,
-                    pn.layout.Divider(),
-                    generation_tags_doc,
-                ]
-            )
-            template.open_modal()
-
-    extraction_btn = pn.widgets.Button(
-        name="Edit Extraction Prompt...", button_type="default"
-    )
-    extraction_btn.on_click(open_extraction_modal)
-
-    generation_btn = pn.widgets.Button(
-        name="Edit Generation Prompt...", button_type="default"
-    )
-    generation_btn.on_click(open_generation_modal)
-
-    session_state["llm"]["extraction_btn"] = extraction_btn
-    session_state["llm"]["generation_btn"] = generation_btn
+    session_state["llm"]["tags_doc"] = tags_doc
 
     # Disable LLM settings for non-admin users
     if not is_admin():
@@ -2397,8 +2350,13 @@ Extract any offer from this message: {message}
         session_state["llm"]["ollama_base_url"],
         session_state["llm"]["api_key_env"],
         session_state["llm"]["temperature"],
-        session_state["llm"]["extraction_btn"],
-        session_state["llm"]["generation_btn"],
+        session_state["llm"]["extraction_prompt"],
+        session_state["llm"]["generation_prompt"],
+        pn.Card(
+            session_state["llm"]["tags_doc"],
+            title="Template Tags Reference",
+            collapsed=True,
+        ),
         session_state["llm"]["save_btn"],
         title="LLM Settings (Admin)",
         collapsed=True,
