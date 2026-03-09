@@ -2050,13 +2050,19 @@ def main():
     logout.js_on_click(code="""window.location.href = './logout'""")
     images_base = Path(__file__).parent / "images"
 
-    # images_file = "hani.jpeg"
-    images_file = choice([_ for _ in images_base.glob("*.JPG") if _.is_file()])
+    # Try to load an image, but handle case where no images are available
+    available_images = [_ for _ in images_base.glob("*.JPG") if _.is_file()]
+    if available_images:
+        images_file = choice(available_images)
+        image_pane = pn.pane.JPG(
+            images_file, min_width=100, max_width=150, sizing_mode="scale_width"
+        )
+    else:
+        # No images available, use a placeholder or skip the image
+        image_pane = None
 
     image = pn.Column(
-        pn.pane.JPG(
-            images_file, min_width=100, max_width=150, sizing_mode="scale_width"
-        ),
+        image_pane,
         pn.pane.Markdown(f"## HAN2025\n## `{session_state['user']}`"),
         logout if pn.state.user else None,
         align="center",
