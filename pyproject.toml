@@ -41,8 +41,6 @@ hani-app = "runapp.run:main"
 hani-analysis = "hani.runanalytics:main"
 hani-experiment = "hani.runexperiment:main"
 
-[tool.uv.sources]
-negmas = { path = "../negmas" , editable = true }
 
 [project.optional-dependencies]
 dev = [
