@@ -272,6 +272,42 @@ if not genius_bridge_is_running():
 
 
 def get_agent_type(x: Negotiator | str | None) -> Negotiator:
+    # Handle file: prefix for loading classes from Python files
+    if isinstance(x, str) and x.startswith("file:"):
+        # Format: file:filename.ClassName
+        # Example: file:mynegotiator.MyNegotiator -> load MyNegotiator from mynegotiator.py
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        file_spec = x[5:]  # Remove "file:" prefix
+        parts = file_spec.rsplit(".", 1)
+        if len(parts) != 2:
+            raise ValueError(
+                f"Invalid file: format. Expected 'file:filename.ClassName', got '{x}'"
+            )
+
+        filename, classname = parts
+        filepath = Path.cwd() / f"{filename}.py"
+
+        if not filepath.exists():
+            raise FileNotFoundError(f"Could not find {filepath}")
+
+        # Load module from file
+        spec = importlib.util.spec_from_file_location(filename, filepath)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module from {filepath}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[filename] = module
+        spec.loader.exec_module(module)
+
+        # Get class from module
+        if not hasattr(module, classname):
+            raise AttributeError(f"Module {filename} has no class {classname}")
+
+        return getattr(module, classname)
+
     # Handle LLM negotiators from negmas-llm
     if isinstance(x, str) and x.startswith("LLM"):
         if x == "LLMHybridNegotiator" and LLMHybridNegotiator:

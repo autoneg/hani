@@ -187,6 +187,26 @@ hani --agents "genius.Atlas3,genius.AgentK,genius.HardHeaded"
 hani --agents "LLMHybridNegotiator,LLMBoulwareTBNegotiator,LLMConcederTBNegotiator"
 ```
 
+#### Custom Negotiators from Files
+```bash
+# Use "file:" prefix to load a class from a Python file in the current directory
+# Format: file:filename.ClassName (looks for filename.py)
+hani --agents "file:mynegotiator.MyNegotiator"
+
+# Mix with other negotiator types
+hani --agents "AspirationNegotiator,file:mynegotiator.MyNegotiator,helpers.AgentK"
+```
+
+**Example custom negotiator file (`mynegotiator.py`):**
+```python
+from negmas.sao import SAONegotiator
+
+class MyNegotiator(SAONegotiator):
+    def propose(self, state):
+        # Your custom negotiation logic here
+        return self.nmi.random_outcome()
+```
+
 ### UI Behavior
 
 When agent types are configured via `--agents` or `HANI_AGENT_TYPES`:
