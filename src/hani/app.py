@@ -1135,7 +1135,9 @@ def advance():
         step_to_human()
 
 
-def action_panel(current_offer: Outcome | None) -> pn.Column:
+def action_panel(
+    current_offer: Outcome | None, current_data: dict | None = None
+) -> pn.Column:
     if session_state["action_panel_displayed"]:
         return session_state["action_panel"][0]
     if not session_state["action_panel_displayed"]:
@@ -1376,16 +1378,12 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
     )
     accept_btn.on_click(on_accept)
     end_btn = create_tracked_button(
-        name="End Negotiation", icon="circle-x", button_type="warning"
+        name="End", icon="circle-x", button_type="warning", width=70
     )
     end_btn.on_click(on_end)
-    # end_btn = pn.widgets.Button(
-    #     name=f"End Receiving {session_state['human_ufun'](current_offer):0.03}"
-    # )
     session_state["reject_btn"] = reject_btn
     session_state["accept_btn"] = accept_btn
     session_state["end_btn"] = end_btn
-    row = pn.Row(reject_btn, accept_btn, end_btn)
 
     def offer_util(*widgets):
         outcome = tuple(None if isinstance(_, NoneType) else _ for _ in widgets)
@@ -1399,16 +1397,64 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
             styles={"font-size": "9pt"},
         )
 
-    def util_display():
-        return pn.pane.Markdown(
-            (
-                f"Your Utility if you accept partner offer: **{session_state['human_ufun'](current_offer):0.03}**"
-            ),
-            styles={"font-size": "9pt"},
-        )
-
     my_util = pn.bind(offer_util, *widgets)
     session_state["offer_widgets"] = widgets
+
+    # --- Current Offer Section (at the top) ---
+    # Display the current offer from partner with utility (color coded)
+    has_current_offer = current_offer is not None
+
+    # Extract text from current_data if available
+    current_offer_text = None
+    if current_data:
+        data_copy = {k: v for k, v in current_data.items()}
+        if "text" in data_copy:
+            current_offer_text = data_copy.pop("text")
+            if current_offer_text:
+                current_offer_text = current_offer_text.strip()
+
+    if has_current_offer:
+        current_offer_util = human_ufun(current_offer)
+        is_irrational = current_offer_util < human_ufun.reserved_value
+        util_color = "red" if is_irrational else "green"
+        current_offer_str = ", ".join(
+            f"{issue.name}: {val}" for issue, val in zip(issues, current_offer)
+        )
+        # Build the display with optional text
+        offer_html = f'<div style="font-size: 10pt;">'
+        if current_offer_text:
+            offer_html += (
+                f'<div style="margin-bottom: 4px;"><i>"{current_offer_text}"</i></div>'
+            )
+        offer_html += (
+            f"<b>Partner Offer:</b> {current_offer_str} "
+            f'<span style="color: {util_color}; font-weight: bold;">({current_offer_util:0.1%})</span>'
+        )
+        offer_html += "</div>"
+        current_offer_display = pn.pane.HTML(
+            offer_html,
+            sizing_mode="stretch_width",
+        )
+    else:
+        current_offer_display = pn.pane.HTML(
+            '<div style="font-size: 10pt; color: #666;"><b>Partner Offer:</b> No offer yet</div>',
+            sizing_mode="stretch_width",
+        )
+
+    # Row with current offer, Accept (only if offer exists) and End buttons
+    if has_current_offer:
+        current_offer_row = pn.Row(
+            current_offer_display,
+            accept_btn,
+            end_btn,
+            align="center",
+        )
+    else:
+        current_offer_row = pn.Row(
+            current_offer_display,
+            end_btn,
+            align="center",
+        )
 
     # Build the structured outcome section with generate text button
     outcome_widgets_list = []
@@ -1443,10 +1489,15 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
         pn.Row(llm_status_widget, pn.Spacer(), generate_text_btn, align="center"),
     )
 
+    # Row with just the Send button
+    send_row = pn.Row(reject_btn)
+
     col = pn.Column(
+        current_offer_row,
+        pn.layout.Divider(),
         outcome_section,
         my_util,
-        row,
+        send_row,
     )
 
     # Add text input section if allowed
@@ -1515,7 +1566,8 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
             text_input,
             text_row,
         )
-        col.insert(0, text_section)
+        # Insert text section after the divider (index 2: after current_offer_row and Divider)
+        col.insert(2, text_section)
 
     session_state["action_panel"].append(col)
     return col
@@ -1620,7 +1672,7 @@ def step_to_human(event=None):
     for tool in session_state["tools"]:
         tool.action_requested(session_state, mechanism.negotiators[human_index].nmi)
     if not negoiation_completed():
-        action_panel(mechanism.state.current_offer)
+        action_panel(mechanism.state.current_offer, mechanism.state.current_data)
     # session_state["template"].main[3:5, 3:10] = offer
 
 
@@ -2465,12 +2517,12 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     offer = load_form(selectable_scenario_type)
     session_state["action_panel"] = offer
     template.main[4:5, 0:5] = summary  # type: ignore
-    template.main[0:3, 5:12] = hist  # type: ignore
+    template.main[0:2, 5:12] = hist  # type: ignore
     if CONFIG.has_side_tabs:
-        template.main[3:5, 5:9] = offer  # type: ignore
-        template.main[3:5, 9:12] = side_tabs  # type: ignore
+        template.main[2:5, 5:9] = offer  # type: ignore
+        template.main[2:5, 9:12] = side_tabs  # type: ignore
     else:
-        template.main[3:5, 5:12] = offer  # type: ignore
+        template.main[2:5, 5:12] = offer  # type: ignore
     # template.main[0:5, 10:12] = tools_pane
 
     session_state["template"] = template
