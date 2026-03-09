@@ -35,9 +35,9 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 hani = "hani.run:main"
-hani-guest = "haniguest.run:main"
-hani-reg = "runregister.run:main"
-hani-app = "runapp.run:main"
+hani-guest = "hani.runguest:main"
+hani-reg = "hani.runregister:main"
+hani-app = "hani.runapp:main"
 hani-analysis = "hani.runanalytics:main"
 hani-experiment = "hani.runexperiment:main"
 
