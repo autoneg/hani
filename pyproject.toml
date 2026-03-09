@@ -33,6 +33,36 @@ dependencies = [
 requires = ["setuptools >= 40.6.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hani = [
+    "images/*.JPG",
+    "images/*.jpg", 
+    "images/*.png",
+    "templates/*.html",
+    "sample_scenarios/**/*.yml",
+    "sample_scenarios/**/*.yaml",
+    "config/*.yaml",
+    "config/*.yml",
+    "static/*.css",
+    "static/*.js",
+    "announcements.md",
+]
+
+[tool.setuptools.exclude-package-data]
+hani = [
+    "*.local",
+    "*.backup",
+    "*_old.*",
+    "*.working_backup",
+    ".DS_Store",
+]
+
 [project.scripts]
 hani = "hani.run:main"
 hani-guest = "hani.runguest:main"

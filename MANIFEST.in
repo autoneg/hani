@@ -1,0 +1,20 @@
+include README.md
+include CHANGELOG.md
+include LICENSE
+recursive-include src/hani/images *.JPG *.jpg *.png
+recursive-include src/hani/templates *.html
+recursive-include src/hani/sample_scenarios *.yml *.yaml
+recursive-include src/hani/config *.yaml *.yml
+recursive-include src/hani/static *.css *.js
+include src/hani/announcements.md
+
+# Exclude temporary and local files
+global-exclude *.local
+global-exclude .env.local
+global-exclude .envrc.local
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.backup
+global-exclude *_old.*
+global-exclude *.working_backup
