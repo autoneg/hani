@@ -139,6 +139,7 @@ from hani.common import (
     SCENARIO_ORDER_FILE,
     load_llm_settings,
     save_llm_settings,
+    AGENT_TYPES,
 )
 from hani.llm_service import (
     extract_outcome_from_text,
@@ -583,6 +584,7 @@ class AppConfig:
     mechanism_params: dict[str, Any] | None = None
     human_type: type[SAONegotiator] | str = HumanPlaceholder
     agent_type: type[SAONegotiator] | str = DefaultNegotiator  # type: ignore
+    agent_types: list[str] | None = None  # List of negotiator type strings to use
     display: DisplayConfig = field(factory=DisplayConfig)
     tools: list[ToolConfig] = field(factory=default_tools)
     outcome_display: OutcomeDisplay = DefaultOutcomeDisplay()
@@ -612,7 +614,27 @@ class AppConfig:
         return [_ for _ in self.tools if _.side and _.timing == timing]
 
 
-CONFIG = AppConfig()
+CONFIG = AppConfig(agent_types=AGENT_TYPES if AGENT_TYPES else None)
+
+
+# Override CONFIG.agent_types with command-line argument if provided
+# This happens at module load time, before main() is called
+def _load_cmdline_agents():
+    """Load agent types from command line args (takes precedence over env var)"""
+    import os
+
+    cmdline_agents = os.environ.get("_HANI_CMDLINE_AGENTS", "").strip()
+    if cmdline_agents:
+        agent_list = [a.strip() for a in cmdline_agents.split(",") if a.strip()]
+        if agent_list:
+            print(f"📋 Command-line agents override: {agent_list}")
+            CONFIG.agent_types = agent_list
+            return True
+    return False
+
+
+# Try to load command-line agents (will be called again in main() if not available yet)
+_load_cmdline_agents()
 
 
 # TOOLS = ["Offer Utilities", "Outcome View", "Inverse Utility"]
@@ -1909,6 +1931,9 @@ def remove_announcemnents():
 
 
 def main():
+    # Load command-line agents if provided (takes precedence over env var)
+    _load_cmdline_agents()
+
     session_state["env"] = load(ENV_FILE)
     pn.extension(sizing_mode="stretch_width")
     selectable_scenario_type = False
@@ -2068,14 +2093,24 @@ def main():
     session_state["timing"] = dict()
     session_state["scenarios"] = dict()
     session_state["partners"] = dict()
+
+    # Check if command line agent types are configured
+    has_cmdline_agents = CONFIG.agent_types is not None and len(CONFIG.agent_types) > 0
+
+    session_state["partners"]["cmdline_negotiators"] = pn.widgets.Checkbox(
+        name="Command Line/Env",
+        value=has_cmdline_agents,
+        disabled=not has_cmdline_agents,
+    )
     session_state["partners"]["llm_negotiators"] = pn.widgets.Checkbox(
-        name="Allow LLM Negotiators", value=True
+        name="Allow LLM Negotiators", value=not has_cmdline_agents
     )
     session_state["partners"]["negmas_negotiators"] = pn.widgets.Checkbox(
-        name="Allow NegMAS Negotiators", value=True
+        name="Allow NegMAS Negotiators", value=not has_cmdline_agents
     )
     session_state["partners"]["hani_negotiators"] = pn.widgets.Checkbox(
-        name="Allow HANI Negotiators", value=CONFIG.hani_helpers
+        name="Allow HANI Negotiators",
+        value=CONFIG.hani_helpers and not has_cmdline_agents,
     )
     session_state["partners"]["genius_negotiators"] = pn.widgets.Checkbox(
         name="Allow Genius Negotiators",
@@ -2084,6 +2119,15 @@ def main():
     )
 
     def make_agent_types():
+        # If command line negotiators checkbox is enabled and agent_types are configured, use them
+        if (
+            session_state["partners"]["cmdline_negotiators"].value
+            and CONFIG.agent_types
+        ):
+            print(f"Using command line agent types: {CONFIG.agent_types}")
+            return CONFIG.agent_types
+
+        # Otherwise, build agent types from UI checkboxes (default behavior)
         all_agent_types = []
         if session_state["partners"]["llm_negotiators"].value:
             all_agent_types += LLM_NEGOTIATORS
@@ -2115,6 +2159,9 @@ def main():
     def update_agent_types(event):
         session_state["partners"]["partner_types"].options = make_agent_types()
 
+    session_state["partners"]["cmdline_negotiators"].param.watch(
+        update_agent_types, "value"
+    )
     session_state["partners"]["llm_negotiators"].param.watch(
         update_agent_types, "value"
     )

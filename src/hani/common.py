@@ -95,6 +95,15 @@ COOKIE_SECRET = os.getenv("HANI_COOKIE_SECRET", "hani-super-secret-co-4653322hjh
 # Authentication mode: 'password' or 'oauth' or 'auto' (auto detects based on OAuth credentials)
 AUTH_MODE = os.getenv("HANI_AUTH_MODE", "auto")
 
+# Agent types configuration (comma-separated list of negotiator class names)
+# Example: "AspirationNegotiator,BoulwareTBNegotiator,helpers.AgentK,LLMHybridNegotiator"
+_agent_types_str = os.getenv("HANI_AGENT_TYPES", "")
+AGENT_TYPES = [
+    agent_type.strip()
+    for agent_type in _agent_types_str.split(",")
+    if agent_type.strip()
+]
+
 # LLM Configuration for outcome extraction and text generation
 LLM_SETTINGS_FILE = SETTINGS_DIR / "llm_settings.json"
 

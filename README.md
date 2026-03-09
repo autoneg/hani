@@ -122,8 +122,101 @@ When `HANI_AUTH_MODE=auto` (the default):
 | `HANI_OAUTH_ENCRYPTION_KEY` | OAuth encryption key | `` |
 | `HANI_COOKIE_SECRET` | Session cookie secret | (default value) |
 | `HANI_ENV` | Environment: `local` or `production` | `local` |
+| `HANI_AGENT_TYPES` | Comma-separated list of negotiator types | `` |
 | `OPENAI_API_KEY` | OpenAI API key for LLM features | `` |
 | `ANTHROPIC_API_KEY` | Anthropic API key (alternative to OpenAI) | `` |
+
+## Configuring Agent/Negotiator Types
+
+HANI allows you to specify which negotiator types the AI opponent can use. This can be configured via command-line arguments or environment variables.
+
+### Method 1: Command-Line Argument (Recommended)
+
+Use the `--agents` flag to specify a comma-separated list of negotiator types:
+
+```bash
+# Use specific NegMAS negotiators
+hani --agents "AspirationNegotiator,BoulwareTBNegotiator,ConcederTBNegotiator"
+
+# Mix of different negotiator types
+hani --agents "AspirationNegotiator,helpers.AgentK,helpers.Atlas3,LLMHybridNegotiator"
+
+# Use only HANI custom negotiators
+hani --agents "helpers.AgentK,helpers.HardHeaded,helpers.AverageTitForTat"
+```
+
+**Note:** Command-line arguments take precedence over environment variables.
+
+### Method 2: Environment Variable
+
+Set the `HANI_AGENT_TYPES` environment variable:
+
+```bash
+# Example: Use specific NegMAS negotiators
+export HANI_AGENT_TYPES="AspirationNegotiator,BoulwareTBNegotiator,ConcederTBNegotiator"
+
+# Then start HANI
+hani
+```
+
+### Supported Negotiator Namespaces
+
+HANI automatically resolves negotiator class names from different namespaces:
+
+#### NegMAS Negotiators (default namespace)
+```bash
+# No prefix needed - automatically resolved to negmas.sao.*
+hani --agents "AspirationNegotiator,BoulwareTBNegotiator,NaiveTitForTatNegotiator"
+```
+
+#### HANI Helper Negotiators
+```bash
+# Use "helpers." prefix - resolved to hani.helpers.negotiators.*
+hani --agents "helpers.AgentK,helpers.Atlas3,helpers.CUHKAgent,helpers.HardHeaded"
+```
+
+#### Genius Negotiators
+```bash
+# Use "genius." prefix - resolved to negmas.genius.gnegotiators.*
+hani --agents "genius.Atlas3,genius.AgentK,genius.HardHeaded"
+```
+
+#### LLM-based Negotiators
+```bash
+# Special handling for LLM negotiators
+hani --agents "LLMHybridNegotiator,LLMBoulwareTBNegotiator,LLMConcederTBNegotiator"
+```
+
+### UI Behavior
+
+When agent types are configured via `--agents` or `HANI_AGENT_TYPES`:
+
+- ✅ **"Command Line/Env"** checkbox: **Enabled and checked** by default
+- ❌ **"Allow LLM Negotiators"** checkbox: **Unchecked** by default
+- ❌ **"Allow NegMAS Negotiators"** checkbox: **Unchecked** by default
+- ❌ **"Allow HANI Negotiators"** checkbox: **Unchecked** by default
+- ❌ **"Allow Genius Negotiators"** checkbox: **Unchecked** by default
+
+This ensures that **by default**, the opponent will **ALWAYS be one of the configured negotiators**.
+
+Users can uncheck "Command Line/Env" and check other categories to mix configured agents with other agent types.
+
+### Examples
+
+**Only use time-based negotiators:**
+```bash
+hani --agents "BoulwareTBNegotiator,ConcederTBNegotiator,LinearTBNegotiator"
+```
+
+**Mix of custom and standard negotiators:**
+```bash
+hani --agents "AspirationNegotiator,helpers.AgentK,helpers.Atlas3"
+```
+
+**Use LLM negotiators only:**
+```bash
+hani --agents "LLMHybridNegotiator,LLMBoulwareTBNegotiator"
+```
 
 ## Application Commands
 

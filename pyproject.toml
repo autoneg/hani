@@ -1,6 +1,6 @@
 [project]
 name = "hani"
-version = "0.1.0"
+version = "0.2.0"
 description = "Run Human-Agent Negotiations"
 license = { text = "GNU Affero General Public License v3 (AGPL-3.0)" }
 authors = [
@@ -59,7 +59,7 @@ docs = [
 ]
 
 [tool.bumpversion]  # bumpversion config
-current_version = "0.1.0"
+current_version = "0.2.0"
 delete_bookmark = true
 commit = false
 tag = false

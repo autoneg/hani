@@ -1,6 +1,8 @@
 import sys
 import subprocess
 from pathlib import Path
+import argparse
+import os
 
 from hani.common import (
     LOGIN_FILE,
@@ -14,6 +16,24 @@ from hani.common import (
 
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Run HANI application")
+    parser.add_argument(
+        "--agents",
+        type=str,
+        help="Comma-separated list of negotiator types (e.g., 'AspirationNegotiator,helpers.AgentK,LLMHybridNegotiator')",
+    )
+    # Parse known args to allow panel's args to pass through
+    args, unknown_args = parser.parse_known_args()
+
+    # If --agents is provided via command-line (not from run.py), set it as environment variable
+    # run.py already sets _HANI_CMDLINE_AGENTS, so we only set it if not already set
+    if args.agents and not os.environ.get("_HANI_CMDLINE_AGENTS"):
+        print(f"🤖 Using agent types: {args.agents}")
+        os.environ["_HANI_CMDLINE_AGENTS"] = args.agents
+    elif os.environ.get("_HANI_CMDLINE_AGENTS"):
+        print(f"🤖 Using agent types: {os.environ['_HANI_CMDLINE_AGENTS']}")
+
     # Determine authentication mode
     from hani.auth import get_auth_mode, create_hashed_users_file, ensure_admin_user
 
@@ -43,12 +63,21 @@ def main():
         else []
     )
 
-    # Add extra user args (excluding our special keywords)
-    extra_args = (
-        [_ for _ in sys.argv[1:] if _ not in ("dev", "login", "port")]
-        if len(sys.argv) > 1
-        else []
-    )
+    # Add extra user args (excluding our special keywords and --agents)
+    excluded_keywords = ["dev", "login", "port", "--agents"]
+    extra_args = []
+    if len(sys.argv) > 1:
+        skip_next = False
+        for arg in unknown_args:
+            if skip_next:
+                skip_next = False
+                continue
+            if arg in excluded_keywords:
+                # Skip this arg and potentially the next one
+                if arg == "--agents":
+                    skip_next = True
+                continue
+            extra_args.append(arg)
 
     if auth_mode == "oauth":
         # OAuth mode - use GitHub/Google/etc authentication
@@ -122,7 +151,7 @@ def main():
 
         print("✓ Password authentication configured")
 
-    # Build final command
+    # Build final command (no agents_args needed - passed via environment variable)
     final_cmd = base_cmd + template_args + dev_args + auth_args + extra_args
 
     print(f"\n🚀 Starting HANI server...\n")
