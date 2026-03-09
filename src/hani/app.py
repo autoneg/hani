@@ -14,6 +14,7 @@ import time
 import threading
 import panel as pn
 from pathlib import Path
+import os
 
 
 def init_authentication():
@@ -887,13 +888,25 @@ def make_mechanism(
         agent_params["provider"] = llm_settings.get("provider", "ollama")
         agent_params["model"] = llm_settings.get("model", "qwen3:1.7b")
 
+    # Add verbose flag if enabled and supported by negotiator
+    verbose_enabled = os.getenv("_HANI_VERBOSE") == "1"
+
     negotiators = []
     n_negotiators = 2
     for i in range(n_negotiators):
         if i == human_index:
             negotiators.append(get_class(human_type)(**human_params))
         else:
-            negotiators.append(get_agent_type(agent_type)(**agent_params))  # type: ignore
+            agent_class = get_agent_type(agent_type)  # type: ignore
+            # Try to pass verbose=True if enabled and supported
+            if verbose_enabled:
+                try:
+                    negotiators.append(agent_class(**agent_params, verbose=True))
+                except TypeError:
+                    # Negotiator doesn't support verbose parameter, fallback to normal
+                    negotiators.append(agent_class(**agent_params))
+            else:
+                negotiators.append(agent_class(**agent_params))
     human_id = negotiators[human_index].id
     print(f"{human_params=}\n{agent_params=}\n{human_id=}")
     m = scenario.make_session(negotiators=negotiators)

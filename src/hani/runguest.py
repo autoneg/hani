@@ -17,6 +17,11 @@ def main():
         type=str,
         help="Comma-separated list of negotiator types (e.g., 'AspirationNegotiator,helpers.AgentK,LLMHybridNegotiator')",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output for negotiators (if supported)",
+    )
     args, unknown_args = parser.parse_known_args()
 
     try:
@@ -30,6 +35,13 @@ def main():
             env["_HANI_CMDLINE_AGENTS"] = args.agents
         elif env.get("_HANI_CMDLINE_AGENTS"):
             print(f"🤖 Using agent types: {env['_HANI_CMDLINE_AGENTS']}")
+
+        # Set verbose flag if provided
+        if args.verbose and not env.get("_HANI_VERBOSE"):
+            print(f"🔊 Verbose mode enabled")
+            env["_HANI_VERBOSE"] = "1"
+        elif env.get("_HANI_VERBOSE"):
+            print(f"🔊 Verbose mode enabled")
 
         subprocess.run(
             [

@@ -23,6 +23,11 @@ def main():
         type=str,
         help="Comma-separated list of negotiator types (e.g., 'AspirationNegotiator,helpers.AgentK,LLMHybridNegotiator')",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output for negotiators (if supported)",
+    )
     # Parse known args to allow panel's args to pass through
     args, unknown_args = parser.parse_known_args()
 
@@ -33,6 +38,13 @@ def main():
         os.environ["_HANI_CMDLINE_AGENTS"] = args.agents
     elif os.environ.get("_HANI_CMDLINE_AGENTS"):
         print(f"🤖 Using agent types: {os.environ['_HANI_CMDLINE_AGENTS']}")
+
+    # Set verbose flag if provided
+    if args.verbose and not os.environ.get("_HANI_VERBOSE"):
+        print(f"🔊 Verbose mode enabled")
+        os.environ["_HANI_VERBOSE"] = "1"
+    elif os.environ.get("_HANI_VERBOSE"):
+        print(f"🔊 Verbose mode enabled")
 
     # Determine authentication mode
     from hani.auth import get_auth_mode, create_hashed_users_file, ensure_admin_user
@@ -64,7 +76,7 @@ def main():
     )
 
     # Add extra user args (excluding our special keywords and --agents)
-    excluded_keywords = ["dev", "login", "port", "--agents"]
+    excluded_keywords = ["dev", "login", "port", "--agents", "--verbose"]
     extra_args = []
     if len(sys.argv) > 1:
         skip_next = False

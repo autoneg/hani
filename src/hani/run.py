@@ -8,12 +8,14 @@ from multiprocessing import Process
 BASE = Path(__file__).parent
 
 
-def run_app(name, args_list, cmdline_agents=None):
+def run_app(name, args_list, cmdline_agents=None, verbose=False):
     """Run a subprocess with given arguments and optional agent types"""
     # Set environment variable if agents are provided
     env = os.environ.copy()
     if cmdline_agents:
         env["_HANI_CMDLINE_AGENTS"] = cmdline_agents
+    if verbose:
+        env["_HANI_VERBOSE"] = "1"
 
     subprocess.run(
         ["python", str(BASE / name)] + args_list,
@@ -23,8 +25,9 @@ def run_app(name, args_list, cmdline_agents=None):
 
 
 def main():
-    # Parse command-line arguments to extract --agents
+    # Parse command-line arguments to extract --agents and --verbose
     cmdline_agents = None
+    verbose = False
     filtered_args = []
 
     i = 0
@@ -36,15 +39,21 @@ def main():
                 cmdline_agents = sys.argv[1 + i + 1]
                 i += 2  # Skip both --agents and its value
                 continue
+        elif arg == "--verbose":
+            verbose = True
+            i += 1
+            continue
         filtered_args.append(arg)
         i += 1
 
-    # Start all processes with filtered args (without --agents)
-    # Both main app and playground get the cmdline_agents env var
-    app = Process(target=run_app, args=("runapp.py", filtered_args, cmdline_agents))
-    reg = Process(target=run_app, args=("runregister.py", filtered_args, None))
+    # Start all processes with filtered args (without --agents and --verbose)
+    # Both main app and playground get the cmdline_agents and verbose env vars
+    app = Process(
+        target=run_app, args=("runapp.py", filtered_args, cmdline_agents, verbose)
+    )
+    reg = Process(target=run_app, args=("runregister.py", filtered_args, None, False))
     playground = Process(
-        target=run_app, args=("runguest.py", filtered_args, cmdline_agents)
+        target=run_app, args=("runguest.py", filtered_args, cmdline_agents, verbose)
     )
 
     app.start()
