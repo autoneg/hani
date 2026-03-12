@@ -189,15 +189,27 @@ hani --agents "LLMHybridNegotiator,LLMBoulwareTBNegotiator,LLMConcederTBNegotiat
 
 #### Custom Negotiators from Files
 ```bash
-# Use "file:" prefix to load a class from a Python file in the current directory
-# Format: file:filename.ClassName (looks for filename.py)
+# Use "file:" prefix to load a class from a Python file
+# Format: file:path/to/filename.ClassName
+
+# Simple file in current directory
 hani --agents "file:mynegotiator.MyNegotiator"
 
+# Relative path with subdirectories (use / - works on all platforms including Windows!)
+hani --agents "file:agents/custom/myneg.MyNegotiator"
+
+# Absolute path (Unix/Mac)
+hani --agents "file:/home/user/agents/myneg.MyNegotiator"
+
+# Absolute path (Windows - both / and \ work)
+hani --agents "file:C:/Users/user/agents/myneg.MyNegotiator"
+hani --agents "file:C:\Users\user\agents\myneg.MyNegotiator"
+
 # Mix with other negotiator types
-hani --agents "AspirationNegotiator,file:mynegotiator.MyNegotiator,helpers.AgentK"
+hani --agents "AspirationNegotiator,file:agents/custom/myneg.MyNegotiator,helpers.AgentK"
 ```
 
-**Example custom negotiator file (`mynegotiator.py`):**
+**Example custom negotiator file (`mynegotiator.py` or `agents/custom/myneg.py`):**
 ```python
 from negmas.sao import SAONegotiator
 
@@ -206,6 +218,11 @@ class MyNegotiator(SAONegotiator):
         # Your custom negotiation logic here
         return self.nmi.random_outcome()
 ```
+
+**Notes:**
+- Use forward slashes (`/`) for paths - they work cross-platform (recommended)
+- On Windows, backslashes (`\`) also work but may need escaping in some shells
+- Paths can be relative (to current working directory) or absolute
 
 ### UI Behavior
 

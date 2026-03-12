@@ -275,37 +275,74 @@ if not genius_bridge_is_running():
 def get_agent_type(x: Negotiator | str | None) -> Negotiator:
     # Handle file: prefix for loading classes from Python files
     if isinstance(x, str) and x.startswith("file:"):
-        # Format: file:filename.ClassName
-        # Example: file:mynegotiator.MyNegotiator -> load MyNegotiator from mynegotiator.py
+        # Format: file:path/to/filename.ClassName
+        # Examples:
+        #   file:mynegotiator.MyNegotiator -> load MyNegotiator from mynegotiator.py (relative)
+        #   file:a/b/c.MyClass -> load MyClass from a/b/c.py (relative with /, cross-platform)
+        #   file:a\b\c.MyClass -> load MyClass from a\b\c.py (relative with \, Windows)
+        #   file:/absolute/path/neg.MyClass -> load MyClass from /absolute/path/neg.py (absolute Unix)
+        #   file:C:/path/neg.MyClass -> load MyClass from C:/path/neg.py (absolute Windows with /)
+        #   file:C:\path\neg.MyClass -> load MyClass from C:\path\neg.py (absolute Windows with \)
+        # Separators: / (cross-platform, recommended) or \ (Windows)
         import importlib.util
         import sys
         from pathlib import Path
 
         file_spec = x[5:]  # Remove "file:" prefix
+
+        # Split by last dot to get class name
         parts = file_spec.rsplit(".", 1)
         if len(parts) != 2:
             raise ValueError(
-                f"Invalid file: format. Expected 'file:filename.ClassName', got '{x}'"
+                f"Invalid file: format. Expected 'file:path/to/filename.ClassName', got '{x}'"
             )
 
-        filename, classname = parts
-        filepath = Path.cwd() / f"{filename}.py"
+        path_str, classname = parts
+
+        # Check if path is absolute or relative
+        # Absolute paths: start with / (Unix/Mac) or have drive letter (Windows: C:/ or C:\)
+        path_obj = Path(path_str)
+        is_absolute_path = path_obj.is_absolute() or (
+            len(path_str) > 1 and path_str[1] == ":"
+        )
+
+        # Construct the filepath - Path handles both / and \ automatically
+        if is_absolute_path:
+            # Absolute path - use as-is
+            filepath = Path(path_str + ".py")
+        else:
+            # Relative path - resolve from current working directory
+            # Path() automatically handles both / and \ separators
+            filepath = Path.cwd() / f"{path_str}.py"
 
         if not filepath.exists():
             raise FileNotFoundError(f"Could not find {filepath}")
 
+        # Use a unique module name based on the full path to avoid conflicts
+        # Replace path separators with dots for module name
+        if filepath.is_absolute():
+            # For absolute paths, create a unique module name from the full path
+            module_name = (
+                str(filepath.resolve().with_suffix(""))
+                .replace("/", ".")
+                .replace("\\", ".")
+                .replace(":", "_")
+            )
+        else:
+            module_name = path_str.replace("/", ".").replace("\\", ".")
+
         # Load module from file
-        spec = importlib.util.spec_from_file_location(filename, filepath)
+        spec = importlib.util.spec_from_file_location(module_name, filepath)
         if spec is None or spec.loader is None:
             raise ImportError(f"Could not load module from {filepath}")
 
         module = importlib.util.module_from_spec(spec)
-        sys.modules[filename] = module
+        sys.modules[module_name] = module
         spec.loader.exec_module(module)
 
         # Get class from module
         if not hasattr(module, classname):
-            raise AttributeError(f"Module {filename} has no class {classname}")
+            raise AttributeError(f"Module {module_name} has no class {classname}")
 
         return getattr(module, classname)
 
