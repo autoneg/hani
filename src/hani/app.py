@@ -827,6 +827,8 @@ class CountdownTimer(pn.pane.HTML):
         self.full_duration = duration
 
     def _run(self):
+        import time  # Import in thread context to avoid scoping issues
+
         if np.isinf(self.duration):
             return
         end_time = time.time() + self.duration
