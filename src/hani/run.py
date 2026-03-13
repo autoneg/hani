@@ -3,9 +3,12 @@ import subprocess
 import os
 from pathlib import Path
 from multiprocessing import Process
+from typing import Optional, List
+import typer
 
 
 BASE = Path(__file__).parent
+app = typer.Typer(add_completion=False)
 
 
 def run_app(name, args_list, cmdline_agents=None, verbose=False):
@@ -24,45 +27,52 @@ def run_app(name, args_list, cmdline_agents=None, verbose=False):
     )
 
 
-def main():
-    # Parse command-line arguments to extract --agents and --verbose
-    cmdline_agents = None
-    verbose = False
-    filtered_args = []
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def main(
+    ctx: typer.Context,
+    agents: Optional[str] = typer.Option(
+        None,
+        "--agents",
+        help="Comma-separated list of negotiator types (e.g., 'AspirationNegotiator,helpers.AgentK,LLMHybridNegotiator')",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Enable verbose output for negotiators (if supported)",
+    ),
+):
+    """
+    Run HANI (Human-Agent Negotiation Interface) with all services.
 
-    i = 0
-    while i < len(sys.argv[1:]):
-        arg = sys.argv[1 + i]
-        if arg == "--agents":
-            # Next argument is the agents value
-            if i + 1 < len(sys.argv[1:]):
-                cmdline_agents = sys.argv[1 + i + 1]
-                i += 2  # Skip both --agents and its value
-                continue
-        elif arg == "--verbose":
-            verbose = True
-            i += 1
-            continue
-        filtered_args.append(arg)
-        i += 1
+    Starts three processes:
+    - Main app (port 5006)
+    - Registration server (port 5007)
+    - Guest/playground (port 5008)
+    """
+    # Get remaining args that aren't parsed by typer
+    filtered_args = []
+    if ctx.args:
+        filtered_args = list(ctx.args)
 
     # Start all processes with filtered args (without --agents and --verbose)
     # Both main app and playground get the cmdline_agents and verbose env vars
-    app = Process(
-        target=run_app, args=("runapp.py", filtered_args, cmdline_agents, verbose)
+    app_process = Process(
+        target=run_app, args=("runapp.py", filtered_args, agents, verbose)
     )
     reg = Process(target=run_app, args=("runregister.py", filtered_args, None, False))
     playground = Process(
-        target=run_app, args=("runguest.py", filtered_args, cmdline_agents, verbose)
+        target=run_app, args=("runguest.py", filtered_args, agents, verbose)
     )
 
-    app.start()
+    app_process.start()
     reg.start()
     playground.start()
-    Process.join(app)
+    Process.join(app_process)
     Process.join(reg)
     Process.join(playground)
 
 
 if __name__ == "__main__":
-    main()
+    app()

@@ -1,8 +1,9 @@
 import sys
 import subprocess
 from pathlib import Path
-import argparse
 import os
+from typing import Optional
+import typer
 
 from hani.common import (
     LOGIN_FILE,
@@ -15,43 +16,53 @@ from hani.common import (
 )
 
 
-def main():
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="Run HANI application")
-    parser.add_argument(
+app = typer.Typer(add_completion=False)
+
+
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def main(
+    ctx: typer.Context,
+    agents: Optional[str] = typer.Option(
+        None,
         "--agents",
-        type=str,
         help="Comma-separated list of negotiator types (e.g., 'AspirationNegotiator,helpers.AgentK,LLMHybridNegotiator')",
-    )
-    parser.add_argument(
+    ),
+    verbose: bool = typer.Option(
+        False,
         "--verbose",
-        action="store_true",
         help="Enable verbose output for negotiators (if supported)",
-    )
-    # Parse known args to allow panel's args to pass through
-    args, unknown_args = parser.parse_known_args()
+    ),
+    dev: bool = typer.Option(
+        False,
+        "--dev",
+        help="Run in development mode with auto-reload",
+    ),
+):
+    """Run HANI application with authentication."""
 
     # If --agents is provided via command-line (not from run.py), set it as environment variable
     # run.py already sets _HANI_CMDLINE_AGENTS, so we only set it if not already set
-    if args.agents and not os.environ.get("_HANI_CMDLINE_AGENTS"):
-        print(f"🤖 Using agent types: {args.agents}")
-        os.environ["_HANI_CMDLINE_AGENTS"] = args.agents
+    if agents and not os.environ.get("_HANI_CMDLINE_AGENTS"):
+        typer.echo(f"🤖 Using agent types: {agents}")
+        os.environ["_HANI_CMDLINE_AGENTS"] = agents
     elif os.environ.get("_HANI_CMDLINE_AGENTS"):
-        print(f"🤖 Using agent types: {os.environ['_HANI_CMDLINE_AGENTS']}")
+        typer.echo(f"🤖 Using agent types: {os.environ['_HANI_CMDLINE_AGENTS']}")
 
     # Set verbose flag if provided
-    if args.verbose and not os.environ.get("_HANI_VERBOSE"):
-        print(f"🔊 Verbose mode enabled")
+    if verbose and not os.environ.get("_HANI_VERBOSE"):
+        typer.echo(f"🔊 Verbose mode enabled")
         os.environ["_HANI_VERBOSE"] = "1"
     elif os.environ.get("_HANI_VERBOSE"):
-        print(f"🔊 Verbose mode enabled")
+        typer.echo(f"🔊 Verbose mode enabled")
 
     # Determine authentication mode
     from hani.auth import get_auth_mode, create_hashed_users_file, ensure_admin_user
 
     auth_mode = get_auth_mode()
 
-    print(f"🔐 Authentication mode: {auth_mode.upper()}")
+    typer.echo(f"🔐 Authentication mode: {auth_mode.upper()}")
 
     # Build base command
     base_cmd = [
@@ -69,46 +80,31 @@ def main():
     ]
 
     # Add dev flag if requested
-    dev_args = (
-        ["--dev"]
-        if len(sys.argv) > 1 and any(_ in sys.argv[1:] for _ in ("dev",))
-        else []
-    )
+    dev_args = ["--dev"] if dev else []
 
-    # Add extra user args (excluding our special keywords and --agents)
-    excluded_keywords = ["dev", "login", "port", "--agents", "--verbose"]
-    extra_args = []
-    if len(sys.argv) > 1:
-        skip_next = False
-        for arg in unknown_args:
-            if skip_next:
-                skip_next = False
-                continue
-            if arg in excluded_keywords:
-                # Skip this arg and potentially the next one
-                if arg == "--agents":
-                    skip_next = True
-                continue
-            extra_args.append(arg)
+    # Add extra user args from context
+    extra_args = list(ctx.args) if ctx.args else []
 
     if auth_mode == "oauth":
         # OAuth mode - use GitHub/Google/etc authentication
-        print(f"  Provider: {OAUTH_PROVIDER}")
-        print(f"  Redirect URI: {OAUTH_REDIRECT_URI}")
+        typer.echo(f"  Provider: {OAUTH_PROVIDER}")
+        typer.echo(f"  Redirect URI: {OAUTH_REDIRECT_URI}")
 
         if not OAUTH_KEY or not OAUTH_SECRET:
-            print("❌ ERROR: OAuth credentials not configured!")
-            print("   Set HANI_OAUTH_KEY and HANI_OAUTH_SECRET environment variables")
-            print("   Or use password authentication (unset HANI_OAUTH_KEY)")
-            sys.exit(1)
+            typer.echo("❌ ERROR: OAuth credentials not configured!")
+            typer.echo(
+                "   Set HANI_OAUTH_KEY and HANI_OAUTH_SECRET environment variables"
+            )
+            typer.echo("   Or use password authentication (unset HANI_OAUTH_KEY)")
+            raise typer.Exit(code=1)
 
         if not OAUTH_ENCRYPTION_KEY:
-            print("❌ ERROR: OAuth encryption key not configured!")
-            print("   Set HANI_OAUTH_ENCRYPTION_KEY environment variable")
-            print(
+            typer.echo("❌ ERROR: OAuth encryption key not configured!")
+            typer.echo("   Set HANI_OAUTH_ENCRYPTION_KEY environment variable")
+            typer.echo(
                 '   Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
-            sys.exit(1)
+            raise typer.Exit(code=1)
 
         auth_args = [
             "--oauth-provider",
@@ -125,11 +121,11 @@ def main():
             COOKIE_SECRET,
         ]
 
-        print("✓ OAuth authentication configured")
+        typer.echo("✓ OAuth authentication configured")
 
     else:
         # Password mode - use hashed password file
-        print(f"  Using password file: {LOGIN_FILE}")
+        typer.echo(f"  Using password file: {LOGIN_FILE}")
 
         # Ensure admin user exists with password from ADMIN_PASS env var
         ensure_admin_user()
@@ -139,16 +135,16 @@ def main():
         plain_backup = LOGIN_FILE.parent / "users_plain_backup.json"
 
         if not hashed_file.exists() and LOGIN_FILE.exists():
-            print("⚠️  Converting plain text passwords to hashed format...")
+            typer.echo("⚠️  Converting plain text passwords to hashed format...")
             # Create backup of plain text file
             import shutil
 
             shutil.copy(LOGIN_FILE, plain_backup)
-            print(f"✓ Backed up plain text passwords to {plain_backup}")
+            typer.echo(f"✓ Backed up plain text passwords to {plain_backup}")
 
             # Create hashed version
             create_hashed_users_file(LOGIN_FILE, hashed_file)
-            print(f"✓ Created hashed password file: {hashed_file}")
+            typer.echo(f"✓ Created hashed password file: {hashed_file}")
 
         # Use hashed file if it exists, otherwise fall back to plain
         # Note: Panel authentication patching happens in app.py when the app is loaded
@@ -161,18 +157,19 @@ def main():
             COOKIE_SECRET,
         ]
 
-        print("✓ Password authentication configured")
+        typer.echo("✓ Password authentication configured")
 
     # Build final command (no agents_args needed - passed via environment variable)
     final_cmd = base_cmd + template_args + dev_args + auth_args + extra_args
 
-    print(f"\n🚀 Starting HANI server...\n")
+    typer.echo(f"\n🚀 Starting HANI server...\n")
 
     try:
         subprocess.run(final_cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error running Panel app: {e}")
+        typer.echo(f"❌ Error running Panel app: {e}")
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
-    main()
+    app()

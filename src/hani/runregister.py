@@ -1,6 +1,7 @@
 import sys
 import subprocess
 from pathlib import Path
+import typer
 
 from hani.common import (
     REG_PORT,
@@ -14,13 +15,28 @@ from hani.common import (
 )
 
 
-def main():
+app = typer.Typer(add_completion=False)
+
+
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def main(
+    ctx: typer.Context,
+    dev: bool = typer.Option(
+        False,
+        "--dev",
+        help="Run in development mode with auto-reload",
+    ),
+):
+    """Run HANI registration server."""
+
     # Determine authentication mode
     from hani.auth import get_auth_mode, create_hashed_users_file
 
     auth_mode = get_auth_mode()
 
-    print(f"🔐 Registration app authentication mode: {auth_mode.upper()}")
+    typer.echo(f"🔐 Registration app authentication mode: {auth_mode.upper()}")
 
     # Build base command
     base_cmd = [
@@ -32,34 +48,26 @@ def main():
     ]
 
     # Add dev flag if requested
-    dev_args = (
-        ["--dev"]
-        if len(sys.argv) > 1 and any(_ in sys.argv[1:] for _ in ("dev",))
-        else []
-    )
+    dev_args = ["--dev"] if dev else []
 
-    # Add extra user args (excluding our special keywords)
-    extra_args = (
-        [_ for _ in sys.argv[1:] if _ not in ("dev", "login", "port")]
-        if len(sys.argv) > 1
-        else []
-    )
+    # Get extra args from context
+    extra_args = list(ctx.args) if ctx.args else []
 
     if auth_mode == "oauth":
         # OAuth mode - use GitHub/Google/etc authentication
         # Note: Registration app typically doesn't require auth itself,
         # but we configure it to match the main app for consistency
-        print(f"  Provider: {OAUTH_PROVIDER}")
-        print(f"  Redirect URI: {OAUTH_REDIRECT_URI}")
+        typer.echo(f"  Provider: {OAUTH_PROVIDER}")
+        typer.echo(f"  Redirect URI: {OAUTH_REDIRECT_URI}")
 
         if not OAUTH_KEY or not OAUTH_SECRET:
-            print(
+            typer.echo(
                 "⚠️  OAuth credentials not configured - running without authentication"
             )
-            print("   (This is normal for a registration app)")
+            typer.echo("   (This is normal for a registration app)")
             auth_args = []
         elif not OAUTH_ENCRYPTION_KEY:
-            print(
+            typer.echo(
                 "⚠️  OAuth encryption key not configured - running without authentication"
             )
             auth_args = []
@@ -79,21 +87,21 @@ def main():
                 "--cookie-secret",
                 COOKIE_SECRET,
             ]
-            print("✓ OAuth authentication configured")
+            typer.echo("✓ OAuth authentication configured")
 
     else:
         # Password mode - registration app typically doesn't need auth
         # but we set up cookie handling for consistency
-        print(f"  Password file location: {LOGIN_FILE}")
+        typer.echo(f"  Password file location: {LOGIN_FILE}")
 
         # Check if we need to convert plain text passwords to hashed
         hashed_file = LOGIN_FILE.parent / "users_hashed.json"
 
         if not hashed_file.exists() and LOGIN_FILE.exists():
-            print("⚠️  Converting plain text passwords to hashed format...")
+            typer.echo("⚠️  Converting plain text passwords to hashed format...")
             # Create hashed version
             create_hashed_users_file(LOGIN_FILE, hashed_file)
-            print(f"✓ Created hashed password file: {hashed_file}")
+            typer.echo(f"✓ Created hashed password file: {hashed_file}")
 
         # Registration app doesn't require login, but we set up cookies
         # for session consistency with main app
@@ -102,20 +110,21 @@ def main():
             COOKIE_SECRET,
         ]
 
-        print(
+        typer.echo(
             "✓ Password mode configured (no authentication required for registration)"
         )
 
     # Build final command
     final_cmd = base_cmd + dev_args + auth_args + extra_args
 
-    print(f"\n🚀 Starting HANI Registration server on port {REG_PORT}...\n")
+    typer.echo(f"\n🚀 Starting HANI Registration server on port {REG_PORT}...\n")
 
     try:
         subprocess.run(final_cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error running Panel app: {e}")
+        typer.echo(f"❌ Error running Panel app: {e}")
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
-    main()
+    app()
