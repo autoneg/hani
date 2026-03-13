@@ -176,7 +176,9 @@ def main(
                 lambda x: int(x[:4]) if x != "Unknown" else -1
             )
             data["load_path"] = data["scenario_name"].apply(
-                lambda x: f"/Users/yasser/negmas/hani/settings/scenarios/{x[4:]}/{x}"
+                lambda x: str(
+                    Path.home() / f"negmas/hani/settings/scenarios/{x[4:]}/{x}"
+                )
             )
             data["generated"] = data["scenario_name"].apply(
                 lambda x: x not in base_names
