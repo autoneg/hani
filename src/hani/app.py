@@ -199,6 +199,15 @@ TEMPLATE_BASED_NEGOTIATORS = [
     "LinearWithTextNegotiator",
 ]
 
+# Agent groups for command-line selection (use :group_name syntax)
+AGENT_GROUPS = {
+    ":llm": LLM_NEGOTIATORS,
+    ":template": TEMPLATE_BASED_NEGOTIATORS,
+    ":negmas": NEGMAS_NEGOTIATORS,
+    ":hani": HANI_NEGOTIATORS,
+    ":genius": GENIUS_NEGOTITORS,
+}
+
 
 LAYOUT_OPTIONS = dict(
     showlegend=False,
@@ -725,12 +734,34 @@ CONFIG = AppConfig(agent_types=AGENT_TYPES if AGENT_TYPES else None)
 # Override CONFIG.agent_types with command-line argument if provided
 # This happens at module load time, before main() is called
 def _load_cmdline_agents():
-    """Load agent types from command line args (takes precedence over env var)"""
+    """Load agent types from command line args (takes precedence over env var).
+
+    Supports group names with ':' prefix:
+      :llm - LLM-based negotiators
+      :template - Template-based negotiators (*WithTextNegotiator)
+      :negmas - NegMAS negotiators
+      :hani - HANI negotiators
+      :genius - Genius negotiators
+
+    Example: --agents :llm,:template,CustomNegotiator
+    """
     import os
 
     cmdline_agents = os.environ.get("_HANI_CMDLINE_AGENTS", "").strip()
     if cmdline_agents:
-        agent_list = [a.strip() for a in cmdline_agents.split(",") if a.strip()]
+        raw_list = [a.strip() for a in cmdline_agents.split(",") if a.strip()]
+        # Expand group names (items starting with ':')
+        agent_list = []
+        for item in raw_list:
+            if item.startswith(":"):
+                group = AGENT_GROUPS.get(item.lower())
+                if group:
+                    agent_list.extend(group)
+                else:
+                    available = ", ".join(AGENT_GROUPS.keys())
+                    print(f"⚠️ Unknown agent group '{item}'. Available: {available}")
+            else:
+                agent_list.append(item)
         if agent_list:
             print(f"📋 Command-line agents override: {agent_list}")
             CONFIG.agent_types = agent_list

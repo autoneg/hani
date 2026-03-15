@@ -35,7 +35,9 @@ def main(
     agents: Optional[str] = typer.Option(
         None,
         "--agents",
-        help="Comma-separated list of negotiator types (e.g., 'AspirationNegotiator,helpers.AgentK,LLMHybridNegotiator')",
+        help="Comma-separated list of negotiator types or groups. "
+        "Groups start with ':' - :llm, :template, :negmas, :hani, :genius. "
+        "Example: ':template,:llm' or 'AspirationNegotiator,LLMHybridNegotiator'",
     ),
     verbose: bool = typer.Option(
         False,
