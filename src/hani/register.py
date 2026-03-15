@@ -37,7 +37,16 @@ def save_users(users):
 
 
 # Registration form
-reg_consent = pn.pane.Markdown(CONSENT_FILE.read_text())
+DEFAULT_CONSENT_TEXT = """## Consent Form
+
+By registering, you agree to participate in the Human-Agent Negotiation study.
+
+Please read the terms carefully before proceeding.
+"""
+
+reg_consent = pn.pane.Markdown(
+    CONSENT_FILE.read_text() if CONSENT_FILE.exists() else DEFAULT_CONSENT_TEXT
+)
 reg_signature = pn.widgets.Checkbox(
     name="I hereby confirm that I have read relevant details of Human Agent Negotiation Competition and all my questions (if any) were answered by the researcher. I consent to participate in this study voluntarily. "
 )
