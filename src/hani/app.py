@@ -2237,7 +2237,7 @@ def main():
         disabled=not has_cmdline_agents,
     )
     session_state["partners"]["llm_negotiators"] = pn.widgets.Checkbox(
-        name="Allow LLM Negotiators", value=not has_cmdline_agents
+        name="Allow LLM Negotiators", value=False
     )
     session_state["partners"]["template_negotiators"] = pn.widgets.Checkbox(
         name="Allow Template-Based Negotiators", value=not has_cmdline_agents
