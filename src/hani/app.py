@@ -2255,11 +2255,11 @@ def main():
         name="Allow Template-Based Negotiators", value=not has_cmdline_agents
     )
     session_state["partners"]["negmas_negotiators"] = pn.widgets.Checkbox(
-        name="Allow NegMAS Negotiators", value=not has_cmdline_agents
+        name="Allow NegMAS Negotiators", value=False
     )
     session_state["partners"]["hani_negotiators"] = pn.widgets.Checkbox(
         name="Allow HANI Negotiators",
-        value=CONFIG.hani_helpers and not has_cmdline_agents,
+        value=False,
     )
     session_state["partners"]["genius_negotiators"] = pn.widgets.Checkbox(
         name="Allow Genius Negotiators",
