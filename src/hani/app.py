@@ -1925,8 +1925,20 @@ def start_negotiation(event=None):
 
 
 def get_subfolders(path: Path):
-    folders = list(_ for _ in path.glob("*") if _.is_dir())
-    return dict(zip([_.name for _ in folders], folders))
+    """Get subfolders from path, falling back to default scenarios if path doesn't exist or is empty."""
+    if path.exists():
+        folders = list(_ for _ in path.glob("*") if _.is_dir())
+        if folders:
+            return dict(zip([_.name for _ in folders], folders))
+    # Fall back to default scenarios bundled with the package
+    from hani.common import DEFAULT_SCENRIOS
+
+    default_parent = DEFAULT_SCENRIOS.parent  # sample_scenarios directory
+    if default_parent.exists():
+        folders = list(_ for _ in default_parent.glob("*") if _.is_dir())
+        if folders:
+            return dict(zip([_.name for _ in folders], folders))
+    return {}
 
 
 def generate_scenario() -> Scenario:
@@ -2318,7 +2330,10 @@ def main():
     )
 
     session_state["scenarios"]["scenario_folder"] = pn.widgets.Select(
-        name="File Sources", options=folders, size=2, value=list(folders.values())[0]
+        name="File Sources",
+        options=folders,
+        size=2,
+        value=list(folders.values())[0] if folders else None,
     )
     session_state["scenarios"]["generators"] = pn.widgets.MultiSelect(
         name="Loaders", options=MAKER_MAP, size=3, value=list(LOADER_MAP.values())

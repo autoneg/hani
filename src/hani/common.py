@@ -29,14 +29,35 @@ HANI_GUEST_PORT = 5008
 REG_PORT = 5007
 HANI_PORT = 5006
 
-# Settings directory
+# Settings directories
 SETTINGS_DIR = Path.home() / "negmas" / "hani" / "settings"
+DEFAULT_SETTINGS_DIR = Path(__file__).parent / "default_settings"
 
-SCENARIO_ORDER_FILE = SETTINGS_DIR / "scenario_order.txt"
-CONSENT_FILE = SETTINGS_DIR / "consent.md"
-ENV_FILE = SETTINGS_DIR / "env.json"
-USERS_FILE = SETTINGS_DIR / "users_info.json"
-LOGIN_FILE = SETTINGS_DIR / "users.json"
+
+def get_settings_file(filename: str) -> Path:
+    """Get a settings file, falling back to default_settings if not found in user settings."""
+    user_file = SETTINGS_DIR / filename
+    if user_file.exists():
+        return user_file
+    default_file = DEFAULT_SETTINGS_DIR / filename
+    if default_file.exists():
+        return default_file
+    return user_file  # Return user path even if it doesn't exist (for error messages)
+
+
+def read_settings_file(filename: str, default: str = "") -> str:
+    """Read a settings file, falling back to default_settings if not found."""
+    settings_file = get_settings_file(filename)
+    if settings_file.exists():
+        return settings_file.read_text()
+    return default
+
+
+SCENARIO_ORDER_FILE = get_settings_file("scenario_order.txt")
+CONSENT_FILE = get_settings_file("consent.md")
+ENV_FILE = get_settings_file("env.json")
+USERS_FILE = SETTINGS_DIR / "users_info.json"  # User data stays in user settings
+LOGIN_FILE = SETTINGS_DIR / "users.json"  # User data stays in user settings
 SAMPLE_SCENRIOS = SETTINGS_DIR / "scenarios"
 DEFAULT_SCENRIOS = Path(__file__).parent / "sample_scenarios" / "Default"
 INFO_FILE_NAME = "_info.yaml"
@@ -60,10 +81,15 @@ HANI_ENV = os.getenv("HANI_ENV", "local")  # 'local' or 'production'
 # Load environment-specific URLs
 def load_app_urls():
     """Load app URLs based on HANI_ENV environment variable"""
+    # Try environment-specific file in user settings first
     env_file = SETTINGS_DIR / f"env.{HANI_ENV}.json"
 
-    # Fallback to env.json if specific env file doesn't exist
     if not env_file.exists():
+        # Try environment-specific file in default settings
+        env_file = DEFAULT_SETTINGS_DIR / f"env.{HANI_ENV}.json"
+
+    if not env_file.exists():
+        # Fallback to env.json (already uses get_settings_file)
         env_file = ENV_FILE
 
     if env_file.exists():
