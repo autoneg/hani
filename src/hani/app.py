@@ -1908,7 +1908,16 @@ def generate_scenario() -> Scenario:
     return choice(generators)(session_state["next_scenario"])
 
 
-SCENARIO_LIST = (SCENARIO_ORDER_FILE).read_text().splitlines()
+# Load scenario order from file, falling back to LOADER_MAP keys if file doesn't exist
+def _load_scenario_list():
+    """Load scenario ordering, with graceful fallback if settings folder doesn't exist."""
+    if SCENARIO_ORDER_FILE.exists():
+        return SCENARIO_ORDER_FILE.read_text().splitlines()
+    # Fall back to available loader types when scenario_order.txt doesn't exist
+    return list(LOADER_MAP.keys())
+
+
+SCENARIO_LIST = _load_scenario_list()
 LAST_SCENARIO_FILE = "last_scenario.txt"
 
 
