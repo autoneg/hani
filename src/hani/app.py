@@ -77,9 +77,12 @@ from negmas import (
 from negmas.sao import SAONegotiator, SAOState
 
 try:
-    from negmas.sao import HybridNegotiator as DefaultNegotiator
+    from negmas_llm import HybridWithTextNegotiator as DefaultNegotiator
 except:
-    from negmas.sao import AspirationNegotiator as DefaultNegotiator
+    try:
+        from negmas.sao import HybridNegotiator as DefaultNegotiator
+    except:
+        from negmas.sao import AspirationNegotiator as DefaultNegotiator
 
 # Import LLM negotiators from negmas-llm
 LLM_NEGOTIATORS = []
@@ -102,6 +105,28 @@ except ImportError:
     LLMConcederTBNegotiator = None
     LLMLinearTBNegotiator = None
     LLMHybridNegotiator = None
+
+# Import template-based negotiators from negmas-llm (*WithTextNegotiator)
+TEMPLATE_BASED_NEGOTIATORS = []
+try:
+    from negmas_llm import (
+        BoulwareWithTextNegotiator,
+        ConcederWithTextNegotiator,
+        LinearWithTextNegotiator,
+        HybridWithTextNegotiator,
+    )
+
+    TEMPLATE_BASED_NEGOTIATORS = [
+        "HybridWithTextNegotiator",
+        "BoulwareWithTextNegotiator",
+        "ConcederWithTextNegotiator",
+        "LinearWithTextNegotiator",
+    ]
+except ImportError:
+    BoulwareWithTextNegotiator = None
+    ConcederWithTextNegotiator = None
+    LinearWithTextNegotiator = None
+    HybridWithTextNegotiator = None
 
 FAST_MICRO_NEGOTIATOR = None
 try:
@@ -166,6 +191,12 @@ LLM_NEGOTIATORS = [
     "LLMBoulwareTBNegotiator",
     "LLMConcederTBNegotiator",
     "LLMLinearTBNegotiator",
+]
+TEMPLATE_BASED_NEGOTIATORS = [
+    "HybridWithTextNegotiator",
+    "BoulwareWithTextNegotiator",
+    "ConcederWithTextNegotiator",
+    "LinearWithTextNegotiator",
 ]
 
 
@@ -1531,7 +1562,7 @@ def action_panel(
             f"{issue.name}: {val}" for issue, val in zip(issues, current_offer)
         )
         # Build the display with optional text
-        offer_html = f'<div style="font-size: 10pt;">'
+        offer_html = '<div style="font-size: 10pt;">'
         if current_offer_text:
             offer_html += (
                 f'<div style="margin-bottom: 4px;"><i>"{current_offer_text}"</i></div>'
@@ -2208,6 +2239,9 @@ def main():
     session_state["partners"]["llm_negotiators"] = pn.widgets.Checkbox(
         name="Allow LLM Negotiators", value=not has_cmdline_agents
     )
+    session_state["partners"]["template_negotiators"] = pn.widgets.Checkbox(
+        name="Allow Template-Based Negotiators", value=not has_cmdline_agents
+    )
     session_state["partners"]["negmas_negotiators"] = pn.widgets.Checkbox(
         name="Allow NegMAS Negotiators", value=not has_cmdline_agents
     )
@@ -2234,6 +2268,8 @@ def main():
         all_agent_types = []
         if session_state["partners"]["llm_negotiators"].value:
             all_agent_types += LLM_NEGOTIATORS
+        if session_state["partners"]["template_negotiators"].value:
+            all_agent_types += TEMPLATE_BASED_NEGOTIATORS
         if session_state["partners"]["negmas_negotiators"].value:
             all_agent_types += NEGMAS_NEGOTIATORS
         if session_state["partners"]["hani_negotiators"].value:
@@ -2266,6 +2302,9 @@ def main():
         update_agent_types, "value"
     )
     session_state["partners"]["llm_negotiators"].param.watch(
+        update_agent_types, "value"
+    )
+    session_state["partners"]["template_negotiators"].param.watch(
         update_agent_types, "value"
     )
     session_state["partners"]["genius_negotiators"].param.watch(
