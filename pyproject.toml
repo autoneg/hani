@@ -1,6 +1,6 @@
 [project]
 name = "hani"
-version = "0.2.0"
+version = "0.2.1"
 description = "Run Human-Agent Negotiations"
 license = { text = "GNU Affero General Public License v3 (AGPL-3.0)" }
 authors = [
@@ -65,7 +65,7 @@ hani = [
 ]
 
 [project.scripts]
-hani = "hani.run:main"
+hani = "hani.run:app"
 hani-guest = "hani.runguest:main"
 hani-reg = "hani.runregister:main"
 hani-app = "hani.runapp:main"
