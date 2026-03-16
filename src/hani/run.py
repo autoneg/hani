@@ -44,36 +44,68 @@ def main(
         "--verbose",
         help="Enable verbose output for negotiators (if supported)",
     ),
+    no_main: bool = typer.Option(
+        False,
+        "--no-main",
+        help="Do not start the main app (port 5006)",
+    ),
+    no_reg: bool = typer.Option(
+        False,
+        "--no-reg",
+        help="Do not start the registration server (port 5007)",
+    ),
+    no_guest: bool = typer.Option(
+        False,
+        "--no-guest",
+        help="Do not start the guest/playground (port 5008)",
+    ),
 ):
     """
     Run HANI (Human-Agent Negotiation Interface) with all services.
 
-    Starts three processes:
+    Starts three processes by default:
     - Main app (port 5006)
     - Registration server (port 5007)
     - Guest/playground (port 5008)
+
+    Use --no-main, --no-reg, or --no-guest to disable specific services.
     """
     # Get remaining args that aren't parsed by typer
     filtered_args = []
     if ctx.args:
         filtered_args = list(ctx.args)
 
-    # Start all processes with filtered args (without --agents and --verbose)
+    # Start requested processes with filtered args
     # Both main app and playground get the cmdline_agents and verbose env vars
-    app_process = Process(
-        target=run_app, args=("runapp.py", filtered_args, agents, verbose)
-    )
-    reg = Process(target=run_app, args=("runregister.py", filtered_args, None, False))
-    playground = Process(
-        target=run_app, args=("runguest.py", filtered_args, agents, verbose)
-    )
+    processes = []
 
-    app_process.start()
-    reg.start()
-    playground.start()
-    Process.join(app_process)
-    Process.join(reg)
-    Process.join(playground)
+    if not no_main:
+        app_process = Process(
+            target=run_app, args=("runapp.py", filtered_args, agents, verbose)
+        )
+        app_process.start()
+        processes.append(app_process)
+
+    if not no_reg:
+        reg = Process(
+            target=run_app, args=("runregister.py", filtered_args, None, False)
+        )
+        reg.start()
+        processes.append(reg)
+
+    if not no_guest:
+        playground = Process(
+            target=run_app, args=("runguest.py", filtered_args, agents, verbose)
+        )
+        playground.start()
+        processes.append(playground)
+
+    if not processes:
+        print("⚠️ No services to start. Remove some --no-* flags.")
+        return
+
+    for p in processes:
+        p.join()
 
 
 if __name__ == "__main__":
