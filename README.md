@@ -1,6 +1,12 @@
 # Human-Agent Negotiation Interface (HANI)
 
-![hani](src/hani/images/hani1.JPG)
+[![PyPI version](https://img.shields.io/pypi/v/hani.svg)](https://pypi.python.org/pypi/hani)
+[![Python](https://img.shields.io/pypi/pyversions/hani.svg)](https://pypi.python.org/pypi/hani)
+[![Downloads](https://img.shields.io/pypi/dm/hani.svg)](https://pypi.python.org/pypi/hani)
+[![License](https://img.shields.io/pypi/l/hani.svg)](https://pypi.python.org/pypi/hani)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://yasserfarouk.github.io/hani/)
+
+![hani](hani.png)
 
 HANI is a web-based interface for conducting negotiations between humans and AI agents. It provides a rich set of tools for analyzing negotiation dynamics, making offers, and understanding your negotiation partner's behavior.
 
@@ -362,7 +368,9 @@ src/hani/
 
 ## License
 
-GNU Affero General Public License v3 (AGPL-3.0)
+This project is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](https://www.gnu.org/licenses/agpl-3.0.en.html).
+
+See the [LICENSE](LICENSE) file for details.
 
 ## Author
 

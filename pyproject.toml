@@ -2,7 +2,7 @@
 name = "hani"
 version = "0.3.0"
 description = "Run Human-Agent Negotiations"
-license = { text = "GNU Affero General Public License v3 (AGPL-3.0)" }
+license = "AGPL-3.0-or-later"
 authors = [
     { name = "Yasser Mohammad", email = "yasserfarouk@gmail.com" },
 ]
@@ -27,6 +27,12 @@ dependencies = [
     "sqlalchemy>=2.0.39",
     "typer>=0.9.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/yasserfarouk/hani"
+Documentation = "https://yasserfarouk.github.io/hani/"
+Repository = "https://github.com/yasserfarouk/hani"
+Changelog = "https://github.com/yasserfarouk/hani/blob/main/CHANGELOG.md"
 
 [build-system]
 # requires = ["hatchling"]

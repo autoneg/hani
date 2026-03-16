@@ -96,6 +96,7 @@ def _start_services(
     verbose: bool = False,
     no_main: bool = False,
     no_guest: bool = False,
+    no_browser: bool = False,
     extra_args: Optional[list] = None,
 ):
     """Start HANI services."""
@@ -120,8 +121,15 @@ def _start_services(
         processes.append(playground)
 
     if not processes:
-        print("⚠️ No services to start. Remove some --no-* flags.")
+        print("No services to start. Remove some --no-* flags.")
         return
+
+    # Open browser when ready - prefer main app, fall back to guest
+    if not no_browser:
+        if not no_main:
+            open_browser_when_ready(f"http://localhost:{MAIN_PORT}/app")
+        elif not no_guest:
+            open_browser_when_ready(f"http://localhost:{GUEST_PORT}/app")
 
     for p in processes:
         p.join()
@@ -152,6 +160,11 @@ def main(
         "--no-guest",
         help="Do not start the guest/playground (port 5008)",
     ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Do not open browser automatically",
+    ),
 ):
     """
     Run HANI (Human-Agent Negotiation Interface) with all services.
@@ -171,6 +184,7 @@ def main(
             verbose=verbose,
             no_main=no_main,
             no_guest=no_guest,
+            no_browser=no_browser,
         )
 
 
