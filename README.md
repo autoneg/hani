@@ -12,22 +12,19 @@ HANI is a web-based interface for conducting negotiations between humans and AI 
 pip install hani
 ```
 
-### Configuration
+### Initial Setup
 
-1. Copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
+Run the setup command to initialize your configuration:
 
-2. Edit `.env` to set your admin password:
-   ```
-   ADMIN_PASS=your-secure-password
-   ```
+```bash
+hani setup
+```
 
-3. (Optional) Add your OpenAI API key for LLM features:
-   ```
-   OPENAI_API_KEY=sk-your-api-key
-   ```
+This creates the settings directory at `~/negmas/hani/settings/` with:
+- `env.json` - Main configuration file
+- `users.json` - User credentials
+- `scenarios/` - Default negotiation scenarios
+- Other configuration files
 
 ### Running the App
 
@@ -35,9 +32,73 @@ pip install hani
 hani
 ```
 
+This starts both the main app (port 5006) and guest/playground (port 5008).
+
 Then open your browser to `http://localhost:5006` and log in:
-- **Username:** `admin`
-- **Password:** The value you set in `ADMIN_PASS` (default: `admin`)
+- **Username:** `admin` or `user`
+- **Password:** `adminpass` or `userpass` (defaults, change in env.json)
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `hani` | Start all services (main app + guest playground) |
+| `hani setup` | Initialize settings directory with default configuration |
+| `hani main` | Start only the main app (port 5006) |
+| `hani guest` | Start only the guest/playground app (port 5008) |
+| `hani auth` | Show OAuth setup instructions |
+| `hani --help` | Show all available commands and options |
+
+### Command Options
+
+```bash
+# Start with specific agent types
+hani --agents "AspirationNegotiator,helpers.AgentK"
+
+# Start without opening browser
+hani main --no-browser
+
+# Run setup and overwrite existing files
+hani setup --force
+
+# Set custom admin password during setup
+hani setup --admin-password "my-secure-password"
+```
+
+## Configuration
+
+HANI uses a JSON configuration file located at `~/negmas/hani/settings/env.json`.
+
+### Basic Configuration
+
+```json
+{
+    "urls": {
+        "app": "http://localhost:5006",
+        "playground": "http://localhost:5008"
+    },
+    "admin": {
+        "password": "adminpass",
+        "emails": []
+    },
+    "auth": {
+        "mode": "password",
+        "cookie_secret": "change-this-in-production"
+    }
+}
+```
+
+### Configuration Options
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `urls.app` | Main app URL | `http://localhost:5006` |
+| `urls.playground` | Guest playground URL | `http://localhost:5008` |
+| `admin.password` | Admin user password | `adminpass` |
+| `admin.emails` | Admin emails for OAuth mode | `[]` |
+| `auth.mode` | Auth mode: `password`, `dual`, `oauth`, `auto` | `password` |
+| `auth.cookie_secret` | Session cookie secret | (default value) |
+| `auth.enforce_consent` | Require consent form before negotiation | `false` |
 
 ## Features
 
@@ -64,75 +125,93 @@ When configured with an LLM API key, HANI provides:
 
 ## Authentication
 
-HANI supports two authentication modes:
+HANI supports multiple authentication modes configured via `auth.mode` in `env.json`.
 
 ### Password Authentication (Default)
 
 Best for local development and small deployments.
 
-```env
-HANI_AUTH_MODE=password
-ADMIN_PASS=your-secure-password
+```json
+{
+    "auth": {
+        "mode": "password"
+    }
+}
 ```
 
-- Users are stored in `~/negmas/hani/settings/users_hashed.json`
-- New users can register via the registration app (`hani-reg`)
-- The `admin` user is automatically created with the `ADMIN_PASS` password
+- Users stored in `~/negmas/hani/settings/users.json`
+- Default users: `admin`/`adminpass` and `user`/`userpass`
+- New users can register via `/register` endpoint
 
-### OAuth Authentication
+### Dual Authentication (Password + OAuth)
 
-Best for production deployments with external identity providers.
+Allows users to log in with either password or OAuth providers.
 
-```env
-HANI_AUTH_MODE=oauth
-HANI_OAUTH_PROVIDER=github
-HANI_OAUTH_KEY=your-client-id
-HANI_OAUTH_SECRET=your-client-secret
-HANI_OAUTH_REDIRECT_URI=https://your-domain.com
-HANI_OAUTH_ENCRYPTION_KEY=<generate-with-secrets>
+```json
+{
+    "auth": {
+        "mode": "dual"
+    },
+    "oauth": {
+        "redirect_uri": "http://localhost:5006",
+        "providers": {
+            "github": {
+                "enabled": true,
+                "key": "your-github-client-id",
+                "secret": "your-github-client-secret"
+            },
+            "google": {
+                "enabled": true,
+                "key": "your-google-client-id",
+                "secret": "your-google-client-secret"
+            }
+        }
+    }
+}
 ```
 
-Supported providers: `github`, `google`, `azure`, `okta`, and others supported by Panel.
+### Setting Up OAuth
 
-#### OAuth Admin Access
+Run `hani auth` to see detailed setup instructions. Here's a summary:
 
-In OAuth mode, admin access is granted to users whose email is in the `ADMIN_EMAILS` list:
+#### GitHub OAuth
 
-```env
-ADMIN_EMAILS=admin@example.com,another-admin@example.com
+1. Go to https://github.com/settings/developers
+2. Create a new OAuth App
+3. Set Homepage URL: `http://localhost:5006`
+4. Set Authorization callback URL: `http://localhost:5006/oauth/callback`
+5. Copy Client ID and Client Secret to `env.json`
+
+#### Google OAuth
+
+1. Go to https://console.cloud.google.com/apis/credentials
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add authorized redirect URI: `http://localhost:5006/oauth/callback`
+4. Copy Client ID and Client Secret to `env.json`
+
+### OAuth Admin Access
+
+In OAuth/dual mode, admin access is granted to users whose email is in the `admin.emails` list:
+
+```json
+{
+    "admin": {
+        "emails": ["admin@example.com", "another-admin@example.com"]
+    }
+}
 ```
 
 ### Auto Mode
 
-When `HANI_AUTH_MODE=auto` (the default):
+When `auth.mode` is `auto`:
 - Uses OAuth if OAuth credentials are configured
 - Falls back to password authentication otherwise
 
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ADMIN_PASS` | Password for the admin user | `admin` |
-| `ADMIN_EMAILS` | Comma-separated admin emails (OAuth mode) | `` |
-| `HANI_AUTH_MODE` | Authentication mode: `auto`, `password`, `oauth` | `auto` |
-| `HANI_OAUTH_PROVIDER` | OAuth provider name | `github` |
-| `HANI_OAUTH_KEY` | OAuth client ID | `` |
-| `HANI_OAUTH_SECRET` | OAuth client secret | `` |
-| `HANI_OAUTH_REDIRECT_URI` | OAuth redirect URI | `http://localhost:5006` |
-| `HANI_OAUTH_ENCRYPTION_KEY` | OAuth encryption key | `` |
-| `HANI_COOKIE_SECRET` | Session cookie secret | (default value) |
-| `HANI_ENV` | Environment: `local` or `production` | `local` |
-| `HANI_AGENT_TYPES` | Comma-separated list of negotiator types | `` |
-| `OPENAI_API_KEY` | OpenAI API key for LLM features | `` |
-| `ANTHROPIC_API_KEY` | Anthropic API key (alternative to OpenAI) | `` |
-
 ## Configuring Agent/Negotiator Types
 
-HANI allows you to specify which negotiator types the AI opponent can use. This can be configured via command-line arguments or environment variables.
+HANI allows you to specify which negotiator types the AI opponent can use.
 
-### Method 1: Command-Line Argument (Recommended)
-
-Use the `--agents` flag to specify a comma-separated list of negotiator types:
+### Command-Line Argument (Recommended)
 
 ```bash
 # Use specific NegMAS negotiators
@@ -145,124 +224,76 @@ hani --agents "AspirationNegotiator,helpers.AgentK,helpers.Atlas3,LLMHybridNegot
 hani --agents "helpers.AgentK,helpers.HardHeaded,helpers.AverageTitForTat"
 ```
 
-**Note:** Command-line arguments take precedence over environment variables.
+### Agent Groups
 
-### Method 2: Environment Variable
-
-Set the `HANI_AGENT_TYPES` environment variable:
+Use group syntax to select categories of agents:
 
 ```bash
-# Example: Use specific NegMAS negotiators
-export HANI_AGENT_TYPES="AspirationNegotiator,BoulwareTBNegotiator,ConcederTBNegotiator"
+# All LLM-based negotiators
+hani --agents ":llm"
 
-# Then start HANI
-hani
+# All template-based negotiators
+hani --agents ":template"
+
+# All NegMAS negotiators
+hani --agents ":negmas"
+
+# Combine groups
+hani --agents ":llm,:template"
 ```
 
 ### Supported Negotiator Namespaces
 
-HANI automatically resolves negotiator class names from different namespaces:
-
 #### NegMAS Negotiators (default namespace)
 ```bash
-# No prefix needed - automatically resolved to negmas.sao.*
 hani --agents "AspirationNegotiator,BoulwareTBNegotiator,NaiveTitForTatNegotiator"
 ```
 
 #### HANI Helper Negotiators
 ```bash
-# Use "helpers." prefix - resolved to hani.helpers.negotiators.*
 hani --agents "helpers.AgentK,helpers.Atlas3,helpers.CUHKAgent,helpers.HardHeaded"
 ```
 
 #### Genius Negotiators
 ```bash
-# Use "genius." prefix - resolved to negmas.genius.gnegotiators.*
 hani --agents "genius.Atlas3,genius.AgentK,genius.HardHeaded"
 ```
 
 #### LLM-based Negotiators
 ```bash
-# Special handling for LLM negotiators
 hani --agents "LLMHybridNegotiator,LLMBoulwareTBNegotiator,LLMConcederTBNegotiator"
 ```
 
 #### Custom Negotiators from Files
 ```bash
-# Use "file:" prefix to load a class from a Python file
-# Format: file:path/to/filename.ClassName
-
-# Simple file in current directory
+# Load from a Python file
 hani --agents "file:mynegotiator.MyNegotiator"
 
-# Relative path with subdirectories (use / - works on all platforms including Windows!)
+# With path
 hani --agents "file:agents/custom/myneg.MyNegotiator"
-
-# Absolute path (Unix/Mac)
-hani --agents "file:/home/user/agents/myneg.MyNegotiator"
-
-# Absolute path (Windows - both / and \ work)
-hani --agents "file:C:/Users/user/agents/myneg.MyNegotiator"
-hani --agents "file:C:\Users\user\agents\myneg.MyNegotiator"
-
-# Mix with other negotiator types
-hani --agents "AspirationNegotiator,file:agents/custom/myneg.MyNegotiator,helpers.AgentK"
 ```
 
-**Example custom negotiator file (`mynegotiator.py` or `agents/custom/myneg.py`):**
-```python
-from negmas.sao import SAONegotiator
+## Customization
 
-class MyNegotiator(SAONegotiator):
-    def propose(self, state):
-        # Your custom negotiation logic here
-        return self.nmi.random_outcome()
+### Announcements
+
+Create `~/negmas/hani/settings/announcements.md` to display custom announcements on the welcome screen.
+
+### Scenarios
+
+Custom scenarios can be placed in `~/negmas/hani/settings/scenarios/`. Run `hani setup` to copy the default scenarios as examples.
+
+### Consent Form
+
+Edit `~/negmas/hani/settings/consent.md` to customize the consent form. Enable it with:
+
+```json
+{
+    "auth": {
+        "enforce_consent": true
+    }
+}
 ```
-
-**Notes:**
-- Use forward slashes (`/`) for paths - they work cross-platform (recommended)
-- On Windows, backslashes (`\`) also work but may need escaping in some shells
-- Paths can be relative (to current working directory) or absolute
-
-### UI Behavior
-
-When agent types are configured via `--agents` or `HANI_AGENT_TYPES`:
-
-- ✅ **"Command Line/Env"** checkbox: **Enabled and checked** by default
-- ❌ **"Allow LLM Negotiators"** checkbox: **Unchecked** by default
-- ❌ **"Allow NegMAS Negotiators"** checkbox: **Unchecked** by default
-- ❌ **"Allow HANI Negotiators"** checkbox: **Unchecked** by default
-- ❌ **"Allow Genius Negotiators"** checkbox: **Unchecked** by default
-
-This ensures that **by default**, the opponent will **ALWAYS be one of the configured negotiators**.
-
-Users can uncheck "Command Line/Env" and check other categories to mix configured agents with other agent types.
-
-### Examples
-
-**Only use time-based negotiators:**
-```bash
-hani --agents "BoulwareTBNegotiator,ConcederTBNegotiator,LinearTBNegotiator"
-```
-
-**Mix of custom and standard negotiators:**
-```bash
-hani --agents "AspirationNegotiator,helpers.AgentK,helpers.Atlas3"
-```
-
-**Use LLM negotiators only:**
-```bash
-hani --agents "LLMHybridNegotiator,LLMBoulwareTBNegotiator"
-```
-
-## Application Commands
-
-| Command | Description |
-|---------|-------------|
-| `hani` | Start the main negotiation interface |
-| `hani-reg` | Start the user registration app |
-| `hani-analysis` | Start the analytics dashboard |
-| `hani-experiment` | Run experiments |
 
 ## How It Works
 
@@ -287,6 +318,8 @@ Administrators can configure LLM settings in the sidebar under "LLM Settings":
 - **Model**: The model to use (e.g., `gpt-4o-mini`, `claude-3-haiku`)
 - **Temperature**: Controls response randomness (0.0-2.0)
 - **Prompts**: Customize extraction and generation prompts
+
+LLM API keys can be set in `~/negmas/hani/settings/llm_settings.json` or via environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
 
 ## Development
 
@@ -315,18 +348,16 @@ src/hani/
 ├── app.py              # Main application
 ├── auth.py             # Authentication utilities
 ├── common.py           # Shared configuration
+├── dual_auth.py        # OAuth and dual auth handlers
 ├── llm_service.py      # LLM integration
-├── register.py         # Registration app
-├── run*.py             # Entry points
+├── run.py              # CLI entry point
 ├── tools/              # Analysis tools
 │   ├── generator.py    # Response generator tool
 │   ├── preferences.py  # Preferences viewer
-│   ├── utility_plot2d.py
 │   └── ...
-└── scenarios/          # Negotiation scenarios
-    ├── trade.py
-    ├── island.py
-    └── grocery.py
+├── scenarios/          # Built-in negotiation scenarios
+├── sample_scenarios/   # Default scenarios copied on setup
+└── default_settings/   # Default configuration files
 ```
 
 ## License

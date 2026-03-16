@@ -1,6 +1,7 @@
 from datetime import datetime
 from rich import print
 from copy import deepcopy
+from negmas.helpers import humanize_time
 from enum import Enum
 from negmas.helpers.inout import dump, load
 from negmas.inout import INFO_FILE_NAME
@@ -48,7 +49,7 @@ from negmas import (
 from negmas.serialization import serialize
 import pandas as pd
 from typing import Any
-from negmas.helpers import humanize_time, get_class
+from negmas.helpers import get_class
 from negmas.preferences.ops import (
     calc_outcome_optimality,
     calc_outcome_distances,
@@ -891,6 +892,7 @@ class CountdownTimer(pn.pane.HTML):
 
     def _run(self):
         import time  # Import in thread context to avoid scoping issues
+        from negmas.helpers import humanize_time  # Import in thread context
 
         if np.isinf(self.duration):
             return
