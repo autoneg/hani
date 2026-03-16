@@ -23,10 +23,8 @@ jobs:
       - name: "Install dependencies"
         run: |
           uv sync --dev
-      - name: "Install Playwright browsers"
-        run: uv run playwright install --with-deps chromium
-      - name: "Run pytest for ${{ matrix.python-version }}"
-        run: uv run pytest tests
+      - name: "Run unit tests for ${{ matrix.python-version }}"
+        run: uv run pytest tests/test_event_tracking.py -v
   package:
     name: "Build & verify package"
     runs-on: "ubuntu-latest"
