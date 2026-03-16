@@ -77,20 +77,14 @@ def test_settings_dir():
     with open(TEST_SETTINGS_DIR / "users_info.json", "w") as f:
         json.dump(test_users_info, f, indent=2)
 
-    # Create test users.json (hashed passwords for main app)
-    # Import from the installed hani package
-    import sys
-
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    from hani.auth import hash_password
-
-    test_users_hashed = {
-        TEST_USER: {"password": hash_password(TEST_PASSWORD)},
-        ADMIN_USER: {"password": hash_password(ADMIN_PASSWORD)},
+    # Create test users.json (plain text passwords for Panel's basic auth)
+    test_users = {
+        TEST_USER: TEST_PASSWORD,
+        ADMIN_USER: ADMIN_PASSWORD,
     }
 
     with open(TEST_SETTINGS_DIR / "users.json", "w") as f:
-        json.dump(test_users_hashed, f, indent=2)
+        json.dump(test_users, f, indent=2)
 
     # Copy scenarios if they exist
     scenarios_src = real_settings / "scenarios"

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `hani main` - Run only the main app (port 5006)
   - `hani guest` - Run only the guest/playground app (port 5008)
   - `hani auth` - Show OAuth setup instructions for GitHub and Google
+  - `hani --no-browser` - Start without auto-opening browser
 
 - **Multi-Provider OAuth Support**:
   - Support for multiple OAuth providers (GitHub, Google) configured in env.json
@@ -36,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Settings Directory Enhancements**:
   - Load announcements from `~/negmas/hani/settings/announcements.md` (falls back to app directory)
   - Copy default scenarios to settings directory on `hani setup`
+
+- **Documentation**:
+  - Full MkDocs documentation with Material theme
+  - GitHub Actions workflow for automatic documentation deployment
+  - Documentation pages: Installation, Quick Start, Authentication, Ollama setup, Tools, Offer Generators, Scenarios
+  - Added LICENSE file (AGPL-3.0)
+  - Added badges to README (PyPI, downloads, license, documentation)
 
 ### Changed
 - Removed `python-dotenv` dependency (replaced by env.json)
@@ -232,7 +240,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
-- **0.2.0** (Current): Command-line agent configuration, improved action panel UI, dependency updates
+- **0.3.0** (Current): New JSON config system, CLI commands, multi-provider OAuth, MkDocs documentation
+- **0.2.2**: Action panel UX improvements, CLI service flags, agent group selection
+- **0.2.0**: Command-line agent configuration, improved action panel UI, dependency updates
 - **0.1.0**: Event tracking, LLM support, dual authentication, experiment management, comprehensive testing
 - **0.0.1**: Initial HANI framework with basic negotiation interface
 
@@ -255,6 +265,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Links
-- [Repository](https://github.com/autoneg/hani)
-- [Documentation](https://github.com/autoneg/hani/blob/main/README.md)
-- [Issue Tracker](https://github.com/autoneg/hani/issues)
+- [Repository](https://github.com/yasserfarouk/hani)
+- [Documentation](https://yasserfarouk.github.io/hani/)
+- [Issue Tracker](https://github.com/yasserfarouk/hani/issues)
