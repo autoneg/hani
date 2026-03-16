@@ -641,17 +641,7 @@ def default_tools():
             bottom=False,
         ),
         ToolConfig(
-            "LLM",
-            TOOL_MAP["Response Generator"],
-            Timing.Start,
-            params=dict(
-                scenario="session:scenario",
-                widgets="session:offer_widgets",
-            ),
-            side=True,
-        ),
-        ToolConfig(
-            "Inverter",
+            "Utility-based Selector",
             TOOL_MAP["Utility Inverter"],
             Timing.Start,
             params=dict(
@@ -661,16 +651,28 @@ def default_tools():
             ),
             side=True,
         ),
-        ToolConfig(
-            "Random",
-            TOOL_MAP["Random Outcome"],
-            Timing.Start,
-            params=dict(scenario="session:scenario", widgets="session:offer_widgets"),
-            side=True,
-        ),
     ]
     if is_admin():
         tools += [
+            ToolConfig(
+                "LLM",
+                TOOL_MAP["Response Generator"],
+                Timing.Start,
+                params=dict(
+                    scenario="session:scenario",
+                    widgets="session:offer_widgets",
+                ),
+                side=True,
+            ),
+            ToolConfig(
+                "Random",
+                TOOL_MAP["Random Outcome"],
+                Timing.Start,
+                params=dict(
+                    scenario="session:scenario", widgets="session:offer_widgets"
+                ),
+                side=True,
+            ),
             ToolConfig(
                 "All Results",
                 TOOL_MAP["All Results"],

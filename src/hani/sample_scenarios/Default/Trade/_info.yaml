@@ -29,3 +29,6 @@ long_description: |
   2. **Price** The buyer wants the *lowest* price possible but it has some nonlinear curve representing its *value of money*. This curve can be thought of as a representation of risk attitude of the buyer.
 
   The importance of these two factors is controlled through a weighing factor that converts *value of quantity* and *value of money* to the same units.
+
+  **Value in case of Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option.
+

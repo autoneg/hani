@@ -24,6 +24,16 @@ LAYOUT_OPTIONS = dict(
     font=dict(family="Segoe UI, sans-serif", color="#282D3C"),
 )
 
+# Layout for issue value bar charts (smaller font)
+ISSUE_LAYOUT_OPTIONS = dict(
+    showlegend=False,
+    modebar_remove=True,
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    margin=dict(l=0, r=0, t=0, b=0),
+    font=dict(family="Segoe UI, sans-serif", color="#282D3C", size=10),
+)
+
 
 class PreferencesTool(Tool):
     issue_index = param.Selector(objects=dict())
@@ -71,7 +81,7 @@ class PreferencesTool(Tool):
         fig = go.Figure(
             data=[go.Bar(y=labels, x=[100 * fun(_) for _ in labels], orientation="h")]
         )
-        fig.update_layout(**LAYOUT_OPTIONS, height=170, font=dict(size=10))  # type: ignore
+        fig.update_layout(**ISSUE_LAYOUT_OPTIONS, height=170)  # type: ignore
         return pn.pane.Plotly(fig, **self._config)
 
     @param.depends("ufun")
@@ -179,7 +189,7 @@ class AgentPreferencesTool(Tool):
         fig = go.Figure(
             data=[go.Bar(y=labels, x=[100 * fun(_) for _ in labels], orientation="h")]
         )
-        fig.update_layout(**LAYOUT_OPTIONS, height=170, font=dict(size=10))  # type: ignore
+        fig.update_layout(**LAYOUT_OPTIONS, height=170)  # type: ignore
         return pn.pane.Plotly(fig, **self._config)
 
     @param.depends("ufun")

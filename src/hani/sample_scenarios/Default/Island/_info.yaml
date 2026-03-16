@@ -24,6 +24,6 @@ long_description: |
 
   **Partner Utility Function** Each item has some value for your partner. The more items they get, the total the utility they get. Nevertheless, you do not know how much they value each item.
 
-  **Reserved Value** The value you get from disagreement. You can think of this as an outside option. A third person (call her Cydney) will give you items at this value if no agreement is reached with your partner. You partner also has a reserved value which you do not know.
+  **Value in case of Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option. A third person (call her Cydney) will give you items at this value if no agreement is reached with your partner. You partner also has a reserved value which you do not know.
 
 
