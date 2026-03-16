@@ -61,10 +61,10 @@ Then open your browser to [http://localhost:5006](http://localhost:5006) and log
 
 ## Next Steps
 
-- [Installation Guide](getting-started/installation.md) - Detailed installation instructions
-- [Quick Start Guide](getting-started/quickstart.md) - Get up and running quickly
-- [Configuration](getting-started/configuration.md) - Configure HANI for your needs
-- [CLI Reference](cli/commands.md) - All available commands
+- [Installation Guide](installation.md) - Detailed installation instructions
+- [Quick Start Guide](quickstart.md) - Get up and running quickly
+- [Authentication](authentication.md) - Configure authentication for your needs
+- [Defining Scenarios](scenarios.md) - Create custom negotiation scenarios
 
 ## License
 
