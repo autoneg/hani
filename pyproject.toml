@@ -1,6 +1,6 @@
 [project]
 name = "hani"
-version = "0.2.2"
+version = "0.3.0"
 description = "Run Human-Agent Negotiations"
 license = { text = "GNU Affero General Public License v3 (AGPL-3.0)" }
 authors = [
@@ -22,7 +22,7 @@ dependencies = [
     "negmas-llm>=0.4.2",
     "panel>=1.6.1",
     "plotly>=6.0.0",
-    "python-dotenv>=1.0.0",
+
     "rich>=13.0.0",
     "sqlalchemy>=2.0.39",
     "typer>=0.9.0",
