@@ -6,6 +6,16 @@ This module provides:
 - OAuth configuration detection
 - Dual authentication mode support
 - Admin user management via ADMIN_PASS environment variable
+
+User data is stored in a single users.json file with structure:
+{
+    "username": {
+        "password": "<hashed_password>",
+        "email": "...",
+        "name": "...",
+        ...other profile fields...
+    }
+}
 """
 
 from __future__ import annotations
@@ -48,119 +58,206 @@ def hash_password(password: str, salt: str = "hani-secure-salt-2025") -> str:
     return hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
 
 
-def ensure_admin_user(salt: str = "hani-secure-salt-2025") -> None:
-    """Ensure admin user exists in the hashed users file with password from ADMIN_PASS env var.
+def load_users() -> dict:
+    """Load all users from users.json.
 
-    This function creates or updates the admin user with the password specified
-    in the ADMIN_PASS environment variable. If ADMIN_PASS is not set, it defaults to 'admin'.
+    Returns:
+        Dict of username -> user data (including hashed password)
+    """
+    from hani.common import USERS_FILE
+
+    if not USERS_FILE.exists():
+        return {}
+    try:
+        with open(USERS_FILE) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
+def save_users(users: dict) -> None:
+    """Save all users to users.json.
+
+    Args:
+        users: Dict of username -> user data (including hashed password)
+    """
+    from hani.common import USERS_FILE, SETTINGS_DIR
+
+    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
+
+
+def ensure_admin_user(salt: str = "hani-secure-salt-2025") -> None:
+    """Ensure admin user exists in users.json.
+
+    This function creates the admin user only if it doesn't already exist.
+    The password is taken from the ADMIN_PASS environment variable, defaulting to 'adminpass'.
+    Only hashed passwords are stored.
 
     Args:
         salt: Salt to use for password hashing
     """
-    from hani.common import SETTINGS_DIR, LOGIN_FILE, ADMIN_PASS
+    from hani.common import SETTINGS_DIR, ADMIN_PASS
 
     # Ensure settings directory exists
     SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-    hashed_file = LOGIN_FILE.parent / "users_hashed.json"
+    users = load_users()
 
-    # Load existing hashed users or create empty dict
-    if hashed_file.exists():
-        try:
-            with open(hashed_file) as f:
-                hashed_users = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            hashed_users = {}
-    else:
-        hashed_users = {}
+    # Only create admin if it doesn't already exist
+    if "admin" in users:
+        print("✓ Admin user already exists (keeping existing password)")
+        return
 
-    # Hash the admin password
-    admin_password_hash = hash_password(ADMIN_PASS, salt)
+    # Create admin user with hashed password
+    users["admin"] = {
+        "password": hash_password(ADMIN_PASS, salt),
+        "email": "admin@hani.local",
+        "name": "Administrator",
+        "is_admin": True,
+    }
 
-    # Update admin user
-    hashed_users["admin"] = admin_password_hash
-
-    # Save hashed users file
-    with open(hashed_file, "w") as f:
-        json.dump(hashed_users, f, indent=2)
-
-    # Also update plain text file for reference (optional, for register.py compatibility)
-    if LOGIN_FILE.exists():
-        try:
-            with open(LOGIN_FILE) as f:
-                plain_users = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            plain_users = {}
-    else:
-        plain_users = {}
-
-    plain_users["admin"] = ADMIN_PASS
-
-    with open(LOGIN_FILE, "w") as f:
-        json.dump(plain_users, f, indent=2)
+    save_users(users)
 
     print(
-        f"✓ Admin user configured (password from {'ADMIN_PASS env var' if os.getenv('ADMIN_PASS') else 'default'})"
+        f"✓ Admin user created (password from {'ADMIN_PASS env var' if os.getenv('ADMIN_PASS') else 'default'})"
     )
 
 
-def create_hashed_users_file(
-    plain_users_file: Path | str,
-    hashed_users_file: Path | str,
-    salt: str = "hani-secure-salt-2025",
-) -> None:
-    """Convert a plain text users.json file to hashed passwords.
-
-    Args:
-        plain_users_file: Path to file with plain passwords
-        hashed_users_file: Path to output file with hashed passwords
-        salt: Salt to use for hashing
-    """
-    with open(plain_users_file) as f:
-        plain_users = json.load(f)
-
-    hashed_users = {
-        username: hash_password(password, salt)
-        for username, password in plain_users.items()
-    }
-
-    with open(hashed_users_file, "w") as f:
-        json.dump(hashed_users, f, indent=2)
-
-    print(f"Created hashed users file at {hashed_users_file}")
-    print(f"Converted {len(hashed_users)} users")
-
-
-def verify_password(
+def verify_user_password(
     username: str,
     password: str,
-    users_file: Path | str,
     salt: str = "hani-secure-salt-2025",
 ) -> bool:
-    """Verify a username/password against hashed users file.
+    """Verify a username/password against users.json.
 
     Args:
         username: Username to check
         password: Plain text password to verify
-        users_file: Path to hashed users file
         salt: Salt used for hashing
 
     Returns:
         True if password matches, False otherwise
     """
-    with open(users_file) as f:
-        users = json.load(f)
+    users = load_users()
 
     if username not in users:
         return False
 
-    return users[username] == hash_password(password, salt)
+    user_data = users[username]
+    stored_hash = user_data.get("password", "")
+
+    return stored_hash == hash_password(password, salt)
+
+
+def get_user(username: str) -> dict | None:
+    """Get user data by username.
+
+    Args:
+        username: Username to look up
+
+    Returns:
+        User data dict (without password) or None if not found
+    """
+    users = load_users()
+    if username not in users:
+        return None
+
+    user_data = users[username].copy()
+    # Don't expose password hash
+    user_data.pop("password", None)
+    return user_data
+
+
+def create_user(
+    username: str,
+    password: str,
+    email: str = "",
+    name: str = "",
+    salt: str = "hani-secure-salt-2025",
+    **extra_fields,
+) -> bool:
+    """Create a new user with hashed password.
+
+    Args:
+        username: Username for the new user
+        password: Plain text password (will be hashed)
+        email: User's email
+        name: User's full name
+        salt: Salt for password hashing
+        **extra_fields: Any additional user profile fields
+
+    Returns:
+        True if user was created, False if username already exists
+    """
+    users = load_users()
+
+    if username in users:
+        return False
+
+    users[username] = {
+        "password": hash_password(password, salt),
+        "email": email,
+        "name": name,
+        **extra_fields,
+    }
+
+    save_users(users)
+    return True
+
+
+def update_user(username: str, **fields) -> bool:
+    """Update user profile fields (not password).
+
+    Args:
+        username: Username to update
+        **fields: Fields to update (password cannot be updated this way)
+
+    Returns:
+        True if user was updated, False if user not found
+    """
+    users = load_users()
+
+    if username not in users:
+        return False
+
+    # Don't allow password updates through this function
+    fields.pop("password", None)
+
+    users[username].update(fields)
+    save_users(users)
+    return True
+
+
+def update_user_password(
+    username: str, new_password: str, salt: str = "hani-secure-salt-2025"
+) -> bool:
+    """Update a user's password.
+
+    Args:
+        username: Username whose password to update
+        new_password: New plain text password (will be hashed)
+        salt: Salt for password hashing
+
+    Returns:
+        True if password was updated, False if user not found
+    """
+    users = load_users()
+
+    if username not in users:
+        return False
+
+    users[username]["password"] = hash_password(new_password, salt)
+    save_users(users)
+    return True
 
 
 def patch_panel_auth(salt: str = "hani-secure-salt-2025"):
-    """Monkey-patch Panel's BasicLoginHandler to use hashed passwords.
+    """Monkey-patch Panel's BasicLoginHandler to use hashed passwords from users.json.
 
     This must be called before starting the Panel server.
+    The users.json file contains user objects with a 'password' field that stores the hash.
 
     Args:
         salt: Salt to use for password hashing
@@ -177,7 +274,7 @@ def patch_panel_auth(salt: str = "hani-secure-salt-2025"):
     original_validate = BasicLoginHandler._validate
 
     def hashed_validate(self, username, password):
-        """Validate username/password against hashed passwords."""
+        """Validate username/password against hashed passwords in users.json."""
         if "basic_auth" in state._server_config.get(self.application, {}):
             auth_info = state._server_config[self.application]["basic_auth"]
         else:
@@ -208,9 +305,20 @@ def patch_panel_auth(salt: str = "hani-secure-salt-2025"):
                 except:
                     pass
                 return False
+
+            # Get the stored password hash
+            # Support both formats:
+            # 1. Simple: {"username": "hash"}
+            # 2. Full user object: {"username": {"password": "hash", ...}}
+            user_entry = auth_info[username]
+            if isinstance(user_entry, dict):
+                stored_hash = user_entry.get("password", "")
+            else:
+                stored_hash = user_entry
+
             # Compare hashed password
             password_hash = hash_password(password, salt)
-            success = password_hash == auth_info[username]
+            success = password_hash == stored_hash
 
             # Log login attempt
             try:
@@ -256,14 +364,22 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        print("Usage: python auth.py <plain_users_file> [hashed_users_file]")
-        print("\nConverts a plain text users.json to hashed passwords")
+        print("Usage: python auth.py <command> [args]")
+        print("\nCommands:")
+        print("  ensure-admin          Create admin user if not exists")
+        print("  hash <password>       Hash a password")
+        print("  verify <user> <pass>  Verify a user's password")
         sys.exit(1)
 
-    plain_file = Path(sys.argv[1])
-    if len(sys.argv) > 2:
-        hashed_file = Path(sys.argv[2])
-    else:
-        hashed_file = plain_file.parent / "users_hashed.json"
+    command = sys.argv[1]
 
-    create_hashed_users_file(plain_file, hashed_file)
+    if command == "ensure-admin":
+        ensure_admin_user()
+    elif command == "hash" and len(sys.argv) > 2:
+        print(hash_password(sys.argv[2]))
+    elif command == "verify" and len(sys.argv) > 3:
+        result = verify_user_password(sys.argv[2], sys.argv[3])
+        print(f"Password valid: {result}")
+    else:
+        print(f"Unknown command or missing arguments: {command}")
+        sys.exit(1)

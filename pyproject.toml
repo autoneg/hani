@@ -69,11 +69,11 @@ hani = [
 
 [project.scripts]
 hani = "hani.run:app"
-hani-guest = "hani.runguest:main"
-hani-reg = "hani.runregister:main"
-hani-app = "hani.runapp:main"
-hani-analysis = "hani.runanalytics:main"
-hani-experiment = "hani.runexperiment:main"
+hani-guest = "hani.runguest:app"
+hani-reg = "hani.runregister:app"
+hani-app = "hani.runapp:app"
+hani-analysis = "hani.runanalytics:app"
+hani-experiment = "hani.runexperiment:app"
 
 
 [project.optional-dependencies]

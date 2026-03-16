@@ -1,39 +1,13 @@
 import panel as pn
-import json
-from hani.common import CONSENT_FILE, USERS_FILE, LOGIN_FILE, APP_URLS, HANI_ENV
-from hani.auth import hash_password as hash_password_secure
+from hani.common import CONSENT_FILE, APP_URLS
+from hani.auth import (
+    load_users,
+    verify_user_password,
+    create_user,
+    update_user,
+)
 
 pn.extension()
-
-
-def hash_password(password):
-    """Hash password using the same method as main app authentication"""
-    return hash_password_secure(password)
-
-
-def load_users():
-    if not USERS_FILE.exists():
-        return {}
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
-
-
-def save_users(users):
-    """Save users to both users_info.json and create hashed password files"""
-    # Save full user info (includes plain text password for profile updates)
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
-
-    # Create plain text passwords file (for reference)
-    plain_passwords = {k: v["password"] for k, v in users.items()}
-    with open(LOGIN_FILE, "w") as f:
-        json.dump(plain_passwords, f, indent=2)
-
-    # Create hashed passwords file (used for authentication)
-    hashed_file = LOGIN_FILE.parent / "users_hashed.json"
-    hashed_passwords = {k: hash_password(v["password"]) for k, v in users.items()}
-    with open(hashed_file, "w") as f:
-        json.dump(hashed_passwords, f, indent=2)
 
 
 # Registration form
@@ -43,10 +17,10 @@ reg_consent = pn.pane.Markdown(
     else "## Consent Form\n\nPlease read the terms carefully before proceeding."
 )
 reg_signature = pn.widgets.Checkbox(
-    name="I hereby confirm that I have read relevant details of Human Agent Negotiation Competition and all my questions (if any) were answered by the researcher. I consent to participate in this study voluntarily. "
+    name="I hereby confirm that I have read relevant details of the <add-your-experiment-name-here> experiment and all my questions (if any) were answered by the researcher. I consent to participate in this study voluntarily. "
 )
 reg_pre = pn.widgets.Checkbox(
-    name="I filled the pre-competition questionnaire at https://forms.gle/c4tNxYof1Gm7ezmC7"
+    name="I filled the pre-competition questionnaire at <add your link here>."
 )
 reg_name = pn.widgets.TextInput(name="Full Name (Signature)")
 reg_date = pn.widgets.TextInput(name="Date of consent (yyyy-mm-dd)")
@@ -66,6 +40,8 @@ def register(event):
     signature = reg_signature.value
     email = reg_email.value.strip()
     email_confirm = reg_email_confirm.value.strip()
+    password = reg_password.value
+
     if not signature:
         reg_message.object = "You MUST accept the consent form by checking the checkbox above to register."
         return
@@ -83,26 +59,32 @@ def register(event):
             "Cannot use AI as your username. Please choose a different username."
         )
         return
-    if not username or not reg_password.value:
+    if not username or not password:
         reg_message.object = "Username and password required."
         return
     if email != email_confirm:
         reg_message.object = "Emails do not match."
         return
-    if name in [_.get("name", "") for _ in users.values()]:
+    if name in [u.get("name", "") for u in users.values()]:
         reg_message.object = "Your full name is already registered."
         return
     if username in users:
         reg_message.object = "Username already exists."
         return
-    users[username] = {
-        "password": reg_password.value,  # Store plain text in users_info.json
-        "email": email,
-        "name": name,
-        "signature": signature,
-        "date_of_signature": sig_date,
-    }
-    save_users(users)
+
+    # Create user with hashed password
+    success = create_user(
+        username=username,
+        password=password,
+        email=email,
+        name=name,
+        signature=signature,
+        date_of_signature=sig_date,
+    )
+
+    if not success:
+        reg_message.object = "Failed to create user. Username may already exist."
+        return
 
     # Get main app URL from env.json
     main_app_url = APP_URLS.get("app", "http://localhost:5006")
@@ -154,12 +136,12 @@ current_user = {"username": None}
 
 
 def login(event):
-    users = load_users()
     username = login_username.value.strip()
     password = login_password.value
-    # users_info.json stores plain text passwords for profile updates
-    # Compare plain text to plain text
-    if username in users and users[username]["password"] == password:
+
+    # Verify password using hashed comparison
+    if verify_user_password(username, password):
+        users = load_users()
         current_user["username"] = username
         login_message.object = f"Welcome, {username}!"
         login_panel.visible = False
@@ -190,10 +172,12 @@ def save_profile(event):
     if not username:
         profile_message.object = "Not logged in."
         return
-    users = load_users()
-    users[username]["email"] = profile_email.value.strip()
-    save_users(users)
-    profile_message.object = "Profile updated."
+
+    success = update_user(username, email=profile_email.value.strip())
+    if success:
+        profile_message.object = "Profile updated."
+    else:
+        profile_message.object = "Failed to update profile."
 
 
 login_btn.on_click(login)

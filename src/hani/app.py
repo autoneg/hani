@@ -2225,7 +2225,7 @@ def read_announcements():
                 "##### You can start experimenting with the user-interface and available "
                 "tools by pressing the 'Start' button below."
                 "\n\n\n\n##### You can load new exmaple scenarios using the 'Load' button "
-                "(after you finish a negotiation).\n\n\n##### To start competing, please "
+                "(after you finish a negotiation).\n\n\n##### To start a recorded session, please "
                 f"[login]({session_state['env'].get('app', 'https://localhost:{HANI_PORT}')}) or "
                 f"[register]({session_state['env'].get('registration', 'https://localhost:{REG_PORT}')})."
             )

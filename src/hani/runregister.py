@@ -5,7 +5,7 @@ import typer
 
 from hani.common import (
     REG_PORT,
-    LOGIN_FILE,
+    USERS_FILE,
     OAUTH_PROVIDER,
     OAUTH_KEY,
     OAUTH_SECRET,
@@ -32,7 +32,7 @@ def main(
     """Run HANI registration server."""
 
     # Determine authentication mode
-    from hani.auth import get_auth_mode, create_hashed_users_file
+    from hani.auth import get_auth_mode
 
     auth_mode = get_auth_mode()
 
@@ -92,16 +92,7 @@ def main(
     else:
         # Password mode - registration app typically doesn't need auth
         # but we set up cookie handling for consistency
-        typer.echo(f"  Password file location: {LOGIN_FILE}")
-
-        # Check if we need to convert plain text passwords to hashed
-        hashed_file = LOGIN_FILE.parent / "users_hashed.json"
-
-        if not hashed_file.exists() and LOGIN_FILE.exists():
-            typer.echo("⚠️  Converting plain text passwords to hashed format...")
-            # Create hashed version
-            create_hashed_users_file(LOGIN_FILE, hashed_file)
-            typer.echo(f"✓ Created hashed password file: {hashed_file}")
+        typer.echo(f"  Password file location: {USERS_FILE}")
 
         # Registration app doesn't require login, but we set up cookies
         # for session consistency with main app

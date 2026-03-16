@@ -56,8 +56,9 @@ def read_settings_file(filename: str, default: str = "") -> str:
 SCENARIO_ORDER_FILE = get_settings_file("scenario_order.txt")
 CONSENT_FILE = get_settings_file("consent.md")
 ENV_FILE = get_settings_file("env.json")
-USERS_FILE = SETTINGS_DIR / "users_info.json"  # User data stays in user settings
-LOGIN_FILE = SETTINGS_DIR / "users.json"  # User data stays in user settings
+USERS_FILE = (
+    SETTINGS_DIR / "users.json"
+)  # Single file for all user data (with hashed passwords)
 SAMPLE_SCENRIOS = SETTINGS_DIR / "scenarios"
 DEFAULT_SCENRIOS = Path(__file__).parent / "sample_scenarios" / "Default"
 INFO_FILE_NAME = "_info.yaml"
@@ -65,7 +66,7 @@ INFO_FILE_NAME = "_info.yaml"
 DB_PATH = Path.home() / "negmas" / "hani" / "db"
 
 # Admin password from environment variable
-ADMIN_PASS = os.getenv("ADMIN_PASS", "admin")  # Default to "admin" if not set
+ADMIN_PASS = os.getenv("ADMIN_PASS", "adminpass")  # Default to "adminpass" if not set
 
 # Admin emails for OAuth mode (comma-separated list)
 # Users with these emails will have admin access when using OAuth authentication
@@ -133,10 +134,18 @@ AGENT_TYPES = [
 # LLM Configuration for outcome extraction and text generation
 LLM_SETTINGS_FILE = SETTINGS_DIR / "llm_settings.json"
 
+# Get default model from negmas_llm if available
+try:
+    from negmas_llm.common import DEFAULT_MODELS
+
+    _default_ollama_model = DEFAULT_MODELS.get("ollama", "qwen3:4b-instruct")
+except ImportError:
+    _default_ollama_model = "qwen3:4b-instruct"
+
 # Default LLM settings
 DEFAULT_LLM_SETTINGS = {
     "provider": "ollama",  # ollama, openai, or anthropic
-    "model": "qwen3:1.7b",
+    "model": _default_ollama_model,
     "api_key_env": "OPENAI_API_KEY",  # Environment variable name for API key (not needed for Ollama)
     "ollama_base_url": "http://localhost:11434/v1",  # Ollama API endpoint
     "temperature": 0.3,
@@ -267,7 +276,14 @@ CRITICAL RULES:
 
 
 def load_llm_settings() -> dict:
-    """Load LLM settings from file or return defaults."""
+    """Load LLM settings from file or return defaults.
+
+    Checks in order:
+    1. User settings: ~/negmas/hani/settings/llm_settings.json
+    2. Default settings: <package>/default_settings/llm_settings.json
+    3. Hardcoded defaults
+    """
+    # Try user settings first
     if LLM_SETTINGS_FILE.exists():
         try:
             with open(LLM_SETTINGS_FILE) as f:
@@ -276,6 +292,17 @@ def load_llm_settings() -> dict:
                 return {**DEFAULT_LLM_SETTINGS, **settings}
         except Exception:
             pass
+
+    # Try default settings
+    default_llm_file = DEFAULT_SETTINGS_DIR / "llm_settings.json"
+    if default_llm_file.exists():
+        try:
+            with open(default_llm_file) as f:
+                settings = json.load(f)
+                return {**DEFAULT_LLM_SETTINGS, **settings}
+        except Exception:
+            pass
+
     return DEFAULT_LLM_SETTINGS.copy()
 
 

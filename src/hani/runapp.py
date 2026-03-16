@@ -6,7 +6,7 @@ from typing import Optional
 import typer
 
 from hani.common import (
-    LOGIN_FILE,
+    SETTINGS_DIR,
     OAUTH_PROVIDER,
     OAUTH_KEY,
     OAUTH_SECRET,
@@ -58,7 +58,7 @@ def main(
         typer.echo(f"🔊 Verbose mode enabled")
 
     # Determine authentication mode
-    from hani.auth import get_auth_mode, create_hashed_users_file, ensure_admin_user
+    from hani.auth import get_auth_mode, ensure_admin_user
 
     auth_mode = get_auth_mode()
 
@@ -124,35 +124,21 @@ def main(
         typer.echo("✓ OAuth authentication configured")
 
     else:
-        # Password mode - use hashed password file
-        typer.echo(f"  Using password file: {LOGIN_FILE}")
+        # Password mode - use users.json with hashed passwords
+        from hani.common import USERS_FILE
+
+        typer.echo(f"  Using password file: {USERS_FILE}")
 
         # Ensure admin user exists with password from ADMIN_PASS env var
         ensure_admin_user()
 
-        # Check if we need to convert plain text passwords to hashed
-        hashed_file = LOGIN_FILE.parent / "users_hashed.json"
-        plain_backup = LOGIN_FILE.parent / "users_plain_backup.json"
-
-        if not hashed_file.exists() and LOGIN_FILE.exists():
-            typer.echo("⚠️  Converting plain text passwords to hashed format...")
-            # Create backup of plain text file
-            import shutil
-
-            shutil.copy(LOGIN_FILE, plain_backup)
-            typer.echo(f"✓ Backed up plain text passwords to {plain_backup}")
-
-            # Create hashed version
-            create_hashed_users_file(LOGIN_FILE, hashed_file)
-            typer.echo(f"✓ Created hashed password file: {hashed_file}")
-
-        # Use hashed file if it exists, otherwise fall back to plain
-        # Note: Panel authentication patching happens in app.py when the app is loaded
-        auth_file = hashed_file if hashed_file.exists() else LOGIN_FILE
+        if not USERS_FILE.exists():
+            typer.echo("❌ No users.json file found and could not create admin user")
+            raise typer.Exit(code=1)
 
         auth_args = [
             "--basic-auth",
-            str(auth_file),
+            str(USERS_FILE),
             "--cookie-secret",
             COOKIE_SECRET,
         ]
