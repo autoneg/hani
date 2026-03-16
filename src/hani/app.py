@@ -17,28 +17,17 @@ from pathlib import Path
 import os
 
 
-def init_authentication():
-    """
-    Initialize authentication by patching Panel's BasicLoginHandler.
-
-    This MUST be called at module load time (before main()) because:
-    - Panel loads auth configuration when the server subprocess starts
-    - The patch must be in place before Panel reads the auth file
-    - This happens automatically when app.py is imported by 'panel serve'
-    """
+# Initialize dual auth template if enabled
+if os.environ.get("_HANI_DUAL_AUTH") == "1":
     try:
-        from hani.auth import patch_panel_auth
+        from hani.dual_auth import configure_dual_auth_template
 
-        patch_panel_auth()
+        configure_dual_auth_template()
     except Exception as e:
-        print(f"Warning: Could not patch Panel authentication: {e}")
+        print(f"Warning: Could not configure dual auth: {e}")
         import traceback
 
         traceback.print_exc()
-
-
-# Initialize authentication at module load time
-init_authentication()
 
 # Import event tracking modules
 from hani.events import EventType, create_session, end_session
@@ -1628,14 +1617,22 @@ def action_panel(
         if current_offer_utility is not None
         else "Accept"
     )
-    end_label = f"End & Leave ({reserved_value:0.1%})"
+    end_label = f"End ({reserved_value:0.1%})"
 
     accept_btn = create_tracked_button(
-        name=accept_label, icon="circle-check", button_type="success"
+        name=accept_label,
+        icon="circle-check",
+        button_type="success",
+        width=130,
+        stylesheets=[":host { font-size: 11px; }"],
     )
     accept_btn.on_click(on_accept)
     end_btn = create_tracked_button(
-        name=end_label, icon="circle-x", button_type="danger"
+        name=end_label,
+        icon="circle-x",
+        button_type="danger",
+        width=110,
+        stylesheets=[":host { font-size: 11px; }"],
     )
     end_btn.on_click(on_end)
     session_state["reject_btn"] = reject_btn
@@ -1696,7 +1693,11 @@ def action_panel(
 
     # Row with current offer, Accept (only if offer exists), and End buttons
     reject_counter_btn = create_tracked_button(
-        name="Reject and counter", icon="arrow-back-up", button_type="primary"
+        name="Reject & Counter",
+        icon="arrow-back-up",
+        button_type="primary",
+        width=140,
+        stylesheets=[":host { font-size: 11px; }"],
     )
 
     def on_reject_counter(event=None):
@@ -1754,6 +1755,8 @@ def action_panel(
             accept_btn,
             end_btn,
             align="center",
+            margin=(5, 0),
+            styles={"gap": "8px"},
         )
         # Section containing partner offer, buttons, confirmation dialog, and divider (can be hidden)
         partner_offer_section = pn.Column(
@@ -2210,12 +2213,46 @@ def load_scenario(event=None):
 
 
 def read_announcements():
-    announcements_path = Path(__file__).parent / "announcements.md"
-    txt = ""
-    if announcements_path:
-        txt = announcements_path.read_text()
+    # Check for announcements in settings directory first, then fall back to app directory
+    from hani.common import SETTINGS_DIR
 
-    user = session_state.get("user", pn.state.user)
+    settings_announcements = SETTINGS_DIR / "announcements.md"
+    app_announcements = Path(__file__).parent / "announcements.md"
+
+    txt = ""
+    if settings_announcements.exists():
+        txt = settings_announcements.read_text()
+    elif app_announcements.exists():
+        txt = app_announcements.read_text()
+
+    # Get the main app URL from settings
+    from hani.common import APP_URLS
+
+    main_app_url = APP_URLS.get("app", "http://localhost:5006")
+
+    # Check if main app is running (only show login/register links if it is)
+    main_app_available = False
+    try:
+        from hani.dual_auth import is_server_running
+        from urllib.parse import urlparse
+
+        parsed = urlparse(main_app_url)
+        main_port = parsed.port or 5006
+        main_host = parsed.hostname or "localhost"
+        main_app_available = is_server_running(main_host, main_port)
+    except Exception:
+        pass
+
+    # Build the login/register message only if main app is available
+    if main_app_available:
+        login_register_msg = (
+            f"##### To start a recorded session, please "
+            f"[login]({main_app_url}/app) or "
+            f"[register]({main_app_url}/register)."
+        )
+    else:
+        login_register_msg = ""
+
     session_state["announcements"] = (
         (
             ""
@@ -2225,9 +2262,7 @@ def read_announcements():
                 "##### You can start experimenting with the user-interface and available "
                 "tools by pressing the 'Start' button below."
                 "\n\n\n\n##### You can load new exmaple scenarios using the 'Load' button "
-                "(after you finish a negotiation).\n\n\n##### To start a recorded session, please "
-                f"[login]({session_state['env'].get('app', 'https://localhost:{HANI_PORT}')}) or "
-                f"[register]({session_state['env'].get('registration', 'https://localhost:{REG_PORT}')})."
+                "(after you finish a negotiation).\n\n\n" + login_register_msg
             )
         )
         + "\n\n\n\n\n"
@@ -2254,6 +2289,110 @@ def remove_announcemnents():
         session_state["history"].insert(0, pn.pane.Markdown(txt))
 
 
+def show_consent_form(user_id: str):
+    """Show consent form for users who haven't consented yet.
+
+    Returns a Panel layout that replaces the main negotiation UI.
+    """
+    from hani.common import CONSENT_FILE
+    from hani.auth import set_user_consent, get_user_consent
+
+    # Load consent text
+    if CONSENT_FILE.exists():
+        consent_text = CONSENT_FILE.read_text()
+    else:
+        consent_text = """## Consent Form
+
+Please read the terms and conditions carefully before proceeding.
+
+By checking the box below and clicking "I Agree", you confirm that:
+- You have read and understood the terms of participation
+- You voluntarily agree to participate
+- You understand you can withdraw at any time
+"""
+
+    consent_markdown = pn.pane.Markdown(consent_text, sizing_mode="stretch_width")
+
+    consent_checkbox = pn.widgets.Checkbox(
+        name="I have read and agree to the terms above",
+        value=False,
+    )
+
+    name_input = pn.widgets.TextInput(
+        name="Full Name (as signature)",
+        placeholder="Enter your full name",
+    )
+
+    agree_btn = pn.widgets.Button(
+        name="I Agree & Continue",
+        button_type="success",
+        disabled=True,
+    )
+
+    message = pn.pane.Markdown("")
+
+    def update_button(event):
+        agree_btn.disabled = not (consent_checkbox.value and name_input.value.strip())
+
+    consent_checkbox.param.watch(update_button, "value")
+    name_input.param.watch(update_button, "value")
+
+    def on_agree(event):
+        if not consent_checkbox.value:
+            message.object = "**Please check the consent checkbox.**"
+            return
+        if not name_input.value.strip():
+            message.object = "**Please enter your name.**"
+            return
+
+        # Save consent
+        set_user_consent(
+            user_id,
+            consented=True,
+            name=name_input.value.strip(),
+        )
+
+        message.object = "**Thank you! Redirecting to the application...**"
+
+        # Refresh the page to load the main app
+        # Use JavaScript to reload since pn.state.location may not be available
+        pn.state.execute(lambda: None)  # Ensure we're in a callback context
+        import time
+
+        time.sleep(0.5)  # Brief delay to show message
+
+        # Use JavaScript to reload the page
+        script = pn.pane.HTML("<script>window.location.reload();</script>")
+        message.object = "**Thank you! Redirecting...**"
+        consent_form.append(script)
+
+    agree_btn.on_click(on_agree)
+
+    consent_form = pn.Column(
+        pn.pane.Markdown("# Welcome to HANI"),
+        pn.pane.Markdown(
+            "Before you can start negotiating, please review and accept the consent form below."
+        ),
+        pn.layout.Divider(),
+        consent_markdown,
+        pn.layout.Divider(),
+        consent_checkbox,
+        name_input,
+        agree_btn,
+        message,
+        sizing_mode="stretch_width",
+        styles={"max-width": "800px", "margin": "0 auto", "padding": "20px"},
+    )
+
+    # Create a simple template for the consent form
+    template = pn.template.BootstrapTemplate(
+        title="HANI - Consent Required",
+        main=[consent_form],
+    )
+
+    return template
+
+
 def main():
     # Load command-line agents if provided (takes precedence over env var)
     _load_cmdline_agents()
@@ -2268,6 +2407,18 @@ def main():
     import os
 
     is_guest_mode = os.getenv("HANI_GUEST_MODE", "false").lower() == "true"
+
+    # Check consent if required (only for authenticated, non-guest users)
+    from hani.common import ENFORCE_CONSENT
+    from hani.auth import get_user_consent
+
+    if ENFORCE_CONSENT and not is_guest_mode and pn.state.user:
+        user_id = str(pn.state.user)
+        if not get_user_consent(user_id):
+            # Show consent form instead of main app
+            template = show_consent_form(user_id)
+            template.servable(title="HANI - Consent Required")
+            return
 
     try:
         if pn.state.user and not is_guest_mode:
