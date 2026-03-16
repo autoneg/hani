@@ -1,29 +1,9 @@
-import os
 import json
 import pandas as pd
 import panel as pn
 from negmas import Outcome, Scenario
-from typing import Protocol
+from typing import Protocol, Any
 from pathlib import Path
-
-# Load environment variables from .env file if it exists
-try:
-    from dotenv import load_dotenv
-
-    # Look for .env in the project root (where the package is installed from)
-    # or in the current working directory
-    env_paths = [
-        Path.cwd() / ".env",
-        Path(__file__).parent.parent.parent / ".env",
-        Path.home() / "negmas" / "hani" / ".env",
-    ]
-    for env_path in env_paths:
-        if env_path.exists():
-            load_dotenv(env_path)
-            print(f"Loaded environment from: {env_path}")
-            break
-except ImportError:
-    pass  # python-dotenv not installed, rely on system environment
 
 HANI_GUEST_PORT = 5008
 REG_PORT = 5007
@@ -32,6 +12,82 @@ HANI_PORT = 5006
 # Settings directories
 SETTINGS_DIR = Path.home() / "negmas" / "hani" / "settings"
 DEFAULT_SETTINGS_DIR = Path(__file__).parent / "default_settings"
+
+# Configuration file paths
+ENV_FILE = SETTINGS_DIR / "env.json"
+DEFAULT_ENV_FILE = DEFAULT_SETTINGS_DIR / "env.json"
+
+# Default configuration
+_DEFAULT_CONFIG: dict[str, Any] = {
+    "urls": {
+        "registration": "http://localhost:5007",
+        "app": "http://localhost:5006",
+        "playground": "http://localhost:5008",
+    },
+    "admin": {
+        "password": "adminpass",
+        "emails": [],
+    },
+    "auth": {
+        "mode": "password",
+        "cookie_secret": "hani-change-this-secret-in-production",
+    },
+    "oauth": {
+        "provider": "github",
+        "key": "",
+        "secret": "",
+        "redirect_uri": "http://localhost:5006",
+        "encryption_key": "",
+    },
+    "agents": [],
+}
+
+
+def load_env_config() -> dict[str, Any]:
+    """Load environment configuration from env.json.
+
+    Checks in order:
+    1. User settings: ~/negmas/hani/settings/env.json
+    2. Default settings: <package>/default_settings/env.json
+    3. Hardcoded defaults
+    """
+    # Try user settings first
+    if ENV_FILE.exists():
+        try:
+            with open(ENV_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Try default settings
+    if DEFAULT_ENV_FILE.exists():
+        try:
+            with open(DEFAULT_ENV_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Hardcoded defaults
+    return _DEFAULT_CONFIG.copy()
+
+
+# Load configuration
+_ENV_CONFIG: dict[str, Any] = load_env_config()
+
+
+def get_env(key_path: str, default: Any = None) -> Any:
+    """Get a configuration value by dot-separated path.
+
+    Example: get_env("admin.password") returns _ENV_CONFIG["admin"]["password"]
+    """
+    keys = key_path.split(".")
+    value: Any = _ENV_CONFIG
+    for key in keys:
+        if isinstance(value, dict) and key in value:
+            value = value[key]
+        else:
+            return default
+    return value
 
 
 def get_settings_file(filename: str) -> Path:
@@ -55,7 +111,6 @@ def read_settings_file(filename: str, default: str = "") -> str:
 
 SCENARIO_ORDER_FILE = get_settings_file("scenario_order.txt")
 CONSENT_FILE = get_settings_file("consent.md")
-ENV_FILE = get_settings_file("env.json")
 USERS_FILE = (
     SETTINGS_DIR / "users.json"
 )  # Single file for all user data (with hashed passwords)
@@ -65,71 +120,89 @@ INFO_FILE_NAME = "_info.yaml"
 
 DB_PATH = Path.home() / "negmas" / "hani" / "db"
 
-# Admin password from environment variable
-ADMIN_PASS = os.getenv("ADMIN_PASS", "adminpass")  # Default to "adminpass" if not set
+# Admin password from env.json (with type assertion)
+ADMIN_PASS: str = str(get_env("admin.password", "adminpass") or "adminpass")
 
-# Admin emails for OAuth mode (comma-separated list)
-# Users with these emails will have admin access when using OAuth authentication
-_admin_emails_str = os.getenv("ADMIN_EMAILS", "")
-ADMIN_EMAILS = [
-    email.strip().lower() for email in _admin_emails_str.split(",") if email.strip()
+# Admin emails (list of emails with admin access in OAuth mode)
+_admin_emails_raw = get_env("admin.emails", [])
+_admin_emails_list: list[str] = (
+    _admin_emails_raw if isinstance(_admin_emails_raw, list) else []
+)
+ADMIN_EMAILS: list[str] = [
+    str(email).strip().lower() for email in _admin_emails_list if str(email).strip()
 ]
 
-# Environment detection and URL configuration
-HANI_ENV = os.getenv("HANI_ENV", "local")  # 'local' or 'production'
+# App URLs
+APP_URLS: dict[str, str] = (
+    get_env("urls", _DEFAULT_CONFIG["urls"]) or _DEFAULT_CONFIG["urls"]
+)
 
+# OAuth Configuration - Support both old single-provider and new multi-provider format
+_oauth_config = get_env("oauth", {}) or {}
 
-# Load environment-specific URLs
-def load_app_urls():
-    """Load app URLs based on HANI_ENV environment variable"""
-    # Try environment-specific file in user settings first
-    env_file = SETTINGS_DIR / f"env.{HANI_ENV}.json"
+# Check for new multi-provider format first
+_oauth_providers_config = _oauth_config.get("providers", {})
+if _oauth_providers_config:
+    # New format: oauth.providers.{github,google,...}
+    OAUTH_PROVIDERS: dict[str, dict] = {}
+    for provider_name, provider_config in _oauth_providers_config.items():
+        if isinstance(provider_config, dict):
+            enabled = provider_config.get("enabled", False)
+            key = str(provider_config.get("key", "") or "")
+            secret = str(provider_config.get("secret", "") or "")
+            # Auto-enable if key and secret are provided
+            if key and secret:
+                enabled = True
+            if enabled and key and secret:
+                OAUTH_PROVIDERS[provider_name] = {
+                    "key": key,
+                    "secret": secret,
+                }
+else:
+    # Legacy single-provider format: oauth.provider, oauth.key, oauth.secret
+    OAUTH_PROVIDERS = {}
+    _legacy_provider = str(_oauth_config.get("provider", "github") or "github")
+    _legacy_key = str(_oauth_config.get("key", "") or "")
+    _legacy_secret = str(_oauth_config.get("secret", "") or "")
+    if _legacy_key and _legacy_secret:
+        OAUTH_PROVIDERS[_legacy_provider] = {
+            "key": _legacy_key,
+            "secret": _legacy_secret,
+        }
 
-    if not env_file.exists():
-        # Try environment-specific file in default settings
-        env_file = DEFAULT_SETTINGS_DIR / f"env.{HANI_ENV}.json"
+# Common OAuth settings
+OAUTH_REDIRECT_URI: str = str(
+    _oauth_config.get("redirect_uri", "http://localhost:5006")
+    or "http://localhost:5006"
+)
+OAUTH_ENCRYPTION_KEY: str = str(_oauth_config.get("encryption_key", "") or "")
 
-    if not env_file.exists():
-        # Fallback to env.json (already uses get_settings_file)
-        env_file = ENV_FILE
+# Legacy single-provider variables (for backward compatibility)
+# Pick the first enabled provider as the "default"
+if OAUTH_PROVIDERS:
+    _first_provider = next(iter(OAUTH_PROVIDERS))
+    OAUTH_PROVIDER: str = _first_provider
+    OAUTH_KEY: str = OAUTH_PROVIDERS[_first_provider]["key"]
+    OAUTH_SECRET: str = OAUTH_PROVIDERS[_first_provider]["secret"]
+else:
+    OAUTH_PROVIDER = "github"
+    OAUTH_KEY = ""
+    OAUTH_SECRET = ""
 
-    if env_file.exists():
-        with open(env_file) as f:
-            return json.load(f)
+COOKIE_SECRET: str = str(
+    get_env("auth.cookie_secret", "hani-change-this-secret-in-production")
+    or "hani-change-this-secret-in-production"
+)
 
-    # Default fallback URLs (local development)
-    return {
-        "registration": "http://localhost:5007",
-        "app": "http://localhost:5006",
-        "playground": "http://localhost:5008",
-    }
+# Authentication mode: 'password' or 'oauth' or 'auto'
+AUTH_MODE: str = str(get_env("auth.mode", "password") or "password")
 
+# Whether to require consent before allowing negotiation
+ENFORCE_CONSENT: bool = bool(get_env("auth.enforce_consent", False))
 
-APP_URLS = load_app_urls()
-
-# OAuth Configuration (from environment variables)
-OAUTH_PROVIDER = os.getenv(
-    "HANI_OAUTH_PROVIDER", "github"
-)  # github, google, azure, etc.
-OAUTH_KEY = os.getenv("HANI_OAUTH_KEY", "")  # Client ID
-OAUTH_SECRET = os.getenv("HANI_OAUTH_SECRET", "")  # Client Secret
-OAUTH_REDIRECT_URI = os.getenv("HANI_OAUTH_REDIRECT_URI", "http://localhost:5006")
-OAUTH_ENCRYPTION_KEY = os.getenv(
-    "HANI_OAUTH_ENCRYPTION_KEY", ""
-)  # 32 url-safe base64 bytes
-COOKIE_SECRET = os.getenv("HANI_COOKIE_SECRET", "hani-super-secret-co-4653322hjhj")
-
-# Authentication mode: 'password' or 'oauth' or 'auto' (auto detects based on OAuth credentials)
-AUTH_MODE = os.getenv("HANI_AUTH_MODE", "auto")
-
-# Agent types configuration (comma-separated list of negotiator class names)
-# Example: "AspirationNegotiator,BoulwareTBNegotiator,helpers.AgentK,LLMHybridNegotiator"
-_agent_types_str = os.getenv("HANI_AGENT_TYPES", "")
-AGENT_TYPES = [
-    agent_type.strip()
-    for agent_type in _agent_types_str.split(",")
-    if agent_type.strip()
-]
+# Agent types configuration (list of negotiator class names)
+_agents_raw = get_env("agents", [])
+AGENT_TYPES: list[str] = _agents_raw if isinstance(_agents_raw, list) else []
 
 # LLM Configuration for outcome extraction and text generation
 LLM_SETTINGS_FILE = SETTINGS_DIR / "llm_settings.json"
