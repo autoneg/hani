@@ -396,6 +396,16 @@ def get_agent_type(x: Negotiator | str | None) -> Negotiator:
             return LLMConcederTBNegotiator
         elif x == "LLMLinearTBNegotiator" and LLMLinearTBNegotiator:
             return LLMLinearTBNegotiator
+    # Handle template-based negotiators from negmas-llm (*WithTextNegotiator)
+    if isinstance(x, str) and x.endswith("WithTextNegotiator"):
+        if x == "HybridWithTextNegotiator" and HybridWithTextNegotiator:
+            return HybridWithTextNegotiator
+        elif x == "BoulwareWithTextNegotiator" and BoulwareWithTextNegotiator:
+            return BoulwareWithTextNegotiator
+        elif x == "ConcederWithTextNegotiator" and ConcederWithTextNegotiator:
+            return ConcederWithTextNegotiator
+        elif x == "LinearWithTextNegotiator" and LinearWithTextNegotiator:
+            return LinearWithTextNegotiator
     if isinstance(x, str) and "." not in x:
         x = f"negmas.sao.{x}"
     if isinstance(x, str) and x.startswith("helpers."):
