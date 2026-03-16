@@ -1340,11 +1340,47 @@ def action_panel(
     if session_state["toggles"]["init_with_last"].value:
         my_offer = session_state.get("human_last_offer", my_offer)
 
+    # Get reserved value and current offer utility for button labels and confirmations
+    reserved_value = human_ufun.reserved_value
+    current_offer_utility = human_ufun(current_offer) if current_offer else None
+
     def on_end(event=None):
+        # Show confirmation dialog
+        is_irrational = True  # Ending is always "bad" - show in red
+        confirm_msg = (
+            f'<div style="font-size: 11pt;">'
+            f"Are you sure you want to end the negotiation?<br>"
+            f'You will receive: <span style="color: red; font-weight: bold;">{reserved_value:0.1%}</span>'
+            f"</div>"
+        )
+        session_state["confirm_action"] = "end"
+        session_state["confirm_dialog_content"].object = confirm_msg
+        session_state["confirm_dialog"].visible = True
+
+    def do_end():
         session_state["human_action"] = SAOResponse(ResponseType.END_NEGOTIATION, None)
         advance()
 
     def on_accept(event=None):
+        # Show confirmation dialog
+        if current_offer_utility is not None:
+            is_irrational = current_offer_utility < reserved_value
+            util_color = "red" if is_irrational else "blue"
+            current_offer_str = ", ".join(
+                f"{issue.name}: {val}" for issue, val in zip(issues, current_offer)
+            )
+            confirm_msg = (
+                f'<div style="font-size: 11pt;">'
+                f"Are you sure you want to accept this offer?<br>"
+                f"<b>Offer:</b> {current_offer_str}<br>"
+                f'You will receive: <span style="color: {util_color}; font-weight: bold;">{current_offer_utility:0.1%}</span>'
+                f"</div>"
+            )
+            session_state["confirm_action"] = "accept"
+            session_state["confirm_dialog_content"].object = confirm_msg
+            session_state["confirm_dialog"].visible = True
+
+    def do_accept():
         session_state["human_action"] = SAOResponse(
             ResponseType.ACCEPT_OFFER, current_offer
         )
@@ -1372,6 +1408,19 @@ def action_panel(
 
         advance()
 
+    def on_confirm(event=None):
+        """Handle confirmation dialog confirm button."""
+        session_state["confirm_dialog"].visible = False
+        action = session_state.get("confirm_action")
+        if action == "end":
+            do_end()
+        elif action == "accept":
+            do_accept()
+
+    def on_cancel(event=None):
+        """Handle confirmation dialog cancel button."""
+        session_state["confirm_dialog"].visible = False
+
     def on_reject(event=None):
         text_input = session_state.get("text_input_widget")
         text_only = session_state["toggles"]["text_only_mode"].value
@@ -1382,7 +1431,6 @@ def action_panel(
         text_value = ""
         if session_state["toggles"]["allow_text_human"] and text_input:
             text_value = text_input.value or ""
-            text_input.value = ""
 
         # If auto_generate is on and we have an outcome, generate text
         if auto_generate and not text_only and not text_value.strip():
@@ -1396,6 +1444,22 @@ def action_panel(
                 )
                 if not result.error:
                     text_value = result.text
+
+        # Validation: text-only mode requires text
+        if text_only and not text_value.strip():
+            validation_alert = session_state.get("validation_alert")
+            if validation_alert:
+                validation_alert.visible = True
+            return
+
+        # Clear text input after validation passes
+        if text_input:
+            text_input.value = ""
+
+        # Hide validation alert on successful send
+        validation_alert = session_state.get("validation_alert")
+        if validation_alert:
+            validation_alert.visible = False
 
         if text_only:
             # Text-only mode: send only text, no structured outcome
@@ -1557,12 +1621,21 @@ def action_panel(
         name="Send offer", icon="send", button_type="primary"
     )
     reject_btn.on_click(on_reject)
+
+    # Button labels with utility values
+    accept_label = (
+        f"Accept ({current_offer_utility:0.1%})"
+        if current_offer_utility is not None
+        else "Accept"
+    )
+    end_label = f"End & Leave ({reserved_value:0.1%})"
+
     accept_btn = create_tracked_button(
-        name="Accept", icon="circle-check", button_type="success"
+        name=accept_label, icon="circle-check", button_type="success"
     )
     accept_btn.on_click(on_accept)
     end_btn = create_tracked_button(
-        name="End", icon="circle-x", button_type="warning", width=70
+        name=end_label, icon="circle-x", button_type="danger"
     )
     end_btn.on_click(on_end)
     session_state["reject_btn"] = reject_btn
@@ -1604,17 +1677,13 @@ def action_panel(
         current_offer_str = ", ".join(
             f"{issue.name}: {val}" for issue, val in zip(issues, current_offer)
         )
-        # Build the display with optional text
-        offer_html = '<div style="font-size: 10pt;">'
-        if current_offer_text:
-            offer_html += (
-                f'<div style="margin-bottom: 4px;"><i>"{current_offer_text}"</i></div>'
-            )
-        offer_html += (
+        # Display only the offer without text (text is shown in history panel)
+        offer_html = (
+            f'<div style="font-size: 10pt;">'
             f"<b>Partner Offer:</b> {current_offer_str} "
             f'<span style="color: {util_color}; font-weight: bold;">({current_offer_util:0.1%})</span>'
+            f"</div>"
         )
-        offer_html += "</div>"
         current_offer_display = pn.pane.HTML(
             offer_html,
             sizing_mode="stretch_width",
@@ -1625,20 +1694,83 @@ def action_panel(
             sizing_mode="stretch_width",
         )
 
-    # Row with current offer, Accept (only if offer exists) and End buttons
+    # Row with current offer, Accept (only if offer exists), and End buttons
+    reject_counter_btn = create_tracked_button(
+        name="Reject and counter", icon="arrow-back-up", button_type="primary"
+    )
+
+    def on_reject_counter(event=None):
+        """Hide the partner offer section to let user focus on their counter-offer."""
+        partner_offer_section = session_state.get("partner_offer_section")
+        undo_btn = session_state.get("undo_decision_btn")
+        if partner_offer_section:
+            partner_offer_section.visible = False
+        if undo_btn:
+            undo_btn.visible = True
+
+    reject_counter_btn.on_click(on_reject_counter)
+
+    def on_undo_decision(event=None):
+        """Show the partner offer section again."""
+        partner_offer_section = session_state.get("partner_offer_section")
+        undo_btn = session_state.get("undo_decision_btn")
+        if partner_offer_section:
+            partner_offer_section.visible = True
+        if undo_btn:
+            undo_btn.visible = False
+
+    # Undo decision button (initially hidden, shown when Reject and counter is clicked)
+    undo_decision_btn = create_tracked_button(
+        name="Undo decision", icon="arrow-back", button_type="default"
+    )
+    undo_decision_btn.visible = False
+    undo_decision_btn.on_click(on_undo_decision)
+    session_state["undo_decision_btn"] = undo_decision_btn
+
+    # Confirmation dialog (initially hidden)
+    confirm_dialog_content = pn.pane.HTML("")
+    session_state["confirm_dialog_content"] = confirm_dialog_content
+    confirm_btn = pn.widgets.Button(name="Confirm", button_type="danger", width=80)
+    cancel_btn = pn.widgets.Button(name="Cancel", button_type="default", width=80)
+    confirm_btn.on_click(on_confirm)
+    cancel_btn.on_click(on_cancel)
+    confirm_dialog = pn.Column(
+        confirm_dialog_content,
+        pn.Row(confirm_btn, cancel_btn, align="center"),
+        visible=False,
+        styles={
+            "background": "#fff3cd",
+            "padding": "10px",
+            "border-radius": "5px",
+            "border": "1px solid #ffc107",
+        },
+    )
+    session_state["confirm_dialog"] = confirm_dialog
+
     if has_current_offer:
-        current_offer_row = pn.Row(
-            current_offer_display,
+        # All three buttons in one row: Reject and counter, Accept, End
+        buttons_row = pn.Row(
+            reject_counter_btn,
             accept_btn,
             end_btn,
             align="center",
         )
-    else:
-        current_offer_row = pn.Row(
+        # Section containing partner offer, buttons, confirmation dialog, and divider (can be hidden)
+        partner_offer_section = pn.Column(
             current_offer_display,
-            end_btn,
-            align="center",
+            buttons_row,
+            confirm_dialog,
+            pn.layout.Divider(),
         )
+    else:
+        # Section containing partner offer, buttons, and divider (can be hidden)
+        partner_offer_section = pn.Column(
+            current_offer_display,
+            pn.Row(end_btn, align="center"),
+            confirm_dialog,
+            pn.layout.Divider(),
+        )
+    session_state["partner_offer_section"] = partner_offer_section
 
     # Build the structured outcome section with generate text button
     outcome_widgets_list = []
@@ -1673,12 +1805,21 @@ def action_panel(
         pn.Row(llm_status_widget, pn.Spacer(), generate_text_btn, align="center"),
     )
 
-    # Row with just the Send button
-    send_row = pn.Row(reject_btn)
+    # Row with Send button and Undo decision button (undo is initially hidden)
+    send_row = pn.Row(reject_btn, undo_decision_btn)
+
+    # Alert widget for validation messages (initially hidden)
+    validation_alert = pn.pane.Alert(
+        "You must either send some text or uncheck 'Text Only' and choose an offer (or both). "
+        "If you want to end the negotiation, press the End button.",
+        alert_type="warning",
+        visible=False,
+    )
+    session_state["validation_alert"] = validation_alert
 
     col = pn.Column(
-        current_offer_row,
-        pn.layout.Divider(),
+        partner_offer_section,
+        validation_alert,
         outcome_section,
         my_util,
         send_row,
