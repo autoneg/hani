@@ -2,8 +2,8 @@ import panel as pn
 from hani.common import CONSENT_FILE, APP_URLS
 from hani.auth import (
     load_users,
-    verify_user_password,
     create_user,
+    verify_user_password,
     update_user,
 )
 
@@ -65,21 +65,16 @@ def register(event):
     if email != email_confirm:
         reg_message.object = "Emails do not match."
         return
-    if name in [u.get("name", "") for u in users.values()]:
-        reg_message.object = "Your full name is already registered."
-        return
+    # In simplified auth, we can't check for duplicate names
+    # (users.json only stores username -> password)
     if username in users:
         reg_message.object = "Username already exists."
         return
 
-    # Create user with hashed password
+    # Create user (extra fields are ignored in simplified auth)
     success = create_user(
         username=username,
         password=password,
-        email=email,
-        name=name,
-        signature=signature,
-        date_of_signature=sig_date,
     )
 
     if not success:
@@ -139,19 +134,22 @@ def login(event):
     username = login_username.value.strip()
     password = login_password.value
 
-    # Verify password using hashed comparison
+    # Verify password
     if verify_user_password(username, password):
-        users = load_users()
         current_user["username"] = username
         login_message.object = f"Welcome, {username}!"
         login_panel.visible = False
         registration_panel.visible = False
         logout_btn.visible = True
         profile_panel.visible = True
-        profile_email.value = users[username].get("email", "")
-        profile_name.value = users[username].get("name", "")
-        profile_date.value = users[username].get("date_of_signature", "")
-        profile_message.object = ""
+        # In simplified auth, we only store username -> password
+        # Profile fields are no longer stored
+        profile_email.value = ""
+        profile_name.value = username
+        profile_date.value = ""
+        profile_message.object = (
+            "Note: Profile data is not stored in simplified auth mode."
+        )
     else:
         login_message.object = "Invalid username or password."
 
