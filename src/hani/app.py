@@ -2295,7 +2295,7 @@ def show_consent_form(user_id: str):
     Returns a Panel layout that replaces the main negotiation UI.
     """
     from hani.common import CONSENT_FILE
-    from hani.auth import set_user_consent, get_user_consent
+    from hani.auth import set_user_consent
 
     # Load consent text
     if CONSENT_FILE.exists():
@@ -2538,7 +2538,7 @@ def main():
 
     image = pn.Column(
         image_pane,
-        pn.pane.Markdown(f"## HAN2025\n## `{session_state['user']}`"),
+        pn.pane.Markdown(f"## HAN2026\n## `{session_state['user']}`"),
         logout if pn.state.user else None,
         align="center",
     )
