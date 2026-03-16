@@ -5,6 +5,34 @@ All notable changes to the HANI (Human-Agent Negotiation Interface) project will
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-03-16
+
+### Added
+- **Action Panel UX Improvements**:
+  - Confirmation dialogs for Accept and End actions showing utility values
+  - Utility values displayed in button labels: "Accept (X%)" and "End & Leave (X%)"
+  - "Reject and counter" button that hides partner offer section for focused counter-offer creation
+  - "Undo decision" button to restore partner offer section
+  - Validation alert for text-only mode when no text is entered
+- **CLI Service Flags**: Added `--no-main`, `--no-reg`, `--no-guest` flags to selectively disable services
+- **Agent Group Selection**: Added `--agents` group selection with `:llm`, `:template`, `:negmas`, `:hani`, `:genius` syntax
+- **Default Settings Fallback**: App now works without settings folder by using built-in defaults
+
+### Changed
+- Partner text removed from action panel (shown in history panel only)
+- Button colors updated: End=danger (red), Reject and counter=primary (blue), Accept=success (green)
+- All action buttons (Reject and counter, Accept, End) now displayed in one row
+- Renamed "Inverter" tool to "Utility-based Selector"
+- LLM and Random negotiator tools now admin-only
+- Default configuration changed to only enable Template-Based negotiators
+- **Dependencies Updated**:
+  - `negmas` updated to `>=0.15.2`
+  - `negmas-llm` updated to `>=0.4.2`
+
+### Fixed
+- Preferences panel layout: single-line disagreement value, shorter bar chart with smaller font
+- Handle `*WithTextNegotiator` classes from negmas_llm in `get_agent_type()`
+
 ## [0.2.0] - 2026-03-09
 
 ### Added
