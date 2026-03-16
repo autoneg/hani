@@ -71,7 +71,7 @@ class PreferencesTool(Tool):
         fig = go.Figure(
             data=[go.Bar(y=labels, x=[100 * fun(_) for _ in labels], orientation="h")]
         )
-        fig.update_layout(**LAYOUT_OPTIONS, height=200)  # type: ignore
+        fig.update_layout(**LAYOUT_OPTIONS, height=170, font=dict(size=10))  # type: ignore
         return pn.pane.Plotly(fig, **self._config)
 
     @param.depends("ufun")
@@ -111,7 +111,9 @@ class PreferencesTool(Tool):
 
     @param.depends("ufun")
     def reserved(self):
-        return pn.pane.Markdown(f"### Reserved value: {self.ufun.reserved_value:0.1%}")
+        return pn.pane.Markdown(
+            f"**Value in case of Disagreement:** {self.ufun.reserved_value:0.1%}"
+        )
 
     def panel(self):
         ufun = self.ufun
@@ -177,7 +179,7 @@ class AgentPreferencesTool(Tool):
         fig = go.Figure(
             data=[go.Bar(y=labels, x=[100 * fun(_) for _ in labels], orientation="h")]
         )
-        fig.update_layout(**LAYOUT_OPTIONS, height=200)  # type: ignore
+        fig.update_layout(**LAYOUT_OPTIONS, height=170, font=dict(size=10))  # type: ignore
         return pn.pane.Plotly(fig, **self._config)
 
     @param.depends("ufun")
@@ -209,7 +211,9 @@ class AgentPreferencesTool(Tool):
     def reserved(self):
         if self.ufun is None:
             return pn.pane.Markdown("")
-        return pn.pane.Markdown(f"### Reserved value: {self.ufun.reserved_value:0.1%}")
+        return pn.pane.Markdown(
+            f"**Value in case of Disagreement:** {self.ufun.reserved_value:0.1%}"
+        )
 
     def panel(self):
         if self.ufun is None:
