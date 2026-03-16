@@ -5,6 +5,48 @@ All notable changes to the HANI (Human-Agent Negotiation Interface) project will
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-16
+
+### Added
+- **New Configuration System**:
+  - Replace `.env` with `env.json` for JSON-based configuration
+  - Configuration loaded from `~/negmas/hani/settings/env.json` or package defaults
+  - Support for URLs, admin, auth, and OAuth settings in structured JSON format
+
+- **New CLI Commands**:
+  - `hani setup` - Initialize settings directory with default configuration and scenarios
+  - `hani main` - Run only the main app (port 5006)
+  - `hani guest` - Run only the guest/playground app (port 5008)
+  - `hani auth` - Show OAuth setup instructions for GitHub and Google
+
+- **Multi-Provider OAuth Support**:
+  - Support for multiple OAuth providers (GitHub, Google) configured in env.json
+  - Provider-specific routes: `/oauth/github`, `/oauth/google`
+  - Multiple OAuth buttons shown on login and registration pages
+  - Integrated registration endpoint at `/register` (removed separate registration server)
+
+- **Smart Browser Launch**:
+  - Browser now waits for server readiness instead of fixed delay
+  - Polls server until it responds (up to 30 second timeout)
+
+- **Conditional UI Links**:
+  - "Try without registration" link only shown if guest server is running
+  - Login/register links in guest mode only shown if main app is running
+
+- **Settings Directory Enhancements**:
+  - Load announcements from `~/negmas/hani/settings/announcements.md` (falls back to app directory)
+  - Copy default scenarios to settings directory on `hani setup`
+
+### Changed
+- Removed `python-dotenv` dependency (replaced by env.json)
+- Removed `--no-reg` flag (registration integrated into main app)
+- Removed separate registration server (`hani reg` command)
+- Button labels: "End & Leave" renamed to "End", "Reject and counter" to "Reject & Counter"
+- Action panel button styling improved (consistent widths, smaller font)
+
+### Fixed
+- Browser opening before server is ready
+
 ## [0.2.2] - 2026-03-16
 
 ### Added
