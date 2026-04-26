@@ -1,0 +1,87 @@
+site_name: HANI Documentation
+site_description: Human-Agent Negotiation Interface - A web-based interface for conducting negotiations between humans and AI agents
+site_author: Yasser Mohammad
+site_url: https://yasserfarouk.github.io/hani/
+repo_name: yasserfarouk/hani
+repo_url: https://github.com/yasserfarouk/hani
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+
+plugins:
+  - search
+  - include-markdown
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quick Start: quickstart.md
+  - Authentication: authentication.md
+  - Setting up Ollama: ollama.md
+  - Tools: tools.md
+  - Offer Generators: offer-generators.md
+  - Defining Scenarios: scenarios.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/yasserfarouk/hani
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/hani/
+
+copyright: Copyright &copy; 2024-2026 Yasser Mohammad

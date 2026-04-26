@@ -1,0 +1,414 @@
+/* 
+Modern Professional Theme for HANI
+Color Scheme optimized for accessibility and professional appearance
+*/
+
+:root {
+    /* Core Colors */
+    --dark-primary: #282D3C;      /* Main dark color */
+    --light-primary: #A7AFC1;     /* Main light color */
+    --black: #000000;
+    --white: #FFFFFF;
+    
+    /* Accent Colors */
+    --blue-dark: #0F1ED2;         /* Deep blue */
+    --blue: #2C69FF;              /* Primary blue */
+    --teal: #14CDB4;              /* Teal/cyan */
+    --lime: #C8E60A;              /* Lime green */
+    --orange: #FF8C00;            /* Orange */
+    --magenta: #E61E8C;           /* Magenta/pink */
+    
+    /* Link Colors */
+    --link: #4673FA;              /* Hyperlink */
+    --link-visited: #A05AC8;      /* Followed hyperlink */
+    
+    /* Semantic Colors for App */
+    --color-primary: var(--blue);
+    --color-secondary: var(--teal);
+    --color-success: var(--lime);
+    --color-warning: var(--orange);
+    --color-danger: var(--magenta);
+    --color-info: var(--blue-dark);
+    
+    /* Background Colors */
+    --bg-primary: var(--white);
+    --bg-secondary: #F8F9FA;
+    --bg-dark: var(--dark-primary);
+    --bg-light: #F5F6F7;
+    
+    /* Text Colors */
+    --text-primary: var(--dark-primary);
+    --text-secondary: var(--light-primary);
+    --text-light: #6C757D;
+    --text-dark: var(--black);
+    
+    /* Border Colors */
+    --border-color: #DEE2E6;
+    --border-light: #E9ECEF;
+    
+    /* Header */
+    --header-height: 50px;
+    
+    /* Font */
+    --font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Global Body Styling */
+body {
+    background-color: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-family) !important;
+}
+
+/* Panel Template Styling */
+.bk-root, .bk {
+    background-color: var(--bg-primary) !important;
+    font-family: var(--font-family) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Ensure text is readable on light backgrounds */
+#main, .main, #sidebar, .sidebar {
+    color: var(--text-primary) !important;
+}
+
+#main *, .main *, #sidebar *, .sidebar * {
+    color: var(--text-primary);
+}
+
+/* Override for specific elements that should stay styled */
+#main a, .main a, #sidebar a, .sidebar a {
+    color: var(--link) !important;
+}
+
+#main a:visited, .main a:visited, #sidebar a:visited, .sidebar a:visited {
+    color: var(--link-visited) !important;
+}
+
+/* FastGridTemplate and FastListTemplate specific */
+#header, .header {
+    background-color: var(--dark-primary) !important;
+    color: var(--white) !important;
+    height: var(--header-height) !important;
+    max-height: var(--header-height) !important;
+    padding: 8px 20px !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+#header *, .header * {
+    color: var(--white) !important;
+}
+
+#header .title, .header .title {
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    margin: 0 !important;
+    line-height: 34px !important;
+    color: var(--white) !important;
+}
+
+#header .app-header, .header .app-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    height: 100% !important;
+}
+
+#header a, .header a {
+    color: var(--white) !important;
+}
+
+#header button, .header button {
+    color: var(--white) !important;
+}
+
+.experiment-badge {
+    font-size: 11px !important;
+    color: var(--light-primary) !important;
+    font-weight: 400 !important;
+    margin-left: 12px !important;
+    padding: 2px 8px !important;
+    background-color: rgba(167, 175, 193, 0.15) !important;
+    border-radius: 4px !important;
+}
+
+#sidebar, .sidebar {
+    background-color: var(--bg-secondary) !important;
+    border-right: 1px solid var(--border-color) !important;
+}
+
+#main, .main {
+    background-color: var(--bg-primary) !important;
+}
+
+/* Cards and Panels */
+.card, .panel-card, .bk-card {
+    background-color: var(--bg-primary) !important;
+    border: 1px solid var(--border-light) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 4px rgba(40, 45, 60, 0.1) !important;
+}
+
+.card-header, .panel-card-header {
+    background-color: var(--bg-secondary) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+}
+
+/* Buttons */
+.bk-btn, button {
+    font-family: var(--font-family) !important;
+    border-radius: 6px !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+}
+
+.bk-btn-primary, button[type="submit"] {
+    background-color: var(--blue) !important;
+    border-color: var(--blue) !important;
+    color: var(--white) !important;
+}
+
+.bk-btn-primary:hover, button[type="submit"]:hover {
+    background-color: var(--blue-dark) !important;
+    border-color: var(--blue-dark) !important;
+}
+
+.bk-btn-success {
+    background-color: var(--teal) !important;
+    border-color: var(--teal) !important;
+    color: var(--white) !important;
+}
+
+.bk-btn-warning {
+    background-color: var(--orange) !important;
+    border-color: var(--orange) !important;
+    color: var(--white) !important;
+}
+
+.bk-btn-danger {
+    background-color: var(--magenta) !important;
+    border-color: var(--magenta) !important;
+    color: var(--white) !important;
+}
+
+/* Tabs */
+.bk-tabs-header {
+    background-color: var(--bg-secondary) !important;
+    border-bottom: 2px solid var(--border-color) !important;
+}
+
+.bk-tab {
+    color: var(--text-secondary) !important;
+    border: none !important;
+    padding: 10px 20px !important;
+    transition: all 0.2s ease !important;
+}
+
+.bk-tab:hover {
+    color: var(--blue) !important;
+    background-color: var(--bg-light) !important;
+}
+
+.bk-tab.bk-active {
+    color: var(--blue) !important;
+    background-color: var(--bg-primary) !important;
+    border-bottom: 3px solid var(--blue) !important;
+    font-weight: 600 !important;
+}
+
+/* Inputs and Forms */
+input, select, textarea, .bk-input {
+    background-color: var(--bg-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 6px !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-family) !important;
+    padding: 8px 12px !important;
+}
+
+input:focus, select:focus, textarea:focus, .bk-input:focus {
+    border-color: var(--blue) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(44, 105, 255, 0.1) !important;
+}
+
+/* Tables */
+table, .bk-data-table {
+    background-color: var(--bg-primary) !important;
+    border-collapse: collapse !important;
+}
+
+thead, .bk-data-table thead {
+    background-color: var(--dark-primary) !important;
+    color: var(--white) !important;
+    font-weight: 600 !important;
+}
+
+tbody tr:nth-child(even), .bk-data-table tbody tr:nth-child(even) {
+    background-color: var(--bg-secondary) !important;
+}
+
+tbody tr:hover, .bk-data-table tbody tr:hover {
+    background-color: rgba(44, 105, 255, 0.05) !important;
+}
+
+td, th {
+    border: 1px solid var(--border-light) !important;
+    padding: 10px !important;
+}
+
+/* Markdown Content */
+.markdown, .bk-markdown {
+    color: var(--text-primary) !important;
+    font-family: var(--font-family) !important;
+}
+
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
+    color: var(--dark-primary) !important;
+    font-weight: 600 !important;
+}
+
+.markdown a {
+    color: var(--link) !important;
+    text-decoration: none !important;
+}
+
+.markdown a:hover {
+    color: var(--blue-dark) !important;
+    text-decoration: underline !important;
+}
+
+.markdown a:visited {
+    color: var(--link-visited) !important;
+}
+
+/* Notifications */
+.notification-success {
+    background-color: var(--teal) !important;
+    color: var(--white) !important;
+}
+
+.notification-error {
+    background-color: var(--magenta) !important;
+    color: var(--white) !important;
+}
+
+.notification-warning {
+    background-color: var(--orange) !important;
+    color: var(--white) !important;
+}
+
+.notification-info {
+    background-color: var(--blue) !important;
+    color: var(--white) !important;
+}
+
+/* Sliders and Progress Bars */
+.bk-slider-title {
+    color: var(--text-primary) !important;
+}
+
+.bk-slider .bk-slider-handle {
+    background-color: var(--blue) !important;
+}
+
+.bk-slider .bk-slider-bar {
+    background-color: var(--blue) !important;
+}
+
+/* Loading Indicators */
+.bk-spinner {
+    border-top-color: var(--blue) !important;
+}
+
+/* Scrollbar Styling for Webkit browsers */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--nec-light-primary);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--blue);
+}
+
+/* Plot/Chart backgrounds */
+.plotly, .js-plotly-plot {
+    background-color: var(--bg-primary) !important;
+}
+
+/* Modal/Dialog */
+.modal, .dialog {
+    background-color: var(--bg-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(40, 45, 60, 0.15) !important;
+}
+
+.modal-header {
+    background-color: var(--dark-primary) !important;
+    color: var(--white) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* Tooltips */
+.tooltip {
+    background-color: var(--dark-primary) !important;
+    color: var(--white) !important;
+    border-radius: 4px !important;
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+}
+
+/* Custom utility classes */
+.theme-primary { color: var(--blue) !important; }
+.theme-secondary { color: var(--teal) !important; }
+.theme-success { color: var(--lime) !important; }
+.theme-warning { color: var(--orange) !important; }
+.theme-danger { color: var(--magenta) !important; }
+
+.theme-bg-primary { background-color: var(--blue) !important; }
+.theme-bg-secondary { background-color: var(--teal) !important; }
+.theme-bg-light { background-color: var(--bg-secondary) !important; }
+.theme-bg-white { background-color: var(--bg-primary) !important; }
+
+/* Color-blind friendly palette for charts/plots 
+   Based on Paul Tol's vibrant scheme - optimized for all types of color blindness
+   https://personal.sron.nl/~pault/ */
+:root {
+    /* Qualitative colors - distinct for categorical data */
+    --cb-blue: #0077BB;       /* Primary blue */
+    --cb-cyan: #33BBEE;       /* Cyan */
+    --cb-teal: #009988;       /* Teal */
+    --cb-orange: #EE7733;     /* Orange */
+    --cb-red: #CC3311;        /* Red */
+    --cb-magenta: #EE3377;    /* Magenta */
+    --cb-grey: #BBBBBB;       /* Grey */
+    
+    /* Sequential colors - for gradients/heatmaps */
+    --cb-seq-1: #FFFFE0;      /* Lightest */
+    --cb-seq-2: #FFEAA7;
+    --cb-seq-3: #FDCB6E;
+    --cb-seq-4: #E17055;
+    --cb-seq-5: #D63031;      /* Darkest */
+    
+    /* Diverging colors - for data with meaningful middle */
+    --cb-div-blue-5: #2166AC;
+    --cb-div-blue-3: #67A9CF;
+    --cb-div-blue-1: #D1E5F0;
+    --cb-div-neutral: #F7F7F7;
+    --cb-div-red-1: #FDDBC7;
+    --cb-div-red-3: #EF8A62;
+    --cb-div-red-5: #B2182B;
+}

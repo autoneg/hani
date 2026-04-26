@@ -1,0 +1,17 @@
+name: bob
+reserved_value: 0.0
+type: LinearAdditiveUtilityFunction
+values:
+- slope: 0.25
+  type: LinearFun
+- slope: 0.25
+  type: LinearFun
+- slope: 0.25
+  type: LinearFun
+- slope: 0.25
+  type: LinearFun
+weights:
+- 0.16
+- 0.04
+- 0.48
+- 0.32

@@ -1,0 +1,21 @@
+name: alice
+reserved_value: 0.0
+type: LinearAdditiveUtilityFunction
+values:
+- slope: -0.25
+  bias: 1.0
+  type: AffineFun
+- slope: -0.25
+  bias: 1.0
+  type: AffineFun
+- slope: -0.25
+  bias: 1.0
+  type: AffineFun
+- slope: -0.25
+  bias: 1.0
+  type: AffineFun
+weights:
+- 0.48
+- 0.32
+- 0.16
+- 0.04

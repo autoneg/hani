@@ -1,0 +1,44 @@
+issues:
+- name: Compass
+  type: DiscreteOrdinalIssue
+  values:
+  - alice
+  - bob
+- name: Container
+  type: DiscreteOrdinalIssue
+  values:
+  - alice
+  - bob
+- name: Food
+  type: DiscreteOrdinalIssue
+  values:
+  - alice
+  - bob
+- name: Hammer
+  type: DiscreteOrdinalIssue
+  values:
+  - alice
+  - bob
+- name: Knife
+  type: DiscreteOrdinalIssue
+  values:
+  - alice
+  - bob
+- name: Match
+  type: DiscreteOrdinalIssue
+  values:
+  - alice
+  - bob
+- name: Medicine
+  type: DiscreteOrdinalIssue
+  values:
+  - alice
+  - bob
+- name: Rope
+  type: DiscreteOrdinalIssue
+  values:
+  - alice
+  - bob
+name: Island
+type: DiscreteCartesianOutcomeSpace
+

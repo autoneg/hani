@@ -1,0 +1,29 @@
+Name: Island
+title: Island Survival Scenario
+issue_description:
+  Compass 🧭: Who gets the compass
+  Container 🧰: Who gets the container
+  Food 🍲: Who gets the food
+  Hammer 🔨: Who gets the hammer
+  Knife 🔪: Who gets the knife
+  Match 🔥: Who gets the match
+  Medicine 💊: Who gets the medicine
+  Rope 🪢: Who gets the rope
+hints:
+  agent:
+    Most Important Item: Container
+    Least Important Item: Knife
+  human:
+    Most Important Item: Match
+    Least Important Item: Compass
+short_description: In this scenario, you and the agent are stranded into an island. You have 8 items and you are negotiating how to divide them. If no agreement is reached, Cydney will give you items at the value given by your reserved_value
+long_description: |
+  **The Domain** There are eight issues corresponding to the eight items you are Distributing. You know how much you value each item but not how much your partner value each of them.
+
+  **Utility Function** Each item has some value for you which you can see in the *Preferences* pane. The more items you get, the more the utility you get.
+
+  **Partner Utility Function** Each item has some value for your partner. The more items they get, the total the utility they get. Nevertheless, you do not know how much they value each item.
+
+  **Value in case of Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option. A third person (call her Cydney) will give you items at this value if no agreement is reached with your partner. You partner also has a reserved value which you do not know.
+
+
