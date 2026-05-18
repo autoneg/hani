@@ -18,8 +18,8 @@ requires-python = ">=3.13"
 dependencies = [
     "cryptography>=44.0.2",
     "hvplot>=0.11.2",
-    "negmas>=0.15.2",
-    "negmas-llm>=0.4.2",
+    "negmas>=0.15.5",
+    "negmas-llm>=0.4.3",
     "panel>=1.6.1",
     "plotly>=6.0.0",
 

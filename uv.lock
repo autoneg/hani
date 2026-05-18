@@ -945,8 +945,8 @@ requires-dist = [
     { name = "mkdocs-jupyter", marker = "extra == 'docs'", specifier = ">=0.25.1" },
     { name = "mkdocs-material", marker = "extra == 'doc'", specifier = ">=9.6.5" },
     { name = "mkdocstrings-python", marker = "extra == 'doc'", specifier = ">=1.16.1" },
-    { name = "negmas", specifier = ">=0.15.2" },
-    { name = "negmas-llm", specifier = ">=0.4.2" },
+    { name = "negmas", specifier = ">=0.15.5" },
+    { name = "negmas-llm", specifier = ">=0.4.3" },
     { name = "panel", specifier = ">=1.6.1" },
     { name = "plotly", specifier = ">=6.0.0" },
     { name = "rich", specifier = ">=13.0.0" },
@@ -2040,7 +2040,7 @@ wheels = [
 
 [[package]]
 name = "negmas"
-version = "0.15.2"
+version = "0.15.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -2071,23 +2071,23 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/27/81a62628d442a0c2d117f202899576ecb65c8791985406d8a835a45464ff/negmas-0.15.2.tar.gz", hash = "sha256:47de201c43bd026acfb63326f5c700aa5d2084f1ad252cbba45fa19df989b143", size = 782356, upload-time = "2026-03-14T07:03:48.105Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/30/e6bb2e0af31b95f6df1fee0515189769838e546ccd1e8afc7866bfc17216/negmas-0.15.5.tar.gz", hash = "sha256:374883c67734d64778eba5a86833bbbc455d271fb6420da6fb86f25c6c1de6aa", size = 789601, upload-time = "2026-05-14T07:59:27.308Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/cc/7e8def4c1e3b39b4d85cb7eef448e71c260ef082ce870dcc4aa5f5d46c32/negmas-0.15.2-py3-none-any.whl", hash = "sha256:96f989743fd2c3da2e3f96ab5eed804d309fda779b33131136c52f6cff6cd86e", size = 856091, upload-time = "2026-03-14T07:03:46.372Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/44/37c3606f91f99b4f3bfefffe017ccfa95a9390a4634fa96f926e74a02fcf/negmas-0.15.5-py3-none-any.whl", hash = "sha256:b86033c92f6d5f07f0a34e6f8819a48e43ae63da6ad25df390d4e10aa3f4bff3", size = 862759, upload-time = "2026-05-14T07:59:25.005Z" },
 ]
 
 [[package]]
 name = "negmas-llm"
-version = "0.4.2"
+version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "litellm" },
     { name = "negmas" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/6c/4f67ab4a48eebc4d7b74c9cb1fe8e130b7ffc74858ac034055a58493316f/negmas_llm-0.4.2.tar.gz", hash = "sha256:de2f910be3a5d839cad049c723f24cb3113fd087e33b11a341efe2a725b8dc93", size = 50691, upload-time = "2026-03-15T13:42:27.923Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/74/a4/b5168e9c43a6f9f0c430c8e022a22f75de267450d5ed1be90393e1664c31/negmas_llm-0.4.3.tar.gz", hash = "sha256:5fe0824eacfe884a483a9bf32f328cf033bd13d40321f1c8b82e1a28dea1f8f5", size = 53558, upload-time = "2026-05-14T07:10:01.458Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/89/65/f0caf6204c1c83a56ed302fe345af69191f59744a99fa51f5fa570a07aba/negmas_llm-0.4.2-py3-none-any.whl", hash = "sha256:dd2c858486f92094e248b505a89ff2347be03756c0345537a760661c2f60df11", size = 53953, upload-time = "2026-03-15T13:42:26.526Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/be/add9901dd8d8f0e40831c53933e06a3d9848d1aed74d0a117ad41c1ece66/negmas_llm-0.4.3-py3-none-any.whl", hash = "sha256:377ec9caea2be6330d217361da2a8c5b4ddd4793684e87f6897cf4c95d886b1c", size = 56786, upload-time = "2026-05-14T07:09:59.871Z" },
 ]
 
 [[package]]
