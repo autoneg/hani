@@ -16,6 +16,8 @@ import threading
 import panel as pn
 from pathlib import Path
 import os
+import json
+import hashlib
 
 
 # Initialize dual auth template if enabled
@@ -1047,6 +1049,14 @@ def save_result(m: SAOMechanism):
         scenario_name = scenario_name.split("/")[-1]
     if "." in scenario_name:
         scenario_name = scenario_name.split(".")[0]
+    # In a Prolific session the first negotiation is a practice round that
+    # doesn't count toward the participant's 5 required negotiations.
+    user = session_state.get("user")
+    is_practice = False
+    if _is_prolific_user(user):
+        # Count BEFORE adding the new row: 0 means this is the very first.
+        is_practice = _count_existing_negotiations(session_state["user_path"]) == 0
+
     result = serialize(
         session_state.get("scenario_info", dict())
         | dict(
@@ -1062,6 +1072,7 @@ def save_result(m: SAOMechanism):
             status=get_status(m.state),
             mechanism_name=m.name,
             mechanism_id=m.id,
+            practice=is_practice,
         )
         | asdict(m.state)
         | {
@@ -2051,6 +2062,25 @@ def send_event_to_tools(event):
 
 
 def start_negotiation(event=None):
+    # Prolific session cap: refuse to start a new negotiation once the
+    # participant has used their allotted negotiations or wall-clock time.
+    user = session_state.get("user")
+    if _is_prolific_user(user):
+        meta = _prolific_meta(session_state["user_path"], user)
+        reason = _prolific_session_done_reason(session_state["user_path"], meta)
+        if reason:
+            try:
+                if hasattr(pn.state, "notifications") and pn.state.notifications:
+                    pn.state.notifications.warning(reason, duration=0)
+            except Exception:
+                pass
+            try:
+                session_state["history"].clear()
+                session_state["history"].append(pn.pane.HTML(f"<h3>{reason}</h3>"))
+            except Exception:
+                pass
+            return
+
     session_state["new_scenario_loaded"] = False
     session_state["history"].clear()
     types = session_state["partners"]["partner_types"].value
@@ -2136,6 +2166,91 @@ def _load_scenario_list():
 SCENARIO_LIST = _load_scenario_list()
 LAST_SCENARIO_FILE = "last_scenario.txt"
 
+# --- Prolific paid-study constants --------------------------------------------
+# When the user identifier is "prolific_<PID>" (set by set_user() when the
+# guest interface is opened with a PROLIFIC_PID URL arg), HANI runs in a
+# constrained mode: a single scenario type for the entire session, a fixed
+# total of MAX_PROLIFIC_NEGS negotiations (first one flagged as practice),
+# and a hard wall-clock cap of MAX_PROLIFIC_MINUTES from the first start.
+PROLIFIC_PREFIX = "prolific_"
+PROLIFIC_META_FILE = "prolific_session.json"
+MAX_PROLIFIC_NEGS = 6          # 1 practice + 5 counted
+MAX_PROLIFIC_MINUTES = 40
+
+
+def _is_prolific_user(user: str | None) -> bool:
+    return bool(user) and str(user).startswith(PROLIFIC_PREFIX)
+
+
+def _prolific_meta(user_path: Path, user: str) -> dict:
+    """Get-or-create the per-Prolific-session metadata file.
+
+    The file is created on the first call (i.e. when the participant first
+    opens the app) and includes:
+      - started_at: ISO timestamp marking the start of the 40-min window
+      - scenario_type: locked scenario type for this PID (round-robin via
+        hash(PID) modulo len(SCENARIO_LIST))
+    """
+    path = user_path / PROLIFIC_META_FILE
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            pass  # fall through and rewrite
+
+    pid = user[len(PROLIFIC_PREFIX):] if user.startswith(PROLIFIC_PREFIX) else user
+    types = SCENARIO_LIST or list(LOADER_MAP.keys())
+    # Deterministic hash so the same PID always lands on the same type.
+    h = int(hashlib.sha1(pid.encode()).hexdigest(), 16)
+    scenario_type = types[h % len(types)] if types else None
+
+    meta = {
+        "started_at": datetime.now().isoformat(),
+        "scenario_type": scenario_type,
+        "max_minutes": MAX_PROLIFIC_MINUTES,
+        "max_negs": MAX_PROLIFIC_NEGS,
+    }
+    path.parent.mkdir(exist_ok=True, parents=True)
+    path.write_text(json.dumps(meta))
+    return meta
+
+
+def _count_existing_negotiations(user_path: Path) -> int:
+    """Number of finished negotiations recorded for this user so far."""
+    csv = user_path / "results.csv"
+    if not csv.exists():
+        return 0
+    try:
+        # Subtract 1 for the header row; clamp at zero.
+        with csv.open() as fh:
+            n = sum(1 for _ in fh) - 1
+        return max(n, 0)
+    except Exception:
+        return 0
+
+
+def _prolific_session_done_reason(user_path: Path, meta: dict) -> str | None:
+    """Returns a human-readable reason if the Prolific session is over, else None."""
+    n_done = _count_existing_negotiations(user_path)
+    if n_done >= int(meta.get("max_negs", MAX_PROLIFIC_NEGS)):
+        return (
+            f"You have finished all {meta.get('max_negs', MAX_PROLIFIC_NEGS)} "
+            "negotiations for this study. Please return to the Prolific tab and "
+            "click \"I'm done\" to submit."
+        )
+    try:
+        started = datetime.fromisoformat(meta["started_at"])
+    except Exception:
+        return None
+    elapsed_min = (datetime.now() - started).total_seconds() / 60.0
+    if elapsed_min >= float(meta.get("max_minutes", MAX_PROLIFIC_MINUTES)):
+        return (
+            f"Your {int(meta.get('max_minutes', MAX_PROLIFIC_MINUTES))}-minute "
+            "session window is over. Please return to the Prolific tab and click "
+            "\"I'm done\" to submit."
+        )
+    return None
+
 
 def get_scenario() -> Scenario:
     user = session_state["user"]
@@ -2145,7 +2260,12 @@ def get_scenario() -> Scenario:
         index = 0
     else:
         index = int(path.read_text()) + 1
-    if session_state["scenarios"]["predefined_order"].value:
+    if _is_prolific_user(user):
+        # Lock the scenario type for the whole session; index still advances
+        # so different negotiations get different ufuns within that type.
+        meta = _prolific_meta(session_state["user_path"], user)
+        type_ = meta.get("scenario_type") or SCENARIO_LIST[index % len(SCENARIO_LIST)]
+    elif session_state["scenarios"]["predefined_order"].value:
         type_ = SCENARIO_LIST[index % len(SCENARIO_LIST)]
     else:
         type_ = choice(list(LOADER_MAP.keys()))
