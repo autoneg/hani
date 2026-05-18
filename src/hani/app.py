@@ -390,7 +390,22 @@ def get_agent_type(x: Negotiator | str | None) -> Negotiator:
 def set_user(session_state=session_state) -> None:
     user = session_state.get("user", pn.state.user)
     if not user:
-        user = GUEST
+        # In guest/Prolific mode, derive the user from the PROLIFIC_PID query
+        # arg so each participant gets their own results directory under db/.
+        try:
+            args = getattr(pn.state, "session_args", None) or {}
+            raw = args.get("PROLIFIC_PID") or args.get("prolific_pid")
+            if raw is not None:
+                pid = raw[0] if isinstance(raw, (list, tuple)) else raw
+                if isinstance(pid, (bytes, bytearray)):
+                    pid = pid.decode()
+                pid = str(pid).strip()
+                if pid:
+                    user = f"prolific_{pid}"
+        except Exception:
+            pass
+        if not user:
+            user = GUEST
     session_state["user"] = user
 
 
