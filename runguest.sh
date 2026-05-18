@@ -8,4 +8,4 @@
 # extra Bokeh/panel flags below behave exactly the same way they do in
 # run.sh for the authenticated app.
 
-hani-guest --prefix hanguest --index app --allow-websocket-origin anac.cs.brown.edu --root-path=/hanguest "$@"
+hani-guest --root-path=/hanplay --allow-websocket-origin anac.cs.brown.edu "$@"
