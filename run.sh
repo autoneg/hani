@@ -7,4 +7,4 @@
 # settings/env.json. The rest of the flags below are forwarded
 # verbatim to `panel serve` as Bokeh/panel options.
 
-hani-app --dev --port 5006 --prefix hanapp --allow-websocket-origin anac.cs.brown.edu --root-path=/hanapp "$@"
+hani-app --dev --port 5006 --prefix hanapp --index app --allow-websocket-origin anac.cs.brown.edu --root-path=/hanapp "$@"
