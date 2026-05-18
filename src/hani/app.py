@@ -1293,6 +1293,12 @@ def action_panel(
     current_offer: Outcome | None, current_data: dict | None = None
 ) -> pn.Column:
     if session_state["action_panel_displayed"]:
+        partner_offer_section = session_state.get("partner_offer_section")
+        undo_btn = session_state.get("undo_decision_btn")
+        if partner_offer_section is not None:
+            partner_offer_section.visible = True
+        if undo_btn is not None:
+            undo_btn.visible = False
         return session_state["action_panel"][0]
     if not session_state["action_panel_displayed"]:
         session_state["action_panel"].clear()
@@ -1777,7 +1783,7 @@ def action_panel(
 
     outcome_section = pn.Column(
         *outcome_widgets_list,
-        pn.Row(llm_status_widget, pn.Spacer(), generate_text_btn, align="center"),
+        pn.Row(llm_status_widget, pn.Spacer(), align="center"),
     )
 
     # Row with Send button and Undo decision button (undo is initially hidden)
@@ -1820,16 +1826,18 @@ def action_panel(
             # Sync text_only_checkbox with the toggle
             def sync_text_only(event):
                 session_state["toggles"]["text_only_mode"].value = event.new
-                # Hide/show outcome section and extract button based on text only mode
+                # Hide/show outcome section and outcome-related buttons based on text only mode
                 outcome_section.visible = not event.new
-                extract_btn.visible = not event.new
+                extract_btn.visible = (not event.new) and is_admin()
+                generate_text_btn.visible = (not event.new) and is_admin()
 
             text_only_checkbox.param.watch(sync_text_only, "value")
 
-            # Set initial visibility of outcome section and extract button based on text_only_mode
+            # Set initial visibility of outcome section and buttons based on text_only_mode
             text_only_initial = session_state["toggles"]["text_only_mode"].value
             outcome_section.visible = not text_only_initial
-            extract_btn.visible = not text_only_initial
+            extract_btn.visible = (not text_only_initial) and is_admin()
+            generate_text_btn.visible = (not text_only_initial) and is_admin()
 
         # Auto-extract on text change if enabled
         def on_text_change(event):
@@ -1842,13 +1850,22 @@ def action_panel(
 
         text_input.param.watch(on_text_change, "value")
 
-        # Build the text section row with text_only on left, extract on right
+        # Extract Outcome and Generate Text are admin-only
+        admin_user = is_admin()
+        extract_btn.visible = extract_btn.visible and admin_user
+        generate_text_btn.visible = generate_text_btn.visible and admin_user
+
+        # Build the text section row with text_only on left, extract + generate text on right
         if text_only_checkbox is not None:
             text_row = pn.Row(
-                text_only_checkbox, pn.Spacer(), extract_btn, align="center"
+                text_only_checkbox,
+                pn.Spacer(),
+                extract_btn,
+                generate_text_btn,
+                align="center",
             )
         else:
-            text_row = pn.Row(extract_btn, align="center")
+            text_row = pn.Row(extract_btn, generate_text_btn, align="center")
 
         text_section = pn.Column(text_input, text_row)
         # Insert text section after the divider (index 2: after current_offer_row and Divider)

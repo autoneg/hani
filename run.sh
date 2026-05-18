@@ -1,4 +1,4 @@
-#!/bin/env bash
+#!/usr/bin/env bash
 # Serve the authenticated HANI app on 127.0.0.1:5006, mounted at
 # /hanapp behind nginx on anac.cs.brown.edu.
 #
