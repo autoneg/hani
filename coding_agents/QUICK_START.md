@@ -4,7 +4,7 @@
 
 ### The Apps
 1. **Main App** (5006) - Authenticated negotiation interface
-2. **Registration** (5007) - Public user registration  
+2. **Registration** (5007) - Public user registration
 3. **Playground** (5008) - Public guest mode
 
 ### The Modes

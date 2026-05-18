@@ -6,11 +6,11 @@ if [ -d "projects/han/.git" ]; then
 else
     # Create parent directory if needed
     mkdir -p "projects"
-    
+
     # Clone the repository
     if git clone "git@github.com:autoneg/hani.git" "projects/han"; then
         echo -e "  ${GREEN}✓${NC} Successfully cloned"
-        
+
         # Checkout the original branch if not already on it
         cd "projects/han"
         current=$(git rev-parse --abbrev-ref HEAD)
@@ -35,11 +35,11 @@ if [ -d "projects/han/.git" ]; then
 else
     # Create parent directory if needed
     mkdir -p "projects"
-    
+
     # Clone the repository
     if git clone "git@github.com:autoneg/hani.git" "projects/han"; then
         echo -e "  ${GREEN}✓${NC} Successfully cloned"
-        
+
         # Checkout the original branch if not already on it
         cd "projects/han"
         current=$(git rev-parse --abbrev-ref HEAD)
@@ -64,11 +64,11 @@ if [ -d "projects/han/.git" ]; then
 else
     # Create parent directory if needed
     mkdir -p "projects"
-    
+
     # Clone the repository
     if git clone "git@github.com:autoneg/hani.git" "projects/han"; then
         echo -e "  ${GREEN}✓${NC} Successfully cloned"
-        
+
         # Checkout the original branch if not already on it
         cd "projects/han"
         current=$(git rev-parse --abbrev-ref HEAD)
@@ -93,11 +93,11 @@ if [ -d "projects/han/.git" ]; then
 else
     # Create parent directory if needed
     mkdir -p "projects"
-    
+
     # Clone the repository
     if git clone "git@github.com:autoneg/hani.git" "projects/han"; then
         echo -e "  ${GREEN}✓${NC} Successfully cloned"
-        
+
         # Checkout the original branch if not already on it
         cd "projects/han"
         current=$(git rev-parse --abbrev-ref HEAD)
@@ -122,11 +122,11 @@ if [ -d "projects/han/.git" ]; then
 else
     # Create parent directory if needed
     mkdir -p "projects"
-    
+
     # Clone the repository
     if git clone "git@github.com:autoneg/hani.git" "projects/han"; then
         echo -e "  ${GREEN}✓${NC} Successfully cloned"
-        
+
         # Checkout the original branch if not already on it
         cd "projects/han"
         current=$(git rev-parse --abbrev-ref HEAD)
@@ -142,4 +142,3 @@ else
         echo -e "  ${RED}✗${NC} Failed to clone"
     fi
 fi
-

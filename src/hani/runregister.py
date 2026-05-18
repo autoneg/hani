@@ -24,9 +24,7 @@ app = typer.Typer(add_completion=False)
 def main(
     ctx: typer.Context,
     dev: bool = typer.Option(
-        False,
-        "--dev",
-        help="Run in development mode with auto-reload",
+        False, "--dev", help="Run in development mode with auto-reload"
     ),
 ):
     """Run HANI registration server."""
@@ -96,10 +94,7 @@ def main(
 
         # Registration app doesn't require login, but we set up cookies
         # for session consistency with main app
-        auth_args = [
-            "--cookie-secret",
-            COOKIE_SECRET,
-        ]
+        auth_args = ["--cookie-secret", COOKIE_SECRET]
 
         typer.echo(
             "✓ Password mode configured (no authentication required for registration)"

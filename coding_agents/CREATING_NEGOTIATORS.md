@@ -64,16 +64,17 @@ All HANI negotiators inherit from `SAONegotiator`:
 from negmas.sao import SAONegotiator, SAOState, SAOResponse
 from negmas import ResponseType, Outcome
 
+
 class MyNegotiator(SAONegotiator):
     """My custom negotiator"""
-    
+
     def __call__(self, state: SAOState) -> SAOResponse:
         """
         Called when it's this negotiator's turn to act.
-        
+
         Args:
             state: Current negotiation state (step, time, current offer, etc.)
-            
+
         Returns:
             SAOResponse with response type and optional counter-offer
         """
@@ -97,27 +98,27 @@ reservation = self.ufun.reserved_value
 
 #### 2. Negotiation State (`state: SAOState`)
 ```python
-state.step              # Current negotiation step
-state.time              # Current time elapsed
-state.relative_time     # Progress: 0.0 to 1.0
-state.current_offer     # Last offer from opponent
+state.step  # Current negotiation step
+state.time  # Current time elapsed
+state.relative_time  # Progress: 0.0 to 1.0
+state.current_offer  # Last offer from opponent
 state.current_proposer  # Who made current offer
-state.n_negotiators     # Number of negotiators (usually 2)
+state.n_negotiators  # Number of negotiators (usually 2)
 ```
 
 #### 3. Mechanism Interface (`self.nmi`)
 ```python
-self.nmi.n_steps          # Maximum steps allowed
-self.nmi.time_limit       # Maximum time allowed
-self.nmi.outcome_space    # All possible outcomes
-self.nmi.issues           # List of negotiation issues
+self.nmi.n_steps  # Maximum steps allowed
+self.nmi.time_limit  # Maximum time allowed
+self.nmi.outcome_space  # All possible outcomes
+self.nmi.issues  # List of negotiation issues
 ```
 
 #### 4. Response Types
 ```python
-ResponseType.ACCEPT_OFFER      # Accept current offer
-ResponseType.REJECT_OFFER      # Reject and make counter-offer
-ResponseType.END_NEGOTIATION   # End negotiation (failure)
+ResponseType.ACCEPT_OFFER  # Accept current offer
+ResponseType.REJECT_OFFER  # Reject and make counter-offer
+ResponseType.END_NEGOTIATION  # End negotiation (failure)
 ```
 
 ---
@@ -130,18 +131,19 @@ ResponseType.END_NEGOTIATION   # End negotiation (failure)
 from negmas.sao import SAONegotiator, SAOState, SAOResponse
 from negmas import ResponseType
 
+
 class RandomNegotiator(SAONegotiator):
     """
     Accepts with 50% probability, otherwise makes random counter-offer.
     """
-    
+
     def __call__(self, state: SAOState) -> SAOResponse:
         import random
-        
+
         # 50% chance to accept current offer
         if random.random() < 0.5 and state.current_offer is not None:
             return SAOResponse(ResponseType.ACCEPT_OFFER, state.current_offer)
-        
+
         # Otherwise, make a random counter-offer
         random_outcome = self.nmi.random_outcome()
         return SAOResponse(ResponseType.REJECT_OFFER, random_outcome)
@@ -155,42 +157,41 @@ class TimeConcessionNegotiator(SAONegotiator):
     Starts with best outcome, gradually concedes based on time.
     Accepts offers above current aspiration level.
     """
-    
+
     def __call__(self, state: SAOState) -> SAOResponse:
         # Calculate current aspiration level (decreases over time)
         # At t=0: aspiration=1.0, At t=1: aspiration=reserved_value
-        aspiration = (
-            self.ufun.reserved_value + 
-            (1.0 - self.ufun.reserved_value) * (1 - state.relative_time)
+        aspiration = self.ufun.reserved_value + (1.0 - self.ufun.reserved_value) * (
+            1 - state.relative_time
         )
-        
+
         # Accept if opponent's offer meets aspiration
         current_offer = state.current_offer
         if current_offer is not None:
             utility = self.ufun(current_offer)
             if utility >= aspiration:
                 return SAOResponse(ResponseType.ACCEPT_OFFER, current_offer)
-        
+
         # Make counter-offer at aspiration level
         # Find outcome closest to aspiration
         my_offer = self._find_outcome_near_utility(aspiration)
         return SAOResponse(ResponseType.REJECT_OFFER, my_offer)
-    
+
     def _find_outcome_near_utility(self, target_utility: float) -> Outcome:
         """Find outcome with utility close to target."""
         # Get all outcomes
         outcomes = list(self.nmi.discrete_outcomes())
-        
+
         # Find closest to target
         best_outcome = outcomes[0]
         best_diff = abs(self.ufun(best_outcome) - target_utility)
-        
+
         for outcome in outcomes[1:]:
             diff = abs(self.ufun(outcome) - target_utility)
             if diff < best_diff:
                 best_diff = diff
                 best_outcome = outcome
-        
+
         return best_outcome
 ```
 
@@ -202,34 +203,36 @@ class BoulwareNegotiator(SAONegotiator):
     Concedes very slowly, staying near best outcome until late in negotiation.
     Uses exponential concession curve.
     """
-    
+
     def __call__(self, state: SAOState) -> SAOResponse:
         # Boulware concession: slow at first, faster near deadline
         # Formula: utility = reserved + (1 - reserved) * (1 - t^5)
         reserved = self.ufun.reserved_value
         concession_rate = 5.0  # Higher = more stubborn
-        
-        aspiration = reserved + (1 - reserved) * (1 - state.relative_time ** concession_rate)
-        
+
+        aspiration = reserved + (1 - reserved) * (
+            1 - state.relative_time**concession_rate
+        )
+
         # Accept good offers
         if state.current_offer is not None:
             utility = self.ufun(state.current_offer)
             if utility >= aspiration:
                 return SAOResponse(ResponseType.ACCEPT_OFFER, state.current_offer)
-        
+
         # Make tough counter-offer
         my_offer = self._find_outcome_near_utility(aspiration)
         return SAOResponse(ResponseType.REJECT_OFFER, my_offer)
-    
+
     def _find_outcome_near_utility(self, target_utility: float) -> Outcome:
         """Find outcome with utility close to target."""
         # Use utility inverter if available
-        if hasattr(self.ufun, 'invert'):
+        if hasattr(self.ufun, "invert"):
             inverter = self.ufun.invert()
             outcome = inverter.one_in((target_utility, target_utility + 0.05))
             if outcome:
                 return outcome
-        
+
         # Fallback: search through outcomes
         outcomes = list(self.nmi.discrete_outcomes())
         return min(outcomes, key=lambda o: abs(self.ufun(o) - target_utility))
@@ -247,29 +250,32 @@ class TitForTatNegotiator(SAONegotiator):
     Reciprocates opponent's concession behavior.
     If opponent concedes, we concede. If opponent is tough, we're tough.
     """
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.opponent_utilities = []  # Track opponent's offers
         self.my_last_utility = None
-    
+
     def __call__(self, state: SAOState) -> SAOResponse:
         # Track opponent's utility for their offer
         if state.current_offer is not None:
             opp_utility = self.ufun(state.current_offer)
             self.opponent_utilities.append(opp_utility)
-        
+
         # Calculate opponent's average concession rate
         if len(self.opponent_utilities) >= 2:
             recent_offers = self.opponent_utilities[-5:]  # Last 5 offers
             opponent_concession = sum(recent_offers) / len(recent_offers)
         else:
             opponent_concession = 0.5  # Start neutral
-        
+
         # Accept if offer is good
-        if state.current_offer and self.ufun(state.current_offer) >= opponent_concession:
+        if (
+            state.current_offer
+            and self.ufun(state.current_offer) >= opponent_concession
+        ):
             return SAOResponse(ResponseType.ACCEPT_OFFER, state.current_offer)
-        
+
         # Mirror opponent's concession behavior
         # If they're conceding (higher utilities), we concede too
         if self.my_last_utility is None:
@@ -279,17 +285,16 @@ class TitForTatNegotiator(SAONegotiator):
             if len(self.opponent_utilities) >= 2:
                 opp_change = self.opponent_utilities[-1] - self.opponent_utilities[-2]
                 target_utility = max(
-                    self.ufun.reserved_value,
-                    self.my_last_utility - abs(opp_change)
+                    self.ufun.reserved_value, self.my_last_utility - abs(opp_change)
                 )
             else:
                 target_utility = self.my_last_utility * 0.95
-        
+
         my_offer = self._find_outcome_near_utility(target_utility)
         self.my_last_utility = self.ufun(my_offer)
-        
+
         return SAOResponse(ResponseType.REJECT_OFFER, my_offer)
-    
+
     def _find_outcome_near_utility(self, target: float) -> Outcome:
         outcomes = list(self.nmi.discrete_outcomes())
         return min(outcomes, key=lambda o: abs(self.ufun(o) - target))
@@ -300,48 +305,49 @@ class TitForTatNegotiator(SAONegotiator):
 ```python
 from collections import defaultdict
 
+
 class OpponentModelingNegotiator(SAONegotiator):
     """
     Learns opponent's preferences by observing their offers.
     Uses frequency-based modeling to estimate issue weights.
     """
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.opponent_offers = []
         self.issue_frequencies = defaultdict(lambda: defaultdict(int))
-    
+
     def __call__(self, state: SAOState) -> SAOResponse:
         # Learn from opponent's offer
         if state.current_offer is not None:
             self._learn_from_offer(state.current_offer)
-            
+
             # Accept if offer is good enough
             my_utility = self.ufun(state.current_offer)
             estimated_opp_utility = self._estimate_opponent_utility(state.current_offer)
-            
+
             # Accept if Nash-like equilibrium
             if my_utility >= 0.7 and estimated_opp_utility >= 0.7:
                 return SAOResponse(ResponseType.ACCEPT_OFFER, state.current_offer)
-        
+
         # Find win-win offer using opponent model
         my_offer = self._find_win_win_offer(state)
         return SAOResponse(ResponseType.REJECT_OFFER, my_offer)
-    
+
     def _learn_from_offer(self, offer: Outcome):
         """Learn opponent preferences from their offer."""
         self.opponent_offers.append(offer)
-        
+
         # Count value frequencies for each issue
         for i, value in enumerate(offer):
             issue_name = self.nmi.issues[i].name
             self.issue_frequencies[issue_name][value] += 1
-    
+
     def _estimate_opponent_utility(self, offer: Outcome) -> float:
         """Estimate opponent's utility for an offer."""
         if len(self.opponent_offers) < 3:
             return 0.5  # Not enough data
-        
+
         # Simple frequency-based estimate
         score = 0.0
         for i, value in enumerate(offer):
@@ -349,27 +355,28 @@ class OpponentModelingNegotiator(SAONegotiator):
             freq = self.issue_frequencies[issue_name][value]
             total_freq = sum(self.issue_frequencies[issue_name].values())
             score += freq / total_freq if total_freq > 0 else 0
-        
+
         return score / len(offer)
-    
+
     def _find_win_win_offer(self, state: SAOState) -> Outcome:
         """Find outcome that's good for both parties."""
         # Calculate current aspiration
-        aspiration = self.ufun.reserved_value + (1 - self.ufun.reserved_value) * (1 - state.relative_time ** 2)
-        
+        aspiration = self.ufun.reserved_value + (1 - self.ufun.reserved_value) * (
+            1 - state.relative_time**2
+        )
+
         # Find outcomes good for us
         outcomes = list(self.nmi.discrete_outcomes())
         good_outcomes = [o for o in outcomes if self.ufun(o) >= aspiration]
-        
+
         if not good_outcomes:
             good_outcomes = outcomes
-        
+
         # Among good outcomes, pick one that's likely good for opponent
         best_offer = max(
-            good_outcomes,
-            key=lambda o: self._estimate_opponent_utility(o)
+            good_outcomes, key=lambda o: self._estimate_opponent_utility(o)
         )
-        
+
         return best_offer
 ```
 
@@ -392,28 +399,28 @@ Opponent modeling helps you:
 ```python
 class FrequencyModel:
     """Learn preferences by tracking value frequencies."""
-    
+
     def __init__(self):
         self.value_counts = defaultdict(lambda: defaultdict(int))
-    
+
     def update(self, offer: Outcome, issues: list):
         """Record an offer."""
         for i, value in enumerate(offer):
             issue_name = issues[i].name
             self.value_counts[issue_name][value] += 1
-    
+
     def estimate_utility(self, offer: Outcome, issues: list) -> float:
         """Estimate utility based on value frequencies."""
         if not self.value_counts:
             return 0.5
-        
+
         scores = []
         for i, value in enumerate(offer):
             issue_name = issues[i].name
             freq = self.value_counts[issue_name][value]
             total = sum(self.value_counts[issue_name].values())
             scores.append(freq / total if total > 0 else 0.5)
-        
+
         return sum(scores) / len(scores)
 ```
 
@@ -422,42 +429,39 @@ class FrequencyModel:
 ```python
 class BayesianModel:
     """Use Bayesian updates to learn utility function."""
-    
+
     def __init__(self, n_hypotheses=10):
         # Generate hypothesis utility functions
         self.hypotheses = self._generate_hypotheses(n_hypotheses)
         self.weights = [1.0 / n_hypotheses] * n_hypotheses
-    
+
     def update(self, accepted_offers: list, rejected_offers: list):
         """Update beliefs based on accept/reject decisions."""
         for i, hypothesis in enumerate(self.hypotheses):
             # Likelihood: hypothesis consistent with observations?
             likelihood = 1.0
-            
+
             for offer in accepted_offers:
                 # Hypothesis should give high utility to accepted offers
                 utility = hypothesis(offer)
                 likelihood *= utility
-            
+
             for offer in rejected_offers:
                 # Hypothesis should give low utility to rejected offers
                 utility = hypothesis(offer)
-                likelihood *= (1 - utility)
-            
+                likelihood *= 1 - utility
+
             self.weights[i] *= likelihood
-        
+
         # Normalize weights
         total = sum(self.weights)
         if total > 0:
             self.weights = [w / total for w in self.weights]
-    
+
     def estimate_utility(self, offer: Outcome) -> float:
         """Estimate utility as weighted average of hypotheses."""
-        return sum(
-            w * h(offer)
-            for w, h in zip(self.weights, self.hypotheses)
-        )
-    
+        return sum(w * h(offer) for w, h in zip(self.weights, self.hypotheses))
+
     def _generate_hypotheses(self, n: int):
         """Generate random utility function hypotheses."""
         # Implementation depends on your needs
@@ -477,30 +481,31 @@ from negmas import SAOMechanism
 from negmas.preferences import LinearAdditiveUtilityFunction
 from my_negotiator import MyNegotiator
 
+
 def test_negotiator_basic():
     """Test negotiator makes valid responses."""
     # Create simple scenario
     from negmas import make_issue
-    
+
     issues = [make_issue([1, 2, 3], "price")]
     n_steps = 10
-    
+
     # Create mechanism
     mech = SAOMechanism(issues=issues, n_steps=n_steps)
-    
+
     # Create negotiators
     ufun1 = LinearAdditiveUtilityFunction(...)
     ufun2 = LinearAdditiveUtilityFunction(...)
-    
+
     neg1 = MyNegotiator(ufun=ufun1)
     neg2 = MyNegotiator(ufun=ufun2)
-    
+
     mech.add(neg1)
     mech.add(neg2)
-    
+
     # Run negotiation
     mech.run()
-    
+
     # Check result
     assert mech.state.agreement is not None or mech.state.step == n_steps
 ```
@@ -582,26 +587,21 @@ class EfficientNegotiator(SAONegotiator):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._sorted_outcomes = None  # Cache
-    
+
     def _get_sorted_outcomes(self):
         if self._sorted_outcomes is None:
             outcomes = list(self.nmi.discrete_outcomes())
             self._sorted_outcomes = sorted(
-                outcomes,
-                key=lambda o: self.ufun(o),
-                reverse=True
+                outcomes, key=lambda o: self.ufun(o), reverse=True
             )
         return self._sorted_outcomes
+
 
 # ❌ BAD: Recompute every time
 class SlowNegotiator(SAONegotiator):
     def __call__(self, state):
         # Recomputes sorting every call!
-        outcomes = sorted(
-            self.nmi.discrete_outcomes(),
-            key=self.ufun,
-            reverse=True
-        )
+        outcomes = sorted(self.nmi.discrete_outcomes(), key=self.ufun, reverse=True)
 ```
 
 ### 3. Utility Function Usage
@@ -624,7 +624,7 @@ def __call__(self, state: SAOState) -> SAOResponse:
     if state.current_offer is None:
         # Make initial offer
         return SAOResponse(ResponseType.REJECT_OFFER, self.ufun.best())
-    
+
     # ❌ BAD: Assume offer exists
     utility = self.ufun(state.current_offer)  # May crash on first step!
 ```

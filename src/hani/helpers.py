@@ -149,7 +149,7 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
             ResponseType.ACCEPT_OFFER,
             tuple(session_state[f"issue_{i.name}"].value for i in issues),
         )
-        print(f"Rejected offering {session_state['human_action'] } ")
+        print(f"Rejected offering {session_state['human_action']} ")
 
     nissues = len(issues)
     rejected = accepted = ended = False
@@ -198,7 +198,7 @@ def action_panel(current_offer: Outcome | None) -> pn.Column:
 
     def calc_util(*outcome):
         return pn.pane.Markdown(
-            f"Your Utility if this offer is accepted by your partner: **{session_state["scenario"].ufuns[session_state["human_index"]](outcome):0.03}**",
+            f"Your Utility if this offer is accepted by your partner: **{session_state['scenario'].ufuns[session_state['human_index']](outcome):0.03}**",
             styles={"font-size": "12pt"},
         )
 

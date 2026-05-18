@@ -138,11 +138,7 @@ def make_trade_scenario(
     info["hints"]["Buyer"]["Quantity Importance"] = round(buyer_quantity_weight, 3)
     info["hints"]["Seller"]["Price Importance"] = round(1.0 - seller_quantity_weight, 3)
     info["hints"]["Buyer"]["Price Importance"] = round(1.0 - buyer_quantity_weight, 3)
-    return Scenario(
-        outcome_space=os,
-        ufuns=tuple(ufuns),
-        info=info,
-    )
+    return Scenario(outcome_space=os, ufuns=tuple(ufuns), info=info)
 
 
 class TradeOutcomeDisplay(DefaultOutcomeDisplay):

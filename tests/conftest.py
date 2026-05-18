@@ -78,10 +78,7 @@ def test_settings_dir():
         json.dump(test_users_info, f, indent=2)
 
     # Create test users.json (plain text passwords for Panel's basic auth)
-    test_users = {
-        TEST_USER: TEST_PASSWORD,
-        ADMIN_USER: ADMIN_PASSWORD,
-    }
+    test_users = {TEST_USER: TEST_PASSWORD, ADMIN_USER: ADMIN_PASSWORD}
 
     with open(TEST_SETTINGS_DIR / "users.json", "w") as f:
         json.dump(test_users, f, indent=2)
@@ -204,8 +201,7 @@ def browser_context(playwright):
     """
     browser = playwright.chromium.launch(headless=True)
     context = browser.new_context(
-        viewport={"width": 1920, "height": 1080},
-        ignore_https_errors=True,
+        viewport={"width": 1920, "height": 1080}, ignore_https_errors=True
     )
 
     yield context

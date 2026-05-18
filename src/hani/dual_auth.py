@@ -267,10 +267,7 @@ class OAuthCallbackHandler(RequestHandler):
         if not existing_user:
             # Create user with random password (OAuth users don't need password)
             random_pass = secrets.token_urlsafe(32)
-            create_user(
-                username=username,
-                password=random_pass,
-            )
+            create_user(username=username, password=random_pass)
 
         # Set Panel authentication cookie
         # Panel uses a signed cookie with the username
@@ -329,9 +326,7 @@ class OAuthCallbackHandler(RequestHandler):
             headers["User-Agent"] = "HANI-App"
 
         request = HTTPRequest(
-            provider_endpoints["user_url"],
-            method="GET",
-            headers=headers,
+            provider_endpoints["user_url"], method="GET", headers=headers
         )
 
         response = await http_client.fetch(request)
@@ -594,11 +589,11 @@ REGISTER_TEMPLATE_STR = """
         <h2>Register for HANI</h2>
         <p>Human-Agent Negotiation Interface</p>
       </div>
-      
+
       {% if errormessage %}
       <div class="error-message">{{ errormessage }}</div>
       {% endif %}
-      
+
       {% if success %}
       <div class="success-message">{{ success }}</div>
       {% endif %}
@@ -606,19 +601,19 @@ REGISTER_TEMPLATE_STR = """
       <div class="form-group">
         <input name="username" type="text" class="form-input" autocapitalize="off" autocorrect="off" placeholder="Username" required>
       </div>
-      
+
       <div class="form-group">
         <input name="email" type="email" class="form-input" placeholder="Email (optional)">
       </div>
-      
+
       <div class="form-group">
         <input name="password" type="password" class="form-input" placeholder="Password" required>
       </div>
-      
+
       <div class="form-group">
         <input name="password_confirm" type="password" class="form-input" placeholder="Confirm Password" required>
       </div>
-      
+
       <div class="form-group">
         <button class="form-button" type="submit">Register</button>
       </div>

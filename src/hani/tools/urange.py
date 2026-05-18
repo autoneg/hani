@@ -12,9 +12,7 @@ pn.extension("tabulator")
 from bokeh.models.widgets.tables import NumberFormatter
 
 UTIL = "Utility"
-bokeh_formatters = {
-    UTIL: NumberFormatter(format="0.0%"),
-}
+bokeh_formatters = {UTIL: NumberFormatter(format="0.0%")}
 
 
 class UtilityInverterTool(OutcomeSelector):
@@ -106,14 +104,10 @@ class UtilityInverterTool(OutcomeSelector):
         return pn.Column(
             pn.Row(
                 pn.widgets.IntSlider.from_param(
-                    self.param.min_util,
-                    name="Minimum Utility",
-                    step=1,
+                    self.param.min_util, name="Minimum Utility", step=1
                 ),
                 pn.widgets.IntSlider.from_param(
-                    self.param.rng,
-                    name="Utility Range",
-                    step=1,
+                    self.param.rng, name="Utility Range", step=1
                 ),
             ),
             self.outcomes_tbl,

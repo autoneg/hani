@@ -225,7 +225,7 @@ main_app_url = APP_URLS.get("app")  # Reads from env.{HANI_ENV}.json
 reg_message.object = f"[You can start negotiating here]({main_app_url})"
 ```
 
-**Local:** Redirects to `http://localhost:5006`  
+**Local:** Redirects to `http://localhost:5006`
 **Production:** Redirects to `https://anac.cs.brown.edu/hanapp`
 
 ---
@@ -265,7 +265,7 @@ export HANI_OAUTH_ENCRYPTION_KEY=...
 
 ### Local Development
 - [x] Set `HANI_ENV=local` in `.envrc.local`
-- [x] Set `HANI_AUTH_MODE=password` 
+- [x] Set `HANI_AUTH_MODE=password`
 - [x] Ensure `env.local.json` exists with localhost URLs
 - [x] Run `direnv allow`
 - [x] Run `hani --dev`
@@ -325,7 +325,7 @@ echo $HANI_ENV
 ```
 
 ### Issue: Can't login after registration
-**Problem:** Hashed passwords not created  
+**Problem:** Hashed passwords not created
 **Solution:** Check `users_hashed.json` exists and has your username
 ```bash
 cat ~/negmas/hani/settings/users_hashed.json

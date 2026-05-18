@@ -114,8 +114,7 @@ class UserResultsTool(Tool):
         scores = dict()
         for s in scenarios:
             lst = sorted(
-                df[df["scenario"] == s]["human_utility"].values.tolist(),
-                reverse=True,
+                df[df["scenario"] == s]["human_utility"].values.tolist(), reverse=True
             )
             n = len(lst)
             if len(lst) < 2:

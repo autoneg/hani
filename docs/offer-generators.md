@@ -98,12 +98,13 @@ from hani.tools.tool import OutcomeSelector
 from negmas import Outcome
 import panel as pn
 
+
 class MyCustomGenerator(OutcomeSelector):
     def get_outcome(self) -> Outcome | None:
         # Your logic to generate an outcome
         # Return a tuple of values, one per issue
         return (value1, value2, ...)
-    
+
     def panel(self):
         return pn.Column(
             pn.pane.Markdown("### My Custom Generator"),

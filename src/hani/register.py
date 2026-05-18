@@ -1,11 +1,6 @@
 import panel as pn
 from hani.common import CONSENT_FILE, APP_URLS
-from hani.auth import (
-    load_users,
-    create_user,
-    verify_user_password,
-    update_user,
-)
+from hani.auth import load_users, create_user, verify_user_password, update_user
 
 pn.extension()
 
@@ -72,10 +67,7 @@ def register(event):
         return
 
     # Create user (extra fields are ignored in simplified auth)
-    success = create_user(
-        username=username,
-        password=password,
-    )
+    success = create_user(username=username, password=password)
 
     if not success:
         reg_message.object = "Failed to create user. Username may already exist."
@@ -191,11 +183,6 @@ login_panel = pn.Column(
     login_message,
 )
 
-main = pn.Column(
-    registration_panel,
-    login_panel,
-    logout_btn,
-    profile_panel,
-)
+main = pn.Column(registration_panel, login_panel, logout_btn, profile_panel)
 
 main.servable(title="HAN Registration & Profile Management")

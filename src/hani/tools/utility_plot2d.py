@@ -4,10 +4,7 @@ import numpy as np
 import pandas as pd
 
 import plotly.graph_objects as go
-from negmas import (
-    SAOMechanism,
-    TraceElement,
-)
+from negmas import TraceElement
 from negmas.sao import SAOMechanism, SAONMI
 import panel as pn
 
@@ -167,8 +164,7 @@ class UtilityPlot2DTool(Tool):
             self.second_issue = self.ycols[1] if len(self.ycols) > 1 else self.ycols[0]
 
         first_issue = pn.widgets.Select.from_param(
-            self.param.first_issue,
-            name="X-axis" if len(self.ycols) > 1 else "",
+            self.param.first_issue, name="X-axis" if len(self.ycols) > 1 else ""
         )
         if len(self.ycols) > 1:
             second_issue = pn.widgets.Select.from_param(

@@ -65,11 +65,7 @@ def create_experiment_selector() -> Optional[str]:
         "## Select an Experiment\n\nPlease choose which experiment you want to participate in:"
     )
 
-    submit_button = pn.widgets.Button(
-        name="Continue",
-        button_type="success",
-        width=200,
-    )
+    submit_button = pn.widgets.Button(name="Continue", button_type="success", width=200)
 
     status_pane = pn.pane.Markdown("")
 
@@ -198,11 +194,7 @@ def show_experiment_selector_modal():
     modal = pn.Column(
         "# Welcome to HANI",
         selector_layout,
-        styles={
-            "background": "#f5f5f5",
-            "padding": "40px",
-            "min-height": "100vh",
-        },
+        styles={"background": "#f5f5f5", "padding": "40px", "min-height": "100vh"},
     )
 
     return modal

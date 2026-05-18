@@ -1,4 +1,4 @@
-/* 
+/*
 Modern Professional Theme for HANI
 Color Scheme optimized for accessibility and professional appearance
 */
@@ -9,7 +9,7 @@ Color Scheme optimized for accessibility and professional appearance
     --light-primary: #A7AFC1;     /* Main light color */
     --black: #000000;
     --white: #FFFFFF;
-    
+
     /* Accent Colors */
     --blue-dark: #0F1ED2;         /* Deep blue */
     --blue: #2C69FF;              /* Primary blue */
@@ -17,11 +17,11 @@ Color Scheme optimized for accessibility and professional appearance
     --lime: #C8E60A;              /* Lime green */
     --orange: #FF8C00;            /* Orange */
     --magenta: #E61E8C;           /* Magenta/pink */
-    
+
     /* Link Colors */
     --link: #4673FA;              /* Hyperlink */
     --link-visited: #A05AC8;      /* Followed hyperlink */
-    
+
     /* Semantic Colors for App */
     --color-primary: var(--blue);
     --color-secondary: var(--teal);
@@ -29,26 +29,26 @@ Color Scheme optimized for accessibility and professional appearance
     --color-warning: var(--orange);
     --color-danger: var(--magenta);
     --color-info: var(--blue-dark);
-    
+
     /* Background Colors */
     --bg-primary: var(--white);
     --bg-secondary: #F8F9FA;
     --bg-dark: var(--dark-primary);
     --bg-light: #F5F6F7;
-    
+
     /* Text Colors */
     --text-primary: var(--dark-primary);
     --text-secondary: var(--light-primary);
     --text-light: #6C757D;
     --text-dark: var(--black);
-    
+
     /* Border Colors */
     --border-color: #DEE2E6;
     --border-light: #E9ECEF;
-    
+
     /* Header */
     --header-height: 50px;
-    
+
     /* Font */
     --font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
 }
@@ -383,7 +383,7 @@ td, th {
 .theme-bg-light { background-color: var(--bg-secondary) !important; }
 .theme-bg-white { background-color: var(--bg-primary) !important; }
 
-/* Color-blind friendly palette for charts/plots 
+/* Color-blind friendly palette for charts/plots
    Based on Paul Tol's vibrant scheme - optimized for all types of color blindness
    https://personal.sron.nl/~pault/ */
 :root {
@@ -395,14 +395,14 @@ td, th {
     --cb-red: #CC3311;        /* Red */
     --cb-magenta: #EE3377;    /* Magenta */
     --cb-grey: #BBBBBB;       /* Grey */
-    
+
     /* Sequential colors - for gradients/heatmaps */
     --cb-seq-1: #FFFFE0;      /* Lightest */
     --cb-seq-2: #FFEAA7;
     --cb-seq-3: #FDCB6E;
     --cb-seq-4: #E17055;
     --cb-seq-5: #D63031;      /* Darkest */
-    
+
     /* Diverging colors - for data with meaningful middle */
     --cb-div-blue-5: #2166AC;
     --cb-div-blue-3: #67A9CF;

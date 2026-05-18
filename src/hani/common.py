@@ -24,10 +24,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
         "app": "http://localhost:5006",
         "playground": "http://localhost:5008",
     },
-    "admin": {
-        "password": "adminpass",
-        "emails": [],
-    },
+    "admin": {"password": "adminpass", "emails": []},
     "auth": {
         "mode": "password",
         "cookie_secret": "hani-change-this-secret-in-production",
@@ -154,10 +151,7 @@ if _oauth_providers_config:
             if key and secret:
                 enabled = True
             if enabled and key and secret:
-                OAUTH_PROVIDERS[provider_name] = {
-                    "key": key,
-                    "secret": secret,
-                }
+                OAUTH_PROVIDERS[provider_name] = {"key": key, "secret": secret}
 else:
     # Legacy single-provider format: oauth.provider, oauth.key, oauth.secret
     OAUTH_PROVIDERS = {}

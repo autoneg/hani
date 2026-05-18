@@ -6,14 +6,14 @@ if exist "projects\han\.git" (
 ) else (
     REM Create parent directory if needed
     if not exist "projects" mkdir "projects"
-    
+
     REM Clone the repository
     git clone "git@github.com:autoneg/hani.git" "projects\han"
     if errorlevel 1 (
         echo   Failed to clone
     ) else (
         echo   Successfully cloned
-        
+
         REM Checkout the original branch if not already on it
         cd "projects\han"
         git checkout "main" 2>nul
@@ -35,14 +35,14 @@ if exist "projects\han\.git" (
 ) else (
     REM Create parent directory if needed
     if not exist "projects" mkdir "projects"
-    
+
     REM Clone the repository
     git clone "git@github.com:autoneg/hani.git" "projects\han"
     if errorlevel 1 (
         echo   Failed to clone
     ) else (
         echo   Successfully cloned
-        
+
         REM Checkout the original branch if not already on it
         cd "projects\han"
         git checkout "main" 2>nul
@@ -64,14 +64,14 @@ if exist "projects\han\.git" (
 ) else (
     REM Create parent directory if needed
     if not exist "projects" mkdir "projects"
-    
+
     REM Clone the repository
     git clone "git@github.com:autoneg/hani.git" "projects\han"
     if errorlevel 1 (
         echo   Failed to clone
     ) else (
         echo   Successfully cloned
-        
+
         REM Checkout the original branch if not already on it
         cd "projects\han"
         git checkout "main" 2>nul
@@ -93,14 +93,14 @@ if exist "projects\han\.git" (
 ) else (
     REM Create parent directory if needed
     if not exist "projects" mkdir "projects"
-    
+
     REM Clone the repository
     git clone "git@github.com:autoneg/hani.git" "projects\han"
     if errorlevel 1 (
         echo   Failed to clone
     ) else (
         echo   Successfully cloned
-        
+
         REM Checkout the original branch if not already on it
         cd "projects\han"
         git checkout "main" 2>nul
@@ -122,14 +122,14 @@ if exist "projects\han\.git" (
 ) else (
     REM Create parent directory if needed
     if not exist "projects" mkdir "projects"
-    
+
     REM Clone the repository
     git clone "git@github.com:autoneg/hani.git" "projects\han"
     if errorlevel 1 (
         echo   Failed to clone
     ) else (
         echo   Successfully cloned
-        
+
         REM Checkout the original branch if not already on it
         cd "projects\han"
         git checkout "main" 2>nul
@@ -142,4 +142,3 @@ if exist "projects\han\.git" (
     )
 )
 echo.
-

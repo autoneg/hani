@@ -67,11 +67,7 @@ class SAOHumanNegotiator(SAOCallNegotiator):
 
         self.state_queue.put(
             serialize(
-                dict(
-                    state=state,
-                    recommendation=None,
-                    auto_pilot=self.auto_pilot,
-                )
+                dict(state=state, recommendation=None, auto_pilot=self.auto_pilot)
             )
         )
 

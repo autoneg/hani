@@ -184,7 +184,7 @@ When enabled, users must accept the consent form (located at `~/negmas/hani/sett
 
 !!! warning "Production Deployment"
     For production deployments:
-    
+
     1. **Change the cookie secret** - Generate a secure random string
     2. **Change default passwords** - Never use `adminpass` or `userpass`
     3. **Use HTTPS** - Configure a reverse proxy with SSL
@@ -194,6 +194,7 @@ When enabled, users must accept the consent form (located at `~/negmas/hani/sett
 
 ```python
 import secrets
+
 print(secrets.token_urlsafe(32))
 ```
 

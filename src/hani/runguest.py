@@ -22,9 +22,7 @@ def main(
         help="Comma-separated list of negotiator types (e.g., 'AspirationNegotiator,helpers.AgentK,LLMHybridNegotiator')",
     ),
     verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        help="Enable verbose output for negotiators (if supported)",
+        False, "--verbose", help="Enable verbose output for negotiators (if supported)"
     ),
 ):
     """Run HANI guest/playground application (no authentication required)."""

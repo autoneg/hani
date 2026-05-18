@@ -20,12 +20,7 @@ Watermelon = "watermelon 🍉"
 Banana = "banana 🍌"
 Orange = "orange 🟠"
 Apple = "apple 🍎"
-ICONS = {
-    Watermelon: "🍉",
-    Banana: "🍌",
-    Orange: "🟠",
-    Apple: "🍎",
-}
+ICONS = {Watermelon: "🍉", Banana: "🍌", Orange: "🟠", Apple: "🍎"}
 N_PER_ITEM = 4
 
 
@@ -88,9 +83,7 @@ def make_grocery_scenario(
     )
     assert isinstance(os, DiscreteCartesianOutcomeSpace)
 
-    def make_ufun(
-        target: str,
-    ) -> UtilityFunction:
+    def make_ufun(target: str) -> UtilityFunction:
         offer_for = "agent" if offer_for_agent else "human"
         if target == offer_for:
             weights = [
@@ -140,11 +133,7 @@ def make_grocery_scenario(
     info["hints"]["agent"]["Least Important Item"] = worst["agent"]
     info["hints"]["human"]["Most Important Item"] = best["human"]
     info["hints"]["human"]["Least Important Item"] = worst["human"]
-    scenario = Scenario(
-        outcome_space=os,
-        ufuns=tuple(ufuns),
-        info=info,
-    )
+    scenario = Scenario(outcome_space=os, ufuns=tuple(ufuns), info=info)
     return scenario
 
 

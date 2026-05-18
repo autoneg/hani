@@ -36,12 +36,7 @@ def serve_with_dual_auth(
         dev: Whether to run in development mode with auto-reload
         **kwargs: Additional arguments passed to pn.serve()
     """
-    from hani.common import (
-        USERS_FILE,
-        COOKIE_SECRET,
-        OAUTH_KEY,
-        OAUTH_SECRET,
-    )
+    from hani.common import USERS_FILE, COOKIE_SECRET, OAUTH_KEY, OAUTH_SECRET
     from hani.auth import ensure_admin_user
 
     # Ensure admin user exists
@@ -105,10 +100,7 @@ def main():
     args = parser.parse_args()
 
     serve_with_dual_auth(
-        port=args.port,
-        address=args.address,
-        show=args.show,
-        dev=args.dev,
+        port=args.port, address=args.address, show=args.show, dev=args.dev
     )
 
 

@@ -4,11 +4,7 @@ import numpy as np
 import pandas as pd
 
 import plotly.graph_objects as go
-from negmas import (
-    SAOMechanism,
-    TraceElement,
-    Issue,
-)
+from negmas import TraceElement, Issue
 from negmas.sao import SAOMechanism, SAONMI
 import panel as pn
 
@@ -38,12 +34,7 @@ TRACE_COLUMNS = (
     "data",
 )
 
-USED_COLUMNS = [
-    "time",
-    "relative_time",
-    "step",
-    "negotiator",
-]
+USED_COLUMNS = ["time", "relative_time", "step", "negotiator"]
 
 
 class OutcomePlotTool(Tool):
@@ -165,8 +156,7 @@ class OutcomePlotTool(Tool):
             self.second_issue = self.xcols[1]
 
         first_issue = pn.widgets.Select.from_param(
-            self.param.first_issue,
-            name="X-axis" if len(self.xcols) > 1 else "",
+            self.param.first_issue, name="X-axis" if len(self.xcols) > 1 else ""
         )
         second_issue = pn.widgets.Select.from_param(
             self.param.second_issue, name="Y-axis"

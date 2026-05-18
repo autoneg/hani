@@ -84,6 +84,7 @@ python src/hani/auth.py ~/negmas/hani/settings/users_plain_backup.json ~/negmas/
 **Option 2**: Hash individual password in Python:
 ```python
 from hani.auth import hash_password
+
 password_hash = hash_password("new_password")
 # Add to users_hashed.json: "username": "hash_value"
 ```

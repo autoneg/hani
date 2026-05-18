@@ -58,15 +58,11 @@ class ResponseGeneratorTool(OutcomeSelector):
             from hani.event_tracking import create_tracked_button
 
             self.generate_btn = create_tracked_button(
-                name="Generate Response",
-                icon="sparkles",
-                button_type="primary",
+                name="Generate Response", icon="sparkles", button_type="primary"
             )
-        except:
+        except Exception:
             self.generate_btn = pn.widgets.Button(
-                name="Generate Response",
-                icon="sparkles",
-                button_type="primary",
+                name="Generate Response", icon="sparkles", button_type="primary"
             )
         self.generate_btn.on_click(self.on_generate)
 
@@ -80,7 +76,7 @@ class ResponseGeneratorTool(OutcomeSelector):
                 button_type="success",
                 disabled=True,
             )
-        except:
+        except Exception:
             self.apply_btn = pn.widgets.Button(
                 name="Apply to Offer",
                 icon="chevron-left",
@@ -102,8 +98,7 @@ class ResponseGeneratorTool(OutcomeSelector):
         )
 
         self.generated_outcome_display = pn.pane.Markdown(
-            "*No outcome generated*",
-            styles={"font-size": "10pt"},
+            "*No outcome generated*", styles={"font-size": "10pt"}
         )
 
         # Store the last generated outcome

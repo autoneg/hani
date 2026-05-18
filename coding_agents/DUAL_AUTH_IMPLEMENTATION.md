@@ -184,16 +184,16 @@ hani --dev
 ## Security Features
 
 ### Password Authentication
-✅ SHA-256 hashed passwords with salt  
-✅ Separate plain/hashed files  
-✅ Auto-conversion on first run  
-✅ Backup of plain text passwords  
+✅ SHA-256 hashed passwords with salt
+✅ Separate plain/hashed files
+✅ Auto-conversion on first run
+✅ Backup of plain text passwords
 
 ### OAuth Authentication
-✅ Industry-standard OAuth 2.0  
-✅ Credentials via environment (not committed)  
-✅ Configurable cookie secret  
-✅ Multiple provider support  
+✅ Industry-standard OAuth 2.0
+✅ Credentials via environment (not committed)
+✅ Configurable cookie secret
+✅ Multiple provider support
 
 ---
 
@@ -271,13 +271,13 @@ See `OAUTH_SETUP.md` for detailed instructions!
 
 ## Key Benefits
 
-✅ **Zero setup for local dev** - Just run `hani --dev`  
-✅ **Professional OAuth for production** - Secure & scalable  
-✅ **Automatic detection** - No manual configuration needed  
-✅ **Backward compatible** - Existing password auth still works  
-✅ **Flexible** - Force specific mode if needed  
-✅ **Well documented** - Complete guides and examples  
-✅ **Multiple providers** - GitHub, Google, Azure supported  
+✅ **Zero setup for local dev** - Just run `hani --dev`
+✅ **Professional OAuth for production** - Secure & scalable
+✅ **Automatic detection** - No manual configuration needed
+✅ **Backward compatible** - Existing password auth still works
+✅ **Flexible** - Force specific mode if needed
+✅ **Well documented** - Complete guides and examples
+✅ **Multiple providers** - GitHub, Google, Azure supported
 
 ---
 

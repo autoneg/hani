@@ -204,11 +204,7 @@ def get_user(username: str) -> dict | None:
     return {"username": username}
 
 
-def create_user(
-    username: str,
-    password: str,
-    **extra_fields,
-) -> bool:
+def create_user(username: str, password: str, **extra_fields) -> bool:
     """Create a new user.
 
     Args:

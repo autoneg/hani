@@ -30,7 +30,7 @@ def get_current_session_id() -> Optional[str]:
             return pn.state.cookies["hani_session_id"]
 
         return None
-    except:
+    except Exception:
         return None
 
 

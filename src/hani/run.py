@@ -84,11 +84,7 @@ def run_subprocess(name, args_list, cmdline_agents=None, verbose=False):
     if verbose:
         env["_HANI_VERBOSE"] = "1"
 
-    subprocess.run(
-        ["python", str(BASE / name)] + args_list,
-        check=True,
-        env=env,
-    )
+    subprocess.run(["python", str(BASE / name)] + args_list, check=True, env=env)
 
 
 def _start_services(
@@ -146,24 +142,16 @@ def main(
         "Example: ':template,:llm' or 'AspirationNegotiator,LLMHybridNegotiator'",
     ),
     verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        help="Enable verbose output for negotiators (if supported)",
+        False, "--verbose", help="Enable verbose output for negotiators (if supported)"
     ),
     no_main: bool = typer.Option(
-        False,
-        "--no-main",
-        help="Do not start the main app (port 5006)",
+        False, "--no-main", help="Do not start the main app (port 5006)"
     ),
     no_guest: bool = typer.Option(
-        False,
-        "--no-guest",
-        help="Do not start the guest/playground (port 5008)",
+        False, "--no-guest", help="Do not start the guest/playground (port 5008)"
     ),
     no_browser: bool = typer.Option(
-        False,
-        "--no-browser",
-        help="Do not open browser automatically",
+        False, "--no-browser", help="Do not open browser automatically"
     ),
 ):
     """
@@ -191,10 +179,7 @@ def main(
 @app.command()
 def setup(
     force: bool = typer.Option(
-        False,
-        "--force",
-        "-f",
-        help="Overwrite existing configuration files",
+        False, "--force", "-f", help="Overwrite existing configuration files"
     ),
     admin_password: Optional[str] = typer.Option(
         None,
@@ -322,19 +307,13 @@ def setup(
 @app.command(name="main")
 def run_main(
     agents: Optional[str] = typer.Option(
-        None,
-        "--agents",
-        help="Comma-separated list of negotiator types or groups.",
+        None, "--agents", help="Comma-separated list of negotiator types or groups."
     ),
     verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        help="Enable verbose output for negotiators (if supported)",
+        False, "--verbose", help="Enable verbose output for negotiators (if supported)"
     ),
     no_browser: bool = typer.Option(
-        False,
-        "--no-browser",
-        help="Do not open browser automatically",
+        False, "--no-browser", help="Do not open browser automatically"
     ),
 ):
     """
@@ -355,19 +334,13 @@ def run_main(
 @app.command(name="guest")
 def run_guest(
     agents: Optional[str] = typer.Option(
-        None,
-        "--agents",
-        help="Comma-separated list of negotiator types or groups.",
+        None, "--agents", help="Comma-separated list of negotiator types or groups."
     ),
     verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        help="Enable verbose output for negotiators (if supported)",
+        False, "--verbose", help="Enable verbose output for negotiators (if supported)"
     ),
     no_browser: bool = typer.Option(
-        False,
-        "--no-browser",
-        help="Do not open browser automatically",
+        False, "--no-browser", help="Do not open browser automatically"
     ),
 ):
     """

@@ -22,7 +22,7 @@ long_description: |
   2. **Price** The seller wants the *highest* price possible but it has some nonlinear curve representing its *value of money*. This curve can be thought of as a representation of risk attitude of the seller.
 
   The importance of these two factors is controlled through a weighing factor that converts *value of quantity* and *value of money* to the same units.
-  
+
   **Buyer Utility Function** The utility function of the buyer is a weighted combination of two factors:
 
   1. **Quantity** There is a target quantity that the buyer is trying to buy. Buying too much incurs a penalty (maybe because the product will expire and must be disposed of). Buying too little also incurs a penalty (maybe because the buyer cannot secure its needs and will need to buy the extra items from the spot-market at a premium).
@@ -31,4 +31,3 @@ long_description: |
   The importance of these two factors is controlled through a weighing factor that converts *value of quantity* and *value of money* to the same units.
 
   **Value in case of Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option.
-

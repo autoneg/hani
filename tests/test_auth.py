@@ -11,12 +11,7 @@ These tests verify:
 
 import pytest
 from playwright.sync_api import Page, expect
-from conftest import (
-    TEST_USER,
-    TEST_PASSWORD,
-    ADMIN_USER,
-    ADMIN_PASSWORD,
-)
+from conftest import TEST_USER, TEST_PASSWORD, ADMIN_USER, ADMIN_PASSWORD
 
 
 def test_login_page_loads(page: Page, hani_servers):

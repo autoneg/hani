@@ -1,0 +1,34 @@
+exclude = [
+    "__init__.py",
+    "src/hani/sample_scenarios",
+    "temp",
+    "DataObjects",
+    "site",
+    ".venv",
+    "build",
+    "dist",
+]
+
+line-length = 88
+indent-width = 4
+target-version = "py313"
+
+[lint]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+fixable = ["ALL"]
+unfixable = []
+# E402: panel's pn.extension() must run before some imports — intentional pattern
+# F401: unused imports — many re-export patterns and dev-time leftovers
+# F541: f-string with no placeholders — minor style
+# F841: unused local variable — common in tests and dev scaffolding
+# F821: legacy template scenarios reference dynamically-injected names
+# E712: `== True` comparisons — many SQLAlchemy filters require this exact form
+ignore = ["E402", "F401", "F541", "F841", "F821", "E712"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = true
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"

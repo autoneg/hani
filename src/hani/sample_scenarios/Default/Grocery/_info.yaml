@@ -7,7 +7,7 @@ issue_description:
   Watermelon 🍎: How many watermelons you get
 hints:
   agent:
-    Most Important Item: Orange 
+    Most Important Item: Orange
     Least Important Item: Banana
   human:
     Most Important Item: Watermelon
@@ -19,5 +19,3 @@ long_description: |
   **Utility Function** Each fruit has some value for each of the two negotiators. The more items you get, the higher the utility you get.
 
   **Value in case of Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option.
-
-

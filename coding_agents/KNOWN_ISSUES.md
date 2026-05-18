@@ -29,7 +29,7 @@ Or manually edit line 247 to use a raw string: `r"\W+"`
 
 **Cause:** The application looks for users at `~/negmas/hani/settings/users.json` (defined in `common.py`), not in the source directory. If you pass `--basic-auth` on the command line, it overrides the default path.
 
-**Fix:** 
+**Fix:**
 1. **Remove `--basic-auth` from your command** - The app will automatically use `~/negmas/hani/settings/users.json`
 2. **Or ensure the path is correct** - If using `run.sh`, make sure it doesn't override with wrong path
 
@@ -100,13 +100,7 @@ os = deserialize(
 **Changed lines 899-909:**
 ```python
 # Before:
-utils = [
-    deserialize(
-        adjust_type(load(fname), domain=os),
-        ...
-    )
-    for fname in ufuns
-]
+utils = [deserialize(adjust_type(load(fname), domain=os), ...) for fname in ufuns]
 for u, path in zip(utils, ufuns):
     u.outcome_space = os  # These fail on frozen objects
     u.path = path
@@ -115,7 +109,7 @@ for u, path in zip(utils, ufuns):
 utils = [
     deserialize(
         adjust_type(load(fname), domain=os) | {"path": path},  # Merge path into dict
-        ...
+        ...,
     )
     for fname, path in zip(ufuns, ufuns)
 ]  # No post-processing needed

@@ -173,7 +173,7 @@ hani
 ### "Callback URL mismatch" Error
 **Problem**: GitHub OAuth redirect URL doesn't match configured URL
 
-**Solution**: 
+**Solution**:
 1. Check your GitHub OAuth app settings
 2. Make sure callback URL matches exactly: `http://localhost:5006`
 3. Update environment variable: `export HANI_OAUTH_REDIRECT_URI=http://localhost:5006`

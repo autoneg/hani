@@ -1902,11 +1902,9 @@ class AgentGG(SAONegotiator):
         if not self.ufun:
             raise ValueError("Unknown Ufun")
 
-        (
-            self.ordered_utils,
-            self.ordered_outcomes_only,
-            self.ordered_outcomes,
-        ) = invertufun(self.nmi, self.ufun, aslist=False)
+        (self.ordered_utils, self.ordered_outcomes_only, self.ordered_outcomes) = (
+            invertufun(self.nmi, self.ufun, aslist=False)
+        )
         self.n_outcomes = len(self.ordered_utils)
         self.imp_map = AgentGG.ImpMap(self.nmi)
         self.opponent_imp_map = AgentGG.ImpMap(self.nmi)

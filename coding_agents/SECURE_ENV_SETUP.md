@@ -248,11 +248,11 @@ echo "OAuth Secret: ${HANI_OAUTH_SECRET:0:10}..."
 
 ## Summary
 
-✅ **Secrets are safe** - `.envrc.local` is gitignored  
-✅ **Automatic loading** - direnv loads it automatically  
-✅ **Flexible** - Can use password or OAuth auth  
-✅ **Simple** - Just copy and edit one file  
-✅ **Secure** - No secrets in git, ever  
+✅ **Secrets are safe** - `.envrc.local` is gitignored
+✅ **Automatic loading** - direnv loads it automatically
+✅ **Flexible** - Can use password or OAuth auth
+✅ **Simple** - Just copy and edit one file
+✅ **Secure** - No secrets in git, ever
 
 Your OAuth credentials are now safely stored locally and will never be committed to git!
 

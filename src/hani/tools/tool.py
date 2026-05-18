@@ -96,24 +96,16 @@ class Tool(pn.viewable.Viewable):
         self.session_state = session_state
 
         self.upper_button = pn.widgets.ButtonIcon(
-            name="Upper Pane",
-            on_click=self.move_up,
-            icon="fold-up",
+            name="Upper Pane", on_click=self.move_up, icon="fold-up"
         )
         self.lower_button = pn.widgets.ButtonIcon(
-            name="Lower Pane",
-            on_click=self.move_down,
-            icon="fold-down",
+            name="Lower Pane", on_click=self.move_down, icon="fold-down"
         )
         self.side_button = pn.widgets.ButtonIcon(
-            name="Side Pane",
-            on_click=self.move_side,
-            icon="box-align-right",
+            name="Side Pane", on_click=self.move_side, icon="box-align-right"
         )
         self.close_button = pn.widgets.ButtonIcon(
-            name="Close",
-            on_click=self.close,
-            icon="square-rounded-x",
+            name="Close", on_click=self.close, icon="square-rounded-x"
         )
 
     def panel(self) -> Any:
@@ -166,15 +158,11 @@ class OutcomeSelector(Tool):
             from hani.event_tracking import create_tracked_button
 
             self.btn = create_tracked_button(
-                name="Set Offer",
-                icon="chevron-left",
-                button_type="success",
+                name="Set Offer", icon="chevron-left", button_type="success"
             )
-        except:
+        except Exception:
             self.btn = pn.widgets.Button(
-                name="Set Offer",
-                icon="chevron-left",
-                button_type="success",
+                name="Set Offer", icon="chevron-left", button_type="success"
             )
         self.btn.on_click(self.set_outcome)
         self._disabled = False

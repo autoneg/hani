@@ -178,16 +178,16 @@ title: Simple Trading Scenario
 short_description: A buyer and seller negotiate quantity and price.
 long_description: |
   **The Domain**
-  
+
   In this scenario, a buyer and seller negotiate over the quantity
   and price of goods to be traded.
-  
+
   **Buyer's Goal**
-  
+
   The buyer wants to purchase a specific quantity at the lowest price.
-  
+
   **Seller's Goal**
-  
+
   The seller wants to sell a specific quantity at the highest price.
 
 issue_description:
@@ -300,14 +300,14 @@ Run `hani setup` to copy these to your settings directory as examples.
 
 !!! tip "Balanced Scenarios"
     Good scenarios have:
-    
+
     - Conflicting but not completely opposed preferences
     - Room for mutual gain (win-win outcomes exist)
     - Meaningful trade-offs between issues
 
 !!! tip "Testing Utilities"
     Verify your utility functions:
-    
+
     - Weights should sum to 1.0
     - Values should be normalized (0.0 to 1.0)
     - Reserved value should be achievable (not too high)

@@ -7,10 +7,7 @@ import plotly.express as px
 _ = px
 
 import plotly.graph_objects as go
-from negmas import (
-    SAOMechanism,
-    TraceElement,
-)
+from negmas import TraceElement
 from negmas.sao import SAOMechanism, SAONMI
 import panel as pn
 
@@ -177,8 +174,5 @@ class OutcomeHistogramPlot(Tool):
         )
         widgets = pn.Row(checkbox)
         return pn.Column(
-            widgets,
-            self.plot_all,
-            sizing_mode="stretch_width",
-            scroll=True,
+            widgets, self.plot_all, sizing_mode="stretch_width", scroll=True
         )

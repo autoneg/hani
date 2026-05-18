@@ -107,9 +107,7 @@ def make_island_scenario(
     )
     assert isinstance(os, DiscreteCartesianOutcomeSpace)
 
-    def make_ufun(
-        target: str,
-    ) -> UtilityFunction:
+    def make_ufun(target: str) -> UtilityFunction:
         weights = [
             vals[target][item.name]
             if not normalize
@@ -122,10 +120,7 @@ def make_island_scenario(
             tuple(
                 [
                     TableFun(
-                        dict(
-                            agent=int(target == "agent"),
-                            human=int(target != "agent"),
-                        )
+                        dict(agent=int(target == "agent"), human=int(target != "agent"))
                     )
                     for _ in os.issues
                 ]
@@ -146,11 +141,7 @@ def make_island_scenario(
     info["hints"]["agent"]["Least Important Item"] = worst["agent"]
     info["hints"]["human"]["Most Important Item"] = best["human"]
     info["hints"]["human"]["Least Important Item"] = worst["human"]
-    return Scenario(
-        outcome_space=os,
-        ufuns=tuple(ufuns),
-        info=info,
-    )
+    return Scenario(outcome_space=os, ufuns=tuple(ufuns), info=info)
 
 
 class IslandOutcomeDisplay(DefaultOutcomeDisplay):

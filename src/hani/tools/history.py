@@ -3,10 +3,7 @@ import param
 import numpy as np
 import pandas as pd
 
-from negmas import (
-    SAOMechanism,
-    TraceElement,
-)
+from negmas import TraceElement
 from negmas.sao import SAOMechanism, SAONMI
 import panel as pn
 
@@ -28,13 +25,7 @@ TRACE_COLUMNS = (
     "data",
 )
 
-VISIBLE_COLUMNS = (
-    "step",
-    "relative_time",
-    "negotiator",
-    "offer",
-    "text",
-)
+VISIBLE_COLUMNS = ("step", "relative_time", "negotiator", "offer", "text")
 
 
 class NegotiationTraceTool(Tool):

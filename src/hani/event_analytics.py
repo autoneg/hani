@@ -25,9 +25,7 @@ class EventAnalyticsDashboard:
 
         # Widgets
         self.experiment_selector = pn.widgets.Select(
-            name="Experiment",
-            options=["All Experiments"],
-            value="All Experiments",
+            name="Experiment", options=["All Experiments"], value="All Experiments"
         )
         self.user_selector = pn.widgets.Select(
             name="User",
@@ -35,28 +33,20 @@ class EventAnalyticsDashboard:
             value="All Users",
         )
         self.session_selector = pn.widgets.Select(
-            name="Session",
-            options=["All Sessions"],
-            value="All Sessions",
+            name="Session", options=["All Sessions"], value="All Sessions"
         )
         self.event_type_selector = pn.widgets.MultiChoice(
-            name="Event Types",
-            options=[e.value for e in EventType],
-            value=[],
+            name="Event Types", options=[e.value for e in EventType], value=[]
         )
         self.date_range_picker = pn.widgets.DatetimeRangePicker(
             name="Date Range",
             value=(datetime.now() - timedelta(days=7), datetime.now()),
         )
         self.refresh_button = pn.widgets.Button(
-            name="Refresh Data",
-            button_type="primary",
-            icon="refresh",
+            name="Refresh Data", button_type="primary", icon="refresh"
         )
         self.export_button = pn.widgets.Button(
-            name="Export to CSV",
-            button_type="success",
-            icon="download",
+            name="Export to CSV", button_type="success", icon="download"
         )
 
         # Current session info pane
@@ -494,27 +484,9 @@ class EventAnalyticsDashboard:
 
         # Main content area
         main_content = pn.Tabs(
-            (
-                "Overview",
-                pn.Column(
-                    self.event_count_plot,
-                    self.timeline_plot,
-                ),
-            ),
-            (
-                "Events",
-                pn.Column(
-                    "## Event Details",
-                    self.event_table,
-                ),
-            ),
-            (
-                "Sessions",
-                pn.Column(
-                    "## Session Details",
-                    self.session_table,
-                ),
-            ),
+            ("Overview", pn.Column(self.event_count_plot, self.timeline_plot)),
+            ("Events", pn.Column("## Event Details", self.event_table)),
+            ("Sessions", pn.Column("## Session Details", self.session_table)),
         )
 
         # Full layout

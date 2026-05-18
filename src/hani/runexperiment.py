@@ -41,9 +41,7 @@ def create_experiment(
 
     # Create experiment
     exp_id = logger.create_experiment(
-        name=name,
-        description=description or "",
-        start_time=start,
+        name=name, description=description or "", start_time=start
     )
 
     console.print(f"[green]Created experiment:[/green] {name}")

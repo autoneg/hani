@@ -53,20 +53,12 @@ def main(
         help="Comma-separated list of negotiator types (e.g., 'AspirationNegotiator,helpers.AgentK,LLMHybridNegotiator')",
     ),
     verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        help="Enable verbose output for negotiators (if supported)",
+        False, "--verbose", help="Enable verbose output for negotiators (if supported)"
     ),
     dev: bool = typer.Option(
-        False,
-        "--dev",
-        help="Run in development mode with auto-reload",
+        False, "--dev", help="Run in development mode with auto-reload"
     ),
-    port: int = typer.Option(
-        5006,
-        "--port",
-        help="Port to serve on",
-    ),
+    port: int = typer.Option(5006, "--port", help="Port to serve on"),
 ):
     """Run HANI application with authentication."""
 
@@ -175,12 +167,7 @@ def main(
             )
             raise typer.Exit(code=1)
 
-        auth_args = [
-            "--basic-auth",
-            str(USERS_FILE),
-            "--cookie-secret",
-            COOKIE_SECRET,
-        ]
+        auth_args = ["--basic-auth", str(USERS_FILE), "--cookie-secret", COOKIE_SECRET]
 
         typer.echo("Password authentication configured")
 

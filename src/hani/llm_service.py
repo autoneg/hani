@@ -558,15 +558,11 @@ def extract_outcome_from_text(
     full_context = _build_full_context(context)
 
     try:
-        prompt = settings["extraction_prompt"].format(
-            **full_context,
-            message=text,
-        )
+        prompt = settings["extraction_prompt"].format(**full_context, message=text)
     except KeyError:
         # Fallback for simpler prompts
         prompt = settings["extraction_prompt"].format(
-            issues_description=full_context["issues_description"],
-            message=text,
+            issues_description=full_context["issues_description"], message=text
         )
 
     try:
@@ -768,9 +764,7 @@ Return JSON with: {{"text": "message", "outcome": {{"issue": value}} or null, "r
 
     try:
         prompt = prompt_template.format(
-            **full_context,
-            history=history_str,
-            instruction=instruction,
+            **full_context, history=history_str, instruction=instruction
         )
     except KeyError:
         # Fallback for simpler prompts

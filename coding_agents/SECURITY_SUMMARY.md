@@ -58,6 +58,7 @@ python src/hani/auth.py ~/negmas/hani/settings/users_plain_backup.json ~/negmas/
 **Method 2** - Hash individual password:
 ```python
 from hani.auth import hash_password
+
 password_hash = hash_password("new_password")
 # Add "username": "hash_value" to users_hashed.json
 ```
@@ -100,7 +101,7 @@ Users still login with their original passwords - the hashing is transparent to 
 ### Status: ✅ COMPLETED
 
 - [x] Created `auth.py` module with hashing functions
-- [x] Updated `runapp.py` to use hashed authentication  
+- [x] Updated `runapp.py` to use hashed authentication
 - [x] Monkey-patched Panel's authentication
 - [x] Converted existing users to hashed format
 - [x] Tested authentication with hashed passwords

@@ -31,7 +31,7 @@ if os.environ.get("_HANI_DUAL_AUTH") == "1":
         traceback.print_exc()
 
 # Import event tracking modules
-from hani.events import EventType, create_session, end_session
+from hani.events import EventType, create_session
 from hani.event_tracking import (
     set_current_session_id,
     log_negotiation_event,
@@ -40,12 +40,7 @@ from hani.event_tracking import (
     create_tracked_button,
 )
 
-from negmas import (
-    Negotiator,
-    SAOMechanism,
-    SAOState,
-    genius_bridge_is_running,
-)
+from negmas import Negotiator, SAOMechanism, genius_bridge_is_running
 from negmas.serialization import serialize
 import pandas as pd
 from typing import Any
@@ -56,22 +51,15 @@ from negmas.preferences.ops import (
     calc_scenario_stats,
     estimate_max_dist,
 )
-from negmas import (
-    ContiguousIssue,
-    SAONegotiator,
-    ContinuousIssue,
-    Outcome,
-    ResponseType,
-    SAOResponse,
-)
+from negmas import ContiguousIssue, ContinuousIssue, Outcome, ResponseType, SAOResponse
 from negmas.sao import SAONegotiator, SAOState
 
 try:
     from negmas_llm import HybridWithTextNegotiator as DefaultNegotiator
-except:
+except ImportError:
     try:
         from negmas.sao import HybridNegotiator as DefaultNegotiator
-    except:
+    except ImportError:
         from negmas.sao import AspirationNegotiator as DefaultNegotiator
 
 # Import LLM negotiators from negmas-llm
@@ -125,7 +113,7 @@ try:
     _ = FastMiCRONegotiator
 
     FAST_MICRO_NEGOTIATOR = "FastMiCRONegotiator"
-except:
+except ImportError:
     pass
 
 from negmas.inout import Mechanism, Scenario
@@ -255,11 +243,7 @@ def build_negotiation_context(
             for i, offer in enumerate(state.offers):
                 role = "You" if (i % 2) == human_index else "Partner"
                 history.append(
-                    {
-                        "role": role,
-                        "outcome": offer,
-                        "response_type": "offer",
-                    }
+                    {"role": role, "outcome": offer, "response_type": "offer"}
                 )
 
     return NegotiationContext(
@@ -281,11 +265,7 @@ session_state = dict()
 
 # Load all Panel extensions in one call for better performance
 pn.extension(
-    "modal",
-    "plotly",
-    "tabulator",
-    design="bootstrap",
-    sizing_mode="stretch_width",
+    "modal", "plotly", "tabulator", design="bootstrap", sizing_mode="stretch_width"
 )
 pn.config.throttled = True
 
@@ -649,8 +629,7 @@ def default_tools():
                 TOOL_MAP["Response Generator"],
                 Timing.Start,
                 params=dict(
-                    scenario="session:scenario",
-                    widgets="session:offer_widgets",
+                    scenario="session:scenario", widgets="session:offer_widgets"
                 ),
                 side=True,
             ),
@@ -1683,10 +1662,7 @@ def action_panel(
             f'<span style="color: {util_color}; font-weight: bold;">({current_offer_util:0.1%})</span>'
             f"</div>"
         )
-        current_offer_display = pn.pane.HTML(
-            offer_html,
-            sizing_mode="stretch_width",
-        )
+        current_offer_display = pn.pane.HTML(offer_html, sizing_mode="stretch_width")
     else:
         current_offer_display = pn.pane.HTML(
             '<div style="font-size: 10pt; color: #666;"><b>Partner Offer:</b> No offer yet</div>',
@@ -1762,10 +1738,7 @@ def action_panel(
         )
         # Section containing partner offer, buttons, confirmation dialog, and divider (can be hidden)
         partner_offer_section = pn.Column(
-            current_offer_display,
-            buttons_row,
-            confirm_dialog,
-            pn.layout.Divider(),
+            current_offer_display, buttons_row, confirm_dialog, pn.layout.Divider()
         )
     else:
         # Section containing partner offer, buttons, and divider (can be hidden)
@@ -1792,10 +1765,7 @@ def action_panel(
 
     # Add Generate Text button beside the outcome section
     generate_text_btn = pn.widgets.Button(
-        name="Generate Text",
-        icon="wand",
-        button_type="light",
-        width=120,
+        name="Generate Text", icon="wand", button_type="light", width=120
     )
     generate_text_btn.on_click(on_generate_text)
 
@@ -1823,27 +1793,19 @@ def action_panel(
     session_state["validation_alert"] = validation_alert
 
     col = pn.Column(
-        partner_offer_section,
-        validation_alert,
-        outcome_section,
-        my_util,
-        send_row,
+        partner_offer_section, validation_alert, outcome_section, my_util, send_row
     )
 
     # Add text input section if allowed
     if session_state["toggles"]["allow_text_human"]:
         text_input = pn.widgets.TextAreaInput(
-            placeholder="Type your message here...",
-            height=80,
+            placeholder="Type your message here...", height=80
         )
         session_state["text_input_widget"] = text_input
 
         # Extract outcome button
         extract_btn = pn.widgets.Button(
-            name="Extract Outcome",
-            icon="brain",
-            button_type="light",
-            width=130,
+            name="Extract Outcome", icon="brain", button_type="light", width=130
         )
         extract_btn.on_click(on_extract_outcome)
 
@@ -1852,8 +1814,7 @@ def action_panel(
         text_only_checkbox = None
         if allow_text_only:
             text_only_checkbox = pn.widgets.Checkbox(
-                name="Text Only",
-                value=session_state["toggles"]["text_only_mode"].value,
+                name="Text Only", value=session_state["toggles"]["text_only_mode"].value
             )
 
             # Sync text_only_checkbox with the toggle
@@ -1884,18 +1845,12 @@ def action_panel(
         # Build the text section row with text_only on left, extract on right
         if text_only_checkbox is not None:
             text_row = pn.Row(
-                text_only_checkbox,
-                pn.Spacer(),
-                extract_btn,
-                align="center",
+                text_only_checkbox, pn.Spacer(), extract_btn, align="center"
             )
         else:
             text_row = pn.Row(extract_btn, align="center")
 
-        text_section = pn.Column(
-            text_input,
-            text_row,
-        )
+        text_section = pn.Column(text_input, text_row)
         # Insert text section after the divider (index 2: after current_offer_row and Divider)
         col.insert(2, text_section)
 
@@ -1938,10 +1893,7 @@ def display_outcome(
             styles={"color": color, "font-size": f"{font_size}px"},
         )
     return outcome_display.panel(
-        outcome,
-        session_state["scenario"],
-        is_done,
-        from_human,
+        outcome, session_state["scenario"], is_done, from_human
     )
 
 
@@ -2133,7 +2085,7 @@ def get_subfolders(path: Path):
 def generate_scenario() -> Scenario:
     try:
         generators = session_state["scenarios"]["generators"].value
-    except:
+    except Exception:
         generators = []
     if not generators:
         return read_scenario(Path(CONFIG.scenarios_base) / "Default" / "Trade")
@@ -2316,19 +2268,15 @@ By checking the box below and clicking "I Agree", you confirm that:
     consent_markdown = pn.pane.Markdown(consent_text, sizing_mode="stretch_width")
 
     consent_checkbox = pn.widgets.Checkbox(
-        name="I have read and agree to the terms above",
-        value=False,
+        name="I have read and agree to the terms above", value=False
     )
 
     name_input = pn.widgets.TextInput(
-        name="Full Name (as signature)",
-        placeholder="Enter your full name",
+        name="Full Name (as signature)", placeholder="Enter your full name"
     )
 
     agree_btn = pn.widgets.Button(
-        name="I Agree & Continue",
-        button_type="success",
-        disabled=True,
+        name="I Agree & Continue", button_type="success", disabled=True
     )
 
     message = pn.pane.Markdown("")
@@ -2348,11 +2296,7 @@ By checking the box below and clicking "I Agree", you confirm that:
             return
 
         # Save consent
-        set_user_consent(
-            user_id,
-            consented=True,
-            name=name_input.value.strip(),
-        )
+        set_user_consent(user_id, consented=True, name=name_input.value.strip())
 
         message.object = "**Thank you! Redirecting to the application...**"
 
@@ -2388,8 +2332,7 @@ By checking the box below and clicking "I Agree", you confirm that:
 
     # Create a simple template for the consent form
     template = pn.template.BootstrapTemplate(
-        title="HANI - Consent Required",
-        main=[consent_form],
+        title="HANI - Consent Required", main=[consent_form]
     )
 
     return template
@@ -2447,7 +2390,7 @@ def main():
             try:
                 if hasattr(pn.state, "headers"):
                     user_agent = pn.state.headers.get("User-Agent")
-            except:
+            except Exception:
                 pass
 
             # Create session with experiment_id
@@ -2595,8 +2538,7 @@ def main():
         name="Allow NegMAS Negotiators", value=False
     )
     session_state["partners"]["hani_negotiators"] = pn.widgets.Checkbox(
-        name="Allow HANI Negotiators",
-        value=False,
+        name="Allow HANI Negotiators", value=False
     )
     session_state["partners"]["genius_negotiators"] = pn.widgets.Checkbox(
         name="Allow Genius Negotiators",
@@ -2817,8 +2759,7 @@ def main():
         value=llm_settings.get("provider", "ollama"),
     )
     session_state["llm"]["model"] = pn.widgets.TextInput(
-        name="Model Name",
-        value=llm_settings.get("model", "qwen2.5:1.5b"),
+        name="Model Name", value=llm_settings.get("model", "qwen2.5:1.5b")
     )
     session_state["llm"]["ollama_base_url"] = pn.widgets.TextInput(
         name="Ollama Base URL",
