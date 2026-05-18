@@ -15,5 +15,16 @@ wheels/
 .env.local
 *.secret
 
+# NEVER commit clear-password or credential files. users.json holds
+# the panel basic-auth credentials and must stay local. Match anywhere
+# in the tree so an accidental copy under tests/, fixtures/, etc. is
+# also blocked.
+**/users.json
+**/users.*.json
+**/credentials.json
+**/secrets.json
+*.htpasswd
+.htpasswd
+
 # Documentation build output
 site/

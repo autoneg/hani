@@ -188,8 +188,13 @@ COOKIE_SECRET: str = str(
     or "hani-change-this-secret-in-production"
 )
 
-# Authentication mode: 'password' or 'oauth' or 'auto'
-AUTH_MODE: str = str(get_env("auth.mode", "password") or "password")
+# Authentication mode: 'password', 'oauth', 'dual', or 'auto'.
+# Default is 'auto' — picks OAuth (or 'dual' if a local password file is
+# also present) when oauth.key/oauth.secret are configured in env.json,
+# and only falls back to clear-password mode when no OAuth credentials
+# are set. Set explicitly to 'password' in env.json if you really want
+# the local users.json flow.
+AUTH_MODE: str = str(get_env("auth.mode", "auto") or "auto")
 
 # Whether to require consent before allowing negotiation
 ENFORCE_CONSENT: bool = bool(get_env("auth.enforce_consent", False))

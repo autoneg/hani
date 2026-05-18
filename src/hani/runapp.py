@@ -25,6 +25,13 @@ def get_effective_auth_mode() -> str:
 
     Returns:
         'password', 'oauth', or 'dual'
+
+    The 'auto' mode resolves as follows:
+      - If oauth.key + oauth.secret are configured, use *pure* OAuth.
+        (Choose 'dual' explicitly in env.json if you want both flows
+        running side-by-side.)
+      - Otherwise warn loudly and fall back to local-password auth so
+        a missing env.json doesn't silently lock everyone out.
     """
     mode = AUTH_MODE.lower()
 
@@ -35,10 +42,13 @@ def get_effective_auth_mode() -> str:
     elif mode == "password":
         return "password"
     else:  # auto mode
-        # If OAuth credentials are configured, use dual mode
-        # This allows both password AND OAuth login
         if OAUTH_KEY and OAUTH_SECRET:
-            return "dual"
+            return "oauth"
+        typer.echo(
+            "[WARN] auth.mode='auto' and no oauth.key/oauth.secret configured in "
+            "env.json — falling back to clear-password mode. Set auth.mode='password' "
+            "to silence this, or configure OAuth credentials to use OAuth."
+        )
         return "password"
 
 
