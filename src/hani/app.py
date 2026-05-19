@@ -1128,6 +1128,43 @@ def save_result(m: SAOMechanism):
     session_state["results"].append(result)
     # session_state["results_df"] = pd.DataFrame.from_records(session_state["results"])
 
+    # Prolific UX: announce progress so the participant always knows where
+    # they stand. Done after the row is written so the counts are right.
+    if _is_prolific_user(user):
+        try:
+            meta = _prolific_meta(session_state["user_path"], user)
+            n_total = int(meta.get("max_negs", MAX_PROLIFIC_NEGS))
+            n_required = max(0, n_total - 1)
+            done_total = _count_existing_negotiations(session_state["user_path"])
+            done_counted = max(0, done_total - 1)  # subtract the one practice row
+            if is_practice:
+                msg = (
+                    f"Practice complete! The next {n_required} negotiation(s) "
+                    "count toward your reward and bonus."
+                )
+            elif done_counted >= n_required:
+                msg = (
+                    f"All {n_required} counted negotiations are done. Please "
+                    "return to the Prolific tab and click \"I'm done\" to "
+                    "submit."
+                )
+            else:
+                remaining = n_required - done_counted
+                msg = (
+                    f"{done_counted} of {n_required} counted negotiations "
+                    f"complete &mdash; {remaining} to go."
+                )
+            if hasattr(pn.state, "notifications") and pn.state.notifications:
+                # duration=0 keeps it visible until the user dismisses it
+                # or the next notification supersedes it.
+                if is_practice or done_counted >= n_required:
+                    pn.state.notifications.success(msg, duration=0)
+                else:
+                    pn.state.notifications.info(msg, duration=10000)
+        except Exception:
+            # Never let UX-only messaging fail save_result().
+            pass
+
 
 def get_action(state: SAOState) -> SAOResponse:
     return session_state["human_action"]
