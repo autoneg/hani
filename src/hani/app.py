@@ -2255,6 +2255,17 @@ LAST_SCENARIO_FILE = "last_scenario.txt"
 PROLIFIC_PREFIX = "prolific_"
 PROLIFIC_META_FILE = "prolific_session.json"
 PROLIFIC_SCHEDULE_FILE = "schedule.json"
+
+# Dotted-path Python class names of the Prolific finalists, set via the
+# PROLIFIC_FINALISTS env var (comma-separated). When non-empty they are
+# appended to the MultiChoice "Partner Types" widget so the schedule's
+# agent_class_name lookup resolves -- HANI's get_agent_type() then
+# imports them via negmas.helpers.get_class(). Empty during normal /hanplay
+# guest use (no finalists -> falls back to the existing partner pool).
+PROLIFIC_FINALIST_TYPES: list[str] = [
+    s.strip() for s in os.environ.get("PROLIFIC_FINALISTS", "").split(",")
+    if s.strip()
+]
 # Counted negotiations per session. First session adds one practice on
 # top; returning sessions skip practice (cap is just N_REQUIRED).
 PROLIFIC_N_REQUIRED = int(os.environ.get("PROLIFIC_N_REQUIRED", "5"))
@@ -2976,6 +2987,12 @@ def main():
             all_agent_types += HANI_NEGOTIATORS
         if session_state["partners"]["genius_negotiators"].value:
             all_agent_types += GENIUS_NEGOTITORS
+        # Always include the Prolific finalists when configured -- the
+        # scheduler writes their dotted-path class names into
+        # schedule.json and start_negotiation() needs them in the
+        # partner_types list to dispatch to them.
+        if PROLIFIC_FINALIST_TYPES:
+            all_agent_types += PROLIFIC_FINALIST_TYPES
         all_agent_types = list(set(all_agent_types))
         print(f"Will use {all_agent_types} as agent types")
         return all_agent_types
