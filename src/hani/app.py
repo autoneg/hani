@@ -2365,21 +2365,35 @@ def read_announcements():
     else:
         login_register_msg = ""
 
-    session_state["announcements"] = (
-        (
-            ""
-            if pn.state.user
-            else (
-                "#### Welcome to HAN Playground.\n\n"
-                "##### You can start experimenting with the user-interface and available "
-                "tools by pressing the 'Start' button below."
-                "\n\n\n\n##### You can load new exmaple scenarios using the 'Load' button "
-                "(after you finish a negotiation).\n\n\n" + login_register_msg
-            )
+    if pn.state.user:
+        intro_msg = ""
+    elif _is_prolific_user(session_state.get("user", "")):
+        meta = _prolific_meta(session_state["user_path"], session_state["user"])
+        n_total = int(meta.get("max_negs", MAX_PROLIFIC_NEGS))
+        n_counted = max(0, n_total - 1)
+        max_minutes = int(meta.get("max_minutes", MAX_PROLIFIC_MINUTES))
+        intro_msg = (
+            "#### Welcome to the ANAC Human-Agent Negotiation study.\n\n"
+            f"##### You will negotiate up to **{n_total} times** against an AI "
+            f"agent, or for up to **{max_minutes} minutes** &mdash; whichever "
+            "finishes first.\n\n"
+            "##### The **first negotiation is a practice round** that does "
+            f"not count toward your reward; the remaining **{n_counted}** "
+            "do.\n\n"
+            "##### When you are ready, press **Start** to begin. A new "
+            "negotiation begins automatically once the current one ends. "
+            "When you have finished, return to the Prolific study tab and "
+            'click **"I\'m done"** to submit.\n\n\n'
         )
-        + "\n\n\n\n\n"
-        + txt
-    )
+    else:
+        intro_msg = (
+            "#### Welcome to HAN Playground.\n\n"
+            "##### You can start experimenting with the user-interface and available "
+            "tools by pressing the 'Start' button below."
+            "\n\n\n\n##### You can load new exmaple scenarios using the 'Load' button "
+            "(after you finish a negotiation).\n\n\n" + login_register_msg
+        )
+    session_state["announcements"] = intro_msg + "\n\n\n\n\n" + txt
 
 
 def show_announcements(event=None):
