@@ -2219,7 +2219,7 @@ LAST_SCENARIO_FILE = "last_scenario.txt"
 PROLIFIC_PREFIX = "prolific_"
 PROLIFIC_META_FILE = "prolific_session.json"
 MAX_PROLIFIC_NEGS = 6          # 1 practice + 5 counted
-MAX_PROLIFIC_MINUTES = 40
+MAX_PROLIFIC_MINUTES = int(os.environ.get("PROLIFIC_MAX_MINUTES", "45"))
 
 
 def _is_prolific_user(user: str | None) -> bool:
