@@ -2140,24 +2140,31 @@ def start_negotiation(event=None):
 
     partner_type = None
     # Prolific schedule: pick the finalist for the current slot if available.
+    # First negotiation per participant is practice and must NOT use a
+    # finalist -- draw from pan.py's personality-adjusted pool instead so
+    # the controlled finalist x slot cells are reserved for counted rounds.
     if _is_prolific_user(session_state.get("user", "")):
         meta = _prolific_meta(session_state["user_path"], session_state["user"])
         slot = _count_this_session(session_state["user_path"],
                                    meta.get("started_at", ""))
-        sched = _load_prolific_schedule(session_state["user_path"]) or []
-        if 0 <= slot < len(sched):
-            wanted = sched[slot].get("agent_class_name") if isinstance(sched[slot], dict) else None
-            if wanted:
-                # Match by class name (HANI passes class strings here).
-                for t in types:
-                    if str(t).split(".")[-1] == wanted or str(t) == wanted:
-                        partner_type = t
-                        break
-                if partner_type is None:
-                    # Schedule asked for a finalist not in the configured list
-                    # -- fall back to random so the negotiation still runs.
-                    print(f"[yellow]Prolific schedule: finalist '{wanted}' not "
-                          f"in configured partner_types; falling back to random[/yellow]")
+        is_returning = _is_returning_user(session_state["user_path"], meta)
+        is_practice_round = (slot == 0 and not is_returning)
+        if is_practice_round:
+            partner_type = _pick_practice_pan_partner() or partner_type
+        else:
+            sched = _load_prolific_schedule(session_state["user_path"]) or []
+            # In returning sessions the schedule has 5 entries indexed 0..4
+            # but `slot` is also counted from 0, so the same lookup works.
+            if 0 <= slot < len(sched):
+                wanted = sched[slot].get("agent_class_name") if isinstance(sched[slot], dict) else None
+                if wanted:
+                    for t in types:
+                        if str(t).split(".")[-1] == wanted or str(t) == wanted:
+                            partner_type = t
+                            break
+                    if partner_type is None:
+                        print(f"[yellow]Prolific schedule: finalist '{wanted}' not "
+                              f"in configured partner_types; falling back to random[/yellow]")
     if partner_type is None:
         partner_type = choice(types)
     if session_state["partners"]["show_partner_type"].value:
@@ -2385,6 +2392,44 @@ def _prolific_session_done_reason(user_path: Path, meta: dict) -> str | None:
     return None
 
 
+def _pick_practice_pan_partner() -> str | None:
+    """Choose a random partner class for the practice round from
+    ~/hani/pan.py's personality-adjusted pool (HSHP / HSLP / LSHP / LSLP).
+    Returns the fully-qualified class name string so make_mechanism can
+    instantiate it via get_class(). None on failure -- caller falls
+    back to its existing random partner choice."""
+    try:
+        import sys as _sys
+        # ~/hani/pan.py is the file runtournament.py imports for HAN PAN mode.
+        # Add the project root to sys.path so the import works regardless of cwd.
+        pan_paths = [
+            Path.home() / "hani",
+            Path.cwd(),
+        ]
+        for p in pan_paths:
+            sp = str(p)
+            if (p / "pan.py").exists() and sp not in _sys.path:
+                _sys.path.insert(0, sp)
+                break
+        import pan as _pan  # type: ignore
+    except Exception as e:
+        print(f"[yellow]Could not import pan.py for practice partner ({e}); "
+              "falling back to default partner pool.[/yellow]")
+        return None
+    candidates = []
+    for bucket in ("HSHP", "HSLP", "LSHP", "LSLP"):
+        members = getattr(_pan, bucket, None) or []
+        candidates.extend(members)
+    if not candidates:
+        return None
+    klass = choice(candidates)
+    # Return the importable dotted path so HANI's get_class can resolve it.
+    try:
+        return f"{klass.__module__}.{klass.__name__}"
+    except Exception:
+        return None
+
+
 def _load_prolific_schedule(user_path: Path) -> list[dict] | None:
     """Read schedule.json (written by Laravel when the prolific_sessions
     row is created). Returns the list of negotiations or None if absent.
@@ -2427,6 +2472,8 @@ def get_scenario() -> Scenario:
         # this slot so the same finalist+ufun layout is reproducible.
         slot = _count_this_session(session_state["user_path"],
                                    meta.get("started_at", ""))
+        is_returning = _is_returning_user(session_state["user_path"], meta)
+        is_practice_round = (slot == 0 and not is_returning)
         sched = _load_prolific_schedule(session_state["user_path"]) or []
         entry = sched[slot] if 0 <= slot < len(sched) else None
         type_ = (
@@ -2434,10 +2481,14 @@ def get_scenario() -> Scenario:
             or meta.get("scenario_type")
             or SCENARIO_LIST[index % len(SCENARIO_LIST)]
         )
-        # Scenario index from schedule (for ufun balance) when provided.
-        sched_index = (entry or {}).get("scenario_index")
-        if isinstance(sched_index, int) and sched_index >= 0:
-            index = sched_index
+        # Scenario index: practice uses a random / on-the-fly scenario
+        # (Option B in the docs); counted rounds use the schedule's
+        # deterministic index so the controlled (domain, ufun) pool is
+        # exercised uniformly.
+        if not is_practice_round:
+            sched_index = (entry or {}).get("scenario_index")
+            if isinstance(sched_index, int) and sched_index >= 0:
+                index = sched_index
     elif session_state["scenarios"]["predefined_order"].value:
         type_ = SCENARIO_LIST[index % len(SCENARIO_LIST)]
     else:
