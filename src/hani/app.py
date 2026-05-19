@@ -267,7 +267,8 @@ session_state = dict()
 
 # Load all Panel extensions in one call for better performance
 pn.extension(
-    "modal", "plotly", "tabulator", design="bootstrap", sizing_mode="stretch_width"
+    "modal", "plotly", "tabulator", design="bootstrap",
+    sizing_mode="stretch_width", notifications=True,
 )
 pn.config.throttled = True
 
@@ -2259,15 +2260,25 @@ def _prolific_meta(user_path: Path, user: str) -> dict:
 
 
 def _count_existing_negotiations(user_path: Path) -> int:
-    """Number of finished negotiations recorded for this user so far."""
-    csv = user_path / "results.csv"
-    if not csv.exists():
+    """Number of finished negotiations recorded for this user so far.
+
+    Uses csv.reader because some result columns (e.g. long_description)
+    contain embedded newlines inside double-quoted fields; counting
+    `sum(1 for _ in fh)` would over-count those as separate rows.
+    """
+    import csv as _csv
+    path = user_path / "results.csv"
+    if not path.exists():
         return 0
     try:
-        # Subtract 1 for the header row; clamp at zero.
-        with csv.open() as fh:
-            n = sum(1 for _ in fh) - 1
-        return max(n, 0)
+        with path.open(newline="") as fh:
+            reader = _csv.reader(fh)
+            # Skip header.
+            try:
+                next(reader)
+            except StopIteration:
+                return 0
+            return sum(1 for _ in reader)
     except Exception:
         return 0
 
