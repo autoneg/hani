@@ -620,13 +620,19 @@ def default_tools():
         #     params=dict(normalize_by_time=NORMALIZE_BY_TIME),
         #     bottom=False,
         # ),
-        ToolConfig(
-            "User Results",
-            TOOL_MAP["User Results"],
-            Timing.Always,
-            params=dict(user="session:user", normalize_by_time=NORMALIZE_BY_TIME),
-            bottom=False,
-        ),
+    ]
+    # Hide User Results in guest/playground mode
+    if os.getenv("HANI_GUEST_MODE", "false").lower() != "true":
+        tools.append(
+            ToolConfig(
+                "User Results",
+                TOOL_MAP["User Results"],
+                Timing.Always,
+                params=dict(user="session:user", normalize_by_time=NORMALIZE_BY_TIME),
+                bottom=False,
+            )
+        )
+    tools += [
         ToolConfig(
             "Utility-based Selector",
             TOOL_MAP["Utility Inverter"],
