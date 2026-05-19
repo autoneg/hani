@@ -1134,10 +1134,17 @@ def save_result(m: SAOMechanism):
     if _is_prolific_user(user):
         try:
             meta = _prolific_meta(session_state["user_path"], user)
-            n_total = int(meta.get("max_negs", MAX_PROLIFIC_NEGS))
-            n_required = max(0, n_total - 1)
-            done_total = _count_existing_negotiations(session_state["user_path"])
-            done_counted = max(0, done_total - 1)  # subtract the one practice row
+            cap = _session_cap(session_state["user_path"], meta)
+            is_returning = _is_returning_user(session_state["user_path"], meta)
+            # Counted target: cap minus practice (if any).
+            n_required = cap if is_returning else max(0, cap - 1)
+            done_in_session = _count_this_session(
+                session_state["user_path"], meta.get("started_at", "")
+            )
+            # The just-written row IS included in done_in_session. Counted
+            # done = done_in_session - 1 when this session has a practice
+            # round at slot 0, otherwise = done_in_session.
+            done_counted = done_in_session if is_returning else max(0, done_in_session - 1)
             if is_practice:
                 msg = (
                     f"Practice complete! The next {n_required} negotiation(s) "
@@ -2130,7 +2137,29 @@ def start_negotiation(event=None):
     types = session_state["partners"]["partner_types"].value
     if not types:
         types = SELECTED_AGENT_TYPES
-    partner_type = choice(types)
+
+    partner_type = None
+    # Prolific schedule: pick the finalist for the current slot if available.
+    if _is_prolific_user(session_state.get("user", "")):
+        meta = _prolific_meta(session_state["user_path"], session_state["user"])
+        slot = _count_this_session(session_state["user_path"],
+                                   meta.get("started_at", ""))
+        sched = _load_prolific_schedule(session_state["user_path"]) or []
+        if 0 <= slot < len(sched):
+            wanted = sched[slot].get("agent_class_name") if isinstance(sched[slot], dict) else None
+            if wanted:
+                # Match by class name (HANI passes class strings here).
+                for t in types:
+                    if str(t).split(".")[-1] == wanted or str(t) == wanted:
+                        partner_type = t
+                        break
+                if partner_type is None:
+                    # Schedule asked for a finalist not in the configured list
+                    # -- fall back to random so the negotiation still runs.
+                    print(f"[yellow]Prolific schedule: finalist '{wanted}' not "
+                          f"in configured partner_types; falling back to random[/yellow]")
+    if partner_type is None:
+        partner_type = choice(types)
     if session_state["partners"]["show_partner_type"].value:
         session_state["history"].append(pn.pane.HTML(f"Partner type: {partner_type}"))
 
@@ -2218,7 +2247,11 @@ LAST_SCENARIO_FILE = "last_scenario.txt"
 # and a hard wall-clock cap of MAX_PROLIFIC_MINUTES from the first start.
 PROLIFIC_PREFIX = "prolific_"
 PROLIFIC_META_FILE = "prolific_session.json"
-MAX_PROLIFIC_NEGS = 6          # 1 practice + 5 counted
+PROLIFIC_SCHEDULE_FILE = "schedule.json"
+# Counted negotiations per session. First session adds one practice on
+# top; returning sessions skip practice (cap is just N_REQUIRED).
+PROLIFIC_N_REQUIRED = int(os.environ.get("PROLIFIC_N_REQUIRED", "5"))
+MAX_PROLIFIC_NEGS = PROLIFIC_N_REQUIRED + 1  # 1 practice + N counted (first session)
 MAX_PROLIFIC_MINUTES = int(os.environ.get("PROLIFIC_MAX_MINUTES", "45"))
 
 
@@ -2259,38 +2292,84 @@ def _prolific_meta(user_path: Path, user: str) -> dict:
     return meta
 
 
-def _count_existing_negotiations(user_path: Path) -> int:
-    """Number of finished negotiations recorded for this user so far.
-
-    Uses csv.reader because some result columns (e.g. long_description)
-    contain embedded newlines inside double-quoted fields; counting
-    `sum(1 for _ in fh)` would over-count those as separate rows.
-    """
+def _iter_result_rows(user_path: Path):
+    """Yield each (header, row) of the user's results.csv. Uses csv.reader
+    because some columns (long_description) carry embedded newlines."""
     import csv as _csv
     path = user_path / "results.csv"
     if not path.exists():
-        return 0
+        return
     try:
         with path.open(newline="") as fh:
             reader = _csv.reader(fh)
-            # Skip header.
             try:
-                next(reader)
+                header = next(reader)
             except StopIteration:
-                return 0
-            return sum(1 for _ in reader)
+                return
+            for row in reader:
+                yield header, row
     except Exception:
-        return 0
+        return
+
+
+def _count_existing_negotiations(user_path: Path) -> int:
+    """Total rows in this user's results.csv across all sessions."""
+    return sum(1 for _ in _iter_result_rows(user_path))
+
+
+def _count_this_session(user_path: Path, since_iso: str) -> int:
+    """Rows whose ended_at is at or after the session's started_at."""
+    try:
+        since = datetime.fromisoformat(since_iso)
+    except Exception:
+        return _count_existing_negotiations(user_path)
+    n = 0
+    for header, row in _iter_result_rows(user_path):
+        if "ended_at" not in header:
+            n += 1
+            continue
+        idx = header.index("ended_at")
+        if idx >= len(row):
+            continue
+        try:
+            ended = datetime.fromisoformat(row[idx])
+        except Exception:
+            # Fall back to lenient parsing: "YYYY-MM-DD HH:MM:SS[.ffffff]"
+            try:
+                ended = datetime.strptime(row[idx][:19], "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                continue
+        if ended >= since:
+            n += 1
+    return n
+
+
+def _is_returning_user(user_path: Path, meta: dict) -> bool:
+    """True if at least one prior negotiation row predates meta.started_at,
+    meaning this is a second-or-later session for the participant."""
+    total = _count_existing_negotiations(user_path)
+    this_session = _count_this_session(user_path, meta.get("started_at", ""))
+    return total > this_session
+
+
+def _session_cap(user_path: Path, meta: dict) -> int:
+    """Max negotiations allowed in *this* session. Returning users skip
+    the practice round so their cap is one less."""
+    base = int(meta.get("max_negs", MAX_PROLIFIC_NEGS))
+    if _is_returning_user(user_path, meta):
+        # base assumes 1 practice + N_REQUIRED; drop the practice.
+        return max(1, base - 1)
+    return base
 
 
 def _prolific_session_done_reason(user_path: Path, meta: dict) -> str | None:
     """Returns a human-readable reason if the Prolific session is over, else None."""
-    n_done = _count_existing_negotiations(user_path)
-    if n_done >= int(meta.get("max_negs", MAX_PROLIFIC_NEGS)):
+    n_done = _count_this_session(user_path, meta.get("started_at", ""))
+    cap = _session_cap(user_path, meta)
+    if n_done >= cap:
         return (
-            f"You have finished all {meta.get('max_negs', MAX_PROLIFIC_NEGS)} "
-            "negotiations for this study. Please return to the Prolific tab and "
-            "click \"I'm done\" to submit."
+            f"You have finished all {cap} negotiations for this session. "
+            "Please return to the Prolific tab and click \"I'm done\" to submit."
         )
     try:
         started = datetime.fromisoformat(meta["started_at"])
@@ -2306,6 +2385,33 @@ def _prolific_session_done_reason(user_path: Path, meta: dict) -> str | None:
     return None
 
 
+def _load_prolific_schedule(user_path: Path) -> list[dict] | None:
+    """Read schedule.json (written by Laravel when the prolific_sessions
+    row is created). Returns the list of negotiations or None if absent.
+
+    Each entry is a dict with optional fields:
+      - slot (int)
+      - agent_class_name (string) -- HANI matches against the configured
+        partner_types list and uses this one instead of random choice.
+      - scenario_type (string)    -- "Trade"/"Island"/"Grocery"
+      - scenario_index (int)      -- which ufun variant within the type
+    Missing fields fall back to HANI's existing random / hash-based defaults.
+    """
+    path = user_path / PROLIFIC_SCHEDULE_FILE
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return None
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        n = data.get("negotiations")
+        return n if isinstance(n, list) else None
+    return None
+
+
 def get_scenario() -> Scenario:
     user = session_state["user"]
     path = session_state["user_path"] / LAST_SCENARIO_FILE
@@ -2315,10 +2421,23 @@ def get_scenario() -> Scenario:
     else:
         index = int(path.read_text()) + 1
     if _is_prolific_user(user):
-        # Lock the scenario type for the whole session; index still advances
-        # so different negotiations get different ufuns within that type.
         meta = _prolific_meta(session_state["user_path"], user)
-        type_ = meta.get("scenario_type") or SCENARIO_LIST[index % len(SCENARIO_LIST)]
+        # Slot within this session: 0 = practice (first session only) or
+        # first counted neg (returning session). The schedule is keyed by
+        # this slot so the same finalist+ufun layout is reproducible.
+        slot = _count_this_session(session_state["user_path"],
+                                   meta.get("started_at", ""))
+        sched = _load_prolific_schedule(session_state["user_path"]) or []
+        entry = sched[slot] if 0 <= slot < len(sched) else None
+        type_ = (
+            (entry or {}).get("scenario_type")
+            or meta.get("scenario_type")
+            or SCENARIO_LIST[index % len(SCENARIO_LIST)]
+        )
+        # Scenario index from schedule (for ufun balance) when provided.
+        sched_index = (entry or {}).get("scenario_index")
+        if isinstance(sched_index, int) and sched_index >= 0:
+            index = sched_index
     elif session_state["scenarios"]["predefined_order"].value:
         type_ = SCENARIO_LIST[index % len(SCENARIO_LIST)]
     else:
@@ -2417,17 +2536,36 @@ def read_announcements():
         intro_msg = ""
     elif _is_prolific_user(session_state.get("user", "")):
         meta = _prolific_meta(session_state["user_path"], session_state["user"])
-        n_total = int(meta.get("max_negs", MAX_PROLIFIC_NEGS))
-        n_counted = max(0, n_total - 1)
+        cap = _session_cap(session_state["user_path"], meta)
+        is_returning = _is_returning_user(session_state["user_path"], meta)
+        n_counted = cap if is_returning else max(0, cap - 1)
         max_minutes = int(meta.get("max_minutes", MAX_PROLIFIC_MINUTES))
+        if is_returning:
+            practice_line = (
+                "##### Welcome back! Since you completed a session before, "
+                "the practice round is skipped &mdash; all "
+                f"**{n_counted}** of this session's negotiations count toward "
+                "your reward and bonus.\n\n"
+            )
+            top_line = (
+                f"##### You will negotiate up to **{cap} times** against an AI "
+                f"agent, or for up to **{max_minutes} minutes** &mdash; whichever "
+                "finishes first.\n\n"
+            )
+        else:
+            practice_line = (
+                "##### The **first negotiation is a practice round** that does "
+                f"not count toward your reward; the remaining **{n_counted}** "
+                "do.\n\n"
+            )
+            top_line = (
+                f"##### You will negotiate up to **{cap} times** against an AI "
+                f"agent, or for up to **{max_minutes} minutes** &mdash; whichever "
+                "finishes first.\n\n"
+            )
         intro_msg = (
-            "#### Welcome to the ANAC Human-Agent Negotiation study.\n\n"
-            f"##### You will negotiate up to **{n_total} times** against an AI "
-            f"agent, or for up to **{max_minutes} minutes** &mdash; whichever "
-            "finishes first.\n\n"
-            "##### The **first negotiation is a practice round** that does "
-            f"not count toward your reward; the remaining **{n_counted}** "
-            "do.\n\n"
+            "#### Welcome to the ANAC Human-Agent Negotiation Competition 2026.\n\n"
+            + top_line + practice_line +
             "##### When you are ready, press **Start** to begin. A new "
             "negotiation begins automatically once the current one ends. "
             "When you have finished, return to the Prolific study tab and "
