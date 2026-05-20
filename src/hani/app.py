@@ -2657,11 +2657,13 @@ def _pick_practice_pan_partner() -> str | None:
     back to its existing random partner choice."""
     try:
         import sys as _sys
-        # ~/hani/pan.py is the file runtournament.py imports for HAN PAN mode.
-        # Add the project root to sys.path so the import works regardless of cwd.
+        # pan.py lives in runtournament's project root. Look in the
+        # known locations so the import works regardless of cwd.
         pan_paths = [
             Path.home() / "hani",
+            Path.home() / "code" / "sites" / "scmlweb" / "python",
             Path.cwd(),
+            Path.cwd() / "python",
         ]
         for p in pan_paths:
             sp = str(p)
@@ -2680,11 +2682,29 @@ def _pick_practice_pan_partner() -> str | None:
     if not candidates:
         return None
     klass = choice(candidates)
-    # Return the importable dotted path so HANI's get_class can resolve it.
-    try:
-        return f"{klass.__module__}.{klass.__name__}"
-    except Exception:
+    # Return an importable dotted path so HANI's get_class can resolve
+    # it. The classes in pan.py are dynamically created via type(...),
+    # which can leave __module__ pointing at "abc" (metaclass). Verify
+    # the path actually resolves; on mismatch, fall back to using the
+    # name as exposed in the pan module's globals so callers can
+    # import it as `pan.<ClassName>`.
+    mod = getattr(klass, "__module__", "") or ""
+    name = getattr(klass, "__name__", "") or ""
+    if not name:
         return None
+    candidates_paths = []
+    if mod and mod != "abc":
+        candidates_paths.append(f"{mod}.{name}")
+    candidates_paths.append(f"pan.{name}")
+    for path in candidates_paths:
+        try:
+            from negmas.helpers.types import get_class as _gc  # type: ignore
+            resolved = _gc(path)
+            if resolved is not None:
+                return path
+        except Exception:
+            continue
+    return None
 
 
 def _prolific_submit_url(pid: str) -> str:
