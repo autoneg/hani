@@ -1970,7 +1970,7 @@ def action_panel(
 
     # Row with current offer, Accept (only if offer exists), and End buttons
     reject_counter_btn = create_tracked_button(
-        name="Reject & Counter",
+        name="Reject",
         icon="arrow-back-up",
         button_type="primary",
         width=140,
