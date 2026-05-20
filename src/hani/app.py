@@ -1201,7 +1201,8 @@ def end_session():
     # Prolific: gate the next-round Load form behind a short per-
     # negotiation questionnaire. Skips silently when the YAML is
     # missing / unparseable so a misconfigured install can never
-    # block the participant.
+    # block the participant. Diagnostic prints land in runguest.log
+    # so it's easy to tell which fallback path was taken.
     if _is_prolific_user(user):
         spec = _per_neg_questionnaire_spec()
         if spec and spec.get("questions"):
@@ -1210,6 +1211,7 @@ def end_session():
                 scenario_name = session_state["scenario"].outcome_space.name
             except Exception:
                 pass
+            agent_type_str = str(session_state.get("last_partner_type", ""))
 
             def _after_submit():
                 # Replace the form with the regular Load button.
@@ -1218,17 +1220,29 @@ def end_session():
                     load_form(session_state["selectable_scenario_type"])
                 )
 
+            print(
+                f"[per-neg] rendering form for mechanism_id={mechanism.id} "
+                f"agent={agent_type_str} practice={will_be_practice} "
+                f"({len(spec.get('questions', []))} questions)"
+            )
             session_state["action_panel"].append(
                 _build_per_neg_form(
                     spec=spec,
                     mechanism_id=str(mechanism.id),
                     scenario_name=scenario_name,
+                    agent_type=agent_type_str,
                     is_practice=will_be_practice,
                     user_path=session_state["user_path"],
                     after_submit=_after_submit,
                 )
             )
             return
+        else:
+            print(
+                "[per-neg] no per_negotiation.yaml spec found "
+                "(checked $PROLIFIC_PER_NEG_YAML, ~/scmlweb/..., "
+                "~/code/sites/scmlweb/...); skipping questionnaire form"
+            )
 
     session_state["action_panel"].append(
         load_form(session_state["selectable_scenario_type"])
@@ -2208,6 +2222,11 @@ def start_negotiation(event=None):
                               f"in configured partner_types; falling back to random[/yellow]")
     if partner_type is None:
         partner_type = choice(types)
+    # Stash the resolved partner so end_session / the per-negotiation
+    # questionnaire row can record which opponent the participant
+    # actually faced (the schedule entry's planned name + the actual
+    # string passed to make_mechanism).
+    session_state["last_partner_type"] = str(partner_type)
     if session_state["partners"]["show_partner_type"].value:
         session_state["history"].append(pn.pane.HTML(f"Partner type: {partner_type}"))
 
@@ -2507,10 +2526,19 @@ def _per_neg_questionnaire_spec() -> dict | None:
             continue
         try:
             import yaml  # PyYAML; pulled in transitively by negmas/panel
-            return yaml.safe_load(p.read_text())
+            spec = yaml.safe_load(p.read_text())
+            print(
+                f"[per-neg] loaded {p} "
+                f"({len((spec or {}).get('questions') or [])} questions)"
+            )
+            return spec
         except Exception as e:
             print(f"[yellow]per_negotiation.yaml at {p} failed to parse: {e}[/yellow]")
             return None
+    print(
+        "[per-neg] no per_negotiation.yaml found in: "
+        + ", ".join(str(c) for c in candidates)
+    )
     return None
 
 
@@ -2518,22 +2546,27 @@ def _save_per_neg_answers(
     user_path: Path,
     mechanism_id: str,
     scenario_name: str,
+    agent_type: str,
     is_practice: bool,
     answers: dict,
 ) -> None:
     """Append one row to <user>/negotiation_questionnaires.csv.
 
     Joinable to results.csv via mechanism_id. The first call writes
-    the header; subsequent calls append.
+    the header; subsequent calls append. `agent_type` is the opponent
+    class string passed to make_mechanism for the round we just
+    finished (a finalist dotted path in Prolific mode; a random
+    PAN-pool class for the practice round).
     """
     import csv as _csv
     path = user_path / "negotiation_questionnaires.csv"
     is_new = not path.exists()
-    base_fields = ["mechanism_id", "scenario", "practice", "submitted_at"]
+    base_fields = ["mechanism_id", "scenario", "agent_type", "practice", "submitted_at"]
     answer_fields = sorted(answers.keys())
     row = {
         "mechanism_id": mechanism_id,
         "scenario": scenario_name,
+        "agent_type": agent_type,
         "practice": "True" if is_practice else "False",
         "submitted_at": datetime.now().isoformat(),
         **answers,
@@ -2550,6 +2583,7 @@ def _build_per_neg_form(
     spec: dict,
     mechanism_id: str,
     scenario_name: str,
+    agent_type: str,
     is_practice: bool,
     user_path: Path,
     after_submit,
@@ -2624,7 +2658,8 @@ def _build_per_neg_form(
             answers[qid] = v
         try:
             _save_per_neg_answers(
-                user_path, mechanism_id, scenario_name, is_practice, answers
+                user_path, mechanism_id, scenario_name, agent_type,
+                is_practice, answers,
             )
         except Exception as e:
             err.object = f"<div style='color:red'>Could not save: {e}</div>"
