@@ -1649,11 +1649,26 @@ def action_panel(
             offer_body = session_state["outcome_display"].str(
                 live_offer, session_state["scenario"], False, False
             )
+            warning_html = ""
+            if is_irrational:
+                warning_html = (
+                    f'<div style="margin-top: 8px; padding: 8px; '
+                    f"background: #f8d7da; border: 1px solid #f5c2c7; "
+                    f'border-radius: 5px; color: #842029;">'
+                    f"⚠️ <b>Warning:</b> this offer's utility "
+                    f"(<b>{live_utility:0.1%}</b>) is <b>worse</b> than your "
+                    f"reserved value (<b>{reserved_value:0.1%}</b>). "
+                    f"If you simply <b>end</b> the negotiation instead, you "
+                    f"would receive <b>{reserved_value:0.1%}</b>, which is "
+                    f"higher than what you are about to accept."
+                    f"</div>"
+                )
             confirm_msg = (
                 f'<div style="font-size: 11pt;">'
                 f"Are you sure you want to accept this offer?<br>"
                 f"<b>Offer:</b> {offer_body}<br>"
                 f'You will receive: <span style="color: {util_color}; font-weight: bold;">{live_utility:0.1%}</span>'
+                f"{warning_html}"
                 f"</div>"
             )
             session_state["confirm_action"] = "accept"
