@@ -1064,6 +1064,21 @@ def save_result(m: SAOMechanism):
         # Count BEFORE adding the new row: 0 means this is the very first.
         is_practice = _count_existing_negotiations(session_state["user_path"]) == 0
 
+    # Count how many actions the human took during this negotiation. A
+    # zero-action row indicates the participant let the round time out
+    # without engaging -- those are filtered out of the "counted" total
+    # so a participant can't bank time by repeatedly loading scenarios
+    # and walking away. Lives in m.full_trace alongside agent moves.
+    n_human_actions = 0
+    try:
+        human_id_str = str(session_state.get("human_id", ""))
+        for row in m.full_trace:
+            neg = row[3] if len(row) > 3 else None
+            if neg is not None and str(neg) == human_id_str:
+                n_human_actions += 1
+    except Exception:
+        n_human_actions = 0
+
     result = serialize(
         session_state.get("scenario_info", dict())
         | dict(
@@ -1080,6 +1095,7 @@ def save_result(m: SAOMechanism):
             mechanism_name=m.name,
             mechanism_id=m.id,
             practice=is_practice,
+            n_human_actions=n_human_actions,
         )
         | asdict(m.state)
         | {
@@ -1134,27 +1150,38 @@ def save_result(m: SAOMechanism):
     if _is_prolific_user(user):
         try:
             meta = _prolific_meta(session_state["user_path"], user)
-            cap = _session_cap(session_state["user_path"], meta)
-            is_returning = _is_returning_user(session_state["user_path"], meta)
-            # Counted target: cap minus practice (if any).
-            n_required = cap if is_returning else max(0, cap - 1)
-            done_in_session = _count_this_session(
+            n_required = PROLIFIC_N_REQUIRED
+            done_counted = _count_counted_this_session(
                 session_state["user_path"], meta.get("started_at", "")
             )
-            # The just-written row IS included in done_in_session. Counted
-            # done = done_in_session - 1 when this session has a practice
-            # round at slot 0, otherwise = done_in_session.
-            done_counted = done_in_session if is_returning else max(0, done_in_session - 1)
+            # Zero-action timeout this round? Surface that too so the
+            # participant knows it doesn't count.
+            zero_action = (
+                not is_practice and n_human_actions == 0
+                and done_counted < n_required
+            )
             if is_practice:
                 msg = (
                     f"Practice complete! The next {n_required} negotiation(s) "
                     "count toward your reward and bonus."
                 )
             elif done_counted >= n_required:
+                pid = user[len(PROLIFIC_PREFIX):] if user.startswith(PROLIFIC_PREFIX) else user
+                submit_url = _prolific_submit_url(pid)
                 msg = (
-                    f"All {n_required} counted negotiations are done. Please "
-                    "return to the Prolific tab and click \"I'm done\" to "
-                    "submit."
+                    f"All {n_required} counted negotiations are done. "
+                    f'<a href="{submit_url}" target="_top" '
+                    f'style="font-weight:bold;text-decoration:underline">'
+                    f"Click here to submit your session</a> "
+                    f"(opens the post-session questionnaire, then sends "
+                    f"you back to Prolific)."
+                )
+            elif zero_action:
+                msg = (
+                    "This negotiation timed out without any moves on your "
+                    "side, so it does <strong>not</strong> count. "
+                    f"{done_counted} of {n_required} counted so far &mdash; "
+                    f"{n_required - done_counted} to go."
                 )
             else:
                 remaining = n_required - done_counted
@@ -1169,9 +1196,9 @@ def save_result(m: SAOMechanism):
                     pn.state.notifications.success(msg, duration=0)
                 else:
                     pn.state.notifications.info(msg, duration=10000)
-        except Exception:
+        except Exception as _e:
             # Never let UX-only messaging fail save_result().
-            pass
+            print(f"[per-neg toast] failed: {_e}")
 
 
 def get_action(state: SAOState) -> SAOResponse:
@@ -2168,6 +2195,16 @@ def send_event_to_tools(event):
 
 
 def start_negotiation(event=None):
+    # Cancel any pending Prolific auto-start timer (scheduled by
+    # load_scenario when the participant pressed Load but hadn't
+    # clicked Start within PROLIFIC_AUTO_START_SECONDS).
+    _auto = session_state.pop("auto_start_timer", None)
+    if _auto is not None:
+        try:
+            _auto.cancel()
+        except Exception:
+            pass
+
     # Prolific session cap: refuse to start a new negotiation once the
     # participant has used their allotted negotiations or wall-clock time.
     user = session_state.get("user")
@@ -2422,6 +2459,50 @@ def _count_this_session(user_path: Path, since_iso: str) -> int:
     return n
 
 
+def _count_counted_this_session(user_path: Path, since_iso: str) -> int:
+    """Rows in this session that count toward the participant's quota:
+    not the practice round, not a zero-action timeout (the participant
+    must have made at least one offer / accept / reject / message).
+    Backward-compat: missing n_human_actions column => treat as counted.
+    """
+    try:
+        since = datetime.fromisoformat(since_iso)
+    except Exception:
+        since = None
+    n = 0
+    for header, row in _iter_result_rows(user_path):
+        # ended_at filter
+        if "ended_at" in header and since is not None:
+            idx = header.index("ended_at")
+            if idx >= len(row):
+                continue
+            try:
+                ended = datetime.fromisoformat(row[idx])
+            except Exception:
+                try:
+                    ended = datetime.strptime(row[idx][:19], "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    continue
+            if ended < since:
+                continue
+        # practice filter
+        if "practice" in header:
+            p = row[header.index("practice")] if header.index("practice") < len(row) else ""
+            if str(p).lower() in ("1", "true", "yes", "t"):
+                continue
+        # n_human_actions filter
+        if "n_human_actions" in header:
+            idx = header.index("n_human_actions")
+            if idx < len(row):
+                try:
+                    if int(row[idx]) <= 0:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+        n += 1
+    return n
+
+
 def _is_returning_user(user_path: Path, meta: dict) -> bool:
     """True if at least one prior negotiation row predates meta.started_at,
     meaning this is a second-or-later session for the participant."""
@@ -2441,24 +2522,33 @@ def _session_cap(user_path: Path, meta: dict) -> int:
 
 
 def _prolific_session_done_reason(user_path: Path, meta: dict) -> str | None:
-    """Returns a human-readable reason if the Prolific session is over, else None."""
-    n_done = _count_this_session(user_path, meta.get("started_at", ""))
-    cap = _session_cap(user_path, meta)
-    if n_done >= cap:
+    """Returns a human-readable reason if the Prolific session is over,
+    else None. The only hard cap is the count of counted negotiations
+    (PROLIFIC_N_REQUIRED, default 5); the wall-clock budget shown to
+    participants is informational, not enforced -- because zero-action
+    timeouts are filtered out of `counted`, a participant can't pad
+    their time by walking away from rounds."""
+    is_returning = _is_returning_user(user_path, meta)
+    required = PROLIFIC_N_REQUIRED  # 5 counted regardless of session #
+    n_counted = _count_counted_this_session(user_path, meta.get("started_at", ""))
+    # First session also includes the practice round. The cap below
+    # is just for the safety "this many total rows" upper bound so a
+    # bug-loop can't accumulate forever; in normal use, the user
+    # finishes after `required` counted negotiations.
+    total_cap = (required + 1) if not is_returning else required
+    n_total = _count_this_session(user_path, meta.get("started_at", ""))
+    if n_counted >= required:
         return (
-            f"You have finished all {cap} negotiations for this session. "
-            "Please return to the Prolific tab and click \"I'm done\" to submit."
+            f"All {required} counted negotiations are done. "
+            "Click the link in the just-finished round's notification "
+            "(or return to the Prolific tab) to submit."
         )
-    try:
-        started = datetime.fromisoformat(meta["started_at"])
-    except Exception:
-        return None
-    elapsed_min = (datetime.now() - started).total_seconds() / 60.0
-    if elapsed_min >= float(meta.get("max_minutes", MAX_PROLIFIC_MINUTES)):
+    if n_total >= total_cap + 3:
+        # Defensive: way more rows than expected -- something looped.
         return (
-            f"Your {int(meta.get('max_minutes', MAX_PROLIFIC_MINUTES))}-minute "
-            "session window is over. Please return to the Prolific tab and click "
-            "\"I'm done\" to submit."
+            f"This session has recorded {n_total} negotiations but only "
+            f"{n_counted} counted toward your reward. Please return to "
+            "the Prolific tab and contact the researchers."
         )
     return None
 
@@ -2499,6 +2589,24 @@ def _pick_practice_pan_partner() -> str | None:
         return f"{klass.__module__}.{klass.__name__}"
     except Exception:
         return None
+
+
+def _prolific_submit_url(pid: str) -> str:
+    """URL the all-counted-done toast points at. Always routes through
+    scmlweb's /prolific/done so the post-session questionnaire runs
+    before the participant is bounced back to Prolific.
+
+    Override via SCMLWEB_BASE_URL (e.g. http://localhost:8000 for
+    local dev); the production default reaches the live host.
+    """
+    base = os.environ.get("SCMLWEB_BASE_URL", "https://anac.cs.brown.edu").rstrip("/")
+    return f"{base}/prolific/done?PROLIFIC_PID={pid}"
+
+
+# Seconds to wait after Load before HANI auto-starts the negotiation
+# for Prolific participants. Gives them enough time to read the
+# preferences without enabling "load, walk away, time out, repeat".
+PROLIFIC_AUTO_START_SECONDS = int(os.environ.get("PROLIFIC_AUTO_START_SECONDS", "120"))
 
 
 def _per_neg_questionnaire_spec() -> dict | None:
@@ -2786,6 +2894,49 @@ def load_scenario(event=None):
     # add_tools(Timing.Always)
     add_tools(Timing.Load)
     send_event_to_tools("scenario_loaded")
+
+    # Prolific anti-stall: auto-start the negotiation if the participant
+    # hasn't pressed Start within PROLIFIC_AUTO_START_SECONDS (default
+    # 120). Gives them enough time to read preferences without enabling
+    # a "Load, walk away, timeout, repeat" loop that bills idle time.
+    # The timer is cancelled in start_negotiation() if they click Start
+    # first.
+    if _is_prolific_user(session_state.get("user", "")):
+        try:
+            import threading
+            old = session_state.pop("auto_start_timer", None)
+            if old is not None:
+                try:
+                    old.cancel()
+                except Exception:
+                    pass
+
+            def _auto_start():
+                try:
+                    if session_state.get("negotiation_started"):
+                        return  # user beat the timer
+                    print(
+                        f"[per-neg] auto-starting negotiation after "
+                        f"{PROLIFIC_AUTO_START_SECONDS}s of inactivity"
+                    )
+                    start_negotiation()
+                    if hasattr(pn.state, "notifications") and pn.state.notifications:
+                        pn.state.notifications.warning(
+                            "Negotiation auto-started after "
+                            f"{PROLIFIC_AUTO_START_SECONDS}s of inactivity. "
+                            "Please act on the offers shown -- silent "
+                            "rounds do not count toward your reward.",
+                            duration=15000,
+                        )
+                except Exception as e:
+                    print(f"[per-neg] auto-start failed: {e}")
+
+            t = threading.Timer(PROLIFIC_AUTO_START_SECONDS, _auto_start)
+            t.daemon = True
+            t.start()
+            session_state["auto_start_timer"] = t
+        except Exception as e:
+            print(f"[per-neg] could not schedule auto-start: {e}")
 
 
 def read_announcements():
