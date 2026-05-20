@@ -1181,6 +1181,14 @@ def get_action(state: SAOState) -> SAOResponse:
 def end_session():
     mechanism = session_state["mechanism"]
     human_index = session_state["human_index"]
+    # Capture is_practice BEFORE save_result writes the row so it lines up
+    # with the value persisted in results.csv. _count_existing_negotiations
+    # counts pre-existing rows; the current row hasn't been written yet.
+    user = session_state.get("user", "")
+    will_be_practice = (
+        _is_prolific_user(user)
+        and _count_existing_negotiations(session_state["user_path"]) == 0
+    )
     save_result(mechanism)
     add_tools(Timing.End)
     for tool in session_state["tools"]:
@@ -1189,6 +1197,39 @@ def end_session():
     session_state["human_action"] = None
     session_state["action_panel_displayed"] = False
     session_state["action_panel"].clear()
+
+    # Prolific: gate the next-round Load form behind a short per-
+    # negotiation questionnaire. Skips silently when the YAML is
+    # missing / unparseable so a misconfigured install can never
+    # block the participant.
+    if _is_prolific_user(user):
+        spec = _per_neg_questionnaire_spec()
+        if spec and spec.get("questions"):
+            scenario_name = ""
+            try:
+                scenario_name = session_state["scenario"].outcome_space.name
+            except Exception:
+                pass
+
+            def _after_submit():
+                # Replace the form with the regular Load button.
+                session_state["action_panel"].clear()
+                session_state["action_panel"].append(
+                    load_form(session_state["selectable_scenario_type"])
+                )
+
+            session_state["action_panel"].append(
+                _build_per_neg_form(
+                    spec=spec,
+                    mechanism_id=str(mechanism.id),
+                    scenario_name=scenario_name,
+                    is_practice=will_be_practice,
+                    user_path=session_state["user_path"],
+                    after_submit=_after_submit,
+                )
+            )
+            return
+
     session_state["action_panel"].append(
         load_form(session_state["selectable_scenario_type"])
     )
@@ -2439,6 +2480,165 @@ def _pick_practice_pan_partner() -> str | None:
         return f"{klass.__module__}.{klass.__name__}"
     except Exception:
         return None
+
+
+def _per_neg_questionnaire_spec() -> dict | None:
+    """Read scmlweb/resources/questionnaires/per_negotiation.yaml.
+
+    Lookup order:
+      1. $PROLIFIC_PER_NEG_YAML (absolute path override)
+      2. $HOME/scmlweb/resources/questionnaires/per_negotiation.yaml
+      3. $HOME/code/sites/scmlweb/resources/questionnaires/per_negotiation.yaml
+
+    Returns the parsed dict or None when the file is missing /
+    unparseable. None => HANI silently skips the form so a misconfigured
+    install can't block a participant indefinitely.
+    """
+    candidates: list[Path] = []
+    env_path = os.environ.get("PROLIFIC_PER_NEG_YAML")
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates += [
+        Path.home() / "scmlweb" / "resources" / "questionnaires" / "per_negotiation.yaml",
+        Path.home() / "code" / "sites" / "scmlweb" / "resources" / "questionnaires" / "per_negotiation.yaml",
+    ]
+    for p in candidates:
+        if not p.is_file():
+            continue
+        try:
+            import yaml  # PyYAML; pulled in transitively by negmas/panel
+            return yaml.safe_load(p.read_text())
+        except Exception as e:
+            print(f"[yellow]per_negotiation.yaml at {p} failed to parse: {e}[/yellow]")
+            return None
+    return None
+
+
+def _save_per_neg_answers(
+    user_path: Path,
+    mechanism_id: str,
+    scenario_name: str,
+    is_practice: bool,
+    answers: dict,
+) -> None:
+    """Append one row to <user>/negotiation_questionnaires.csv.
+
+    Joinable to results.csv via mechanism_id. The first call writes
+    the header; subsequent calls append.
+    """
+    import csv as _csv
+    path = user_path / "negotiation_questionnaires.csv"
+    is_new = not path.exists()
+    base_fields = ["mechanism_id", "scenario", "practice", "submitted_at"]
+    answer_fields = sorted(answers.keys())
+    row = {
+        "mechanism_id": mechanism_id,
+        "scenario": scenario_name,
+        "practice": "True" if is_practice else "False",
+        "submitted_at": datetime.now().isoformat(),
+        **answers,
+    }
+    with path.open("a", newline="") as fh:
+        writer = _csv.DictWriter(fh, fieldnames=base_fields + answer_fields,
+                                 extrasaction="ignore")
+        if is_new:
+            writer.writeheader()
+        writer.writerow(row)
+
+
+def _build_per_neg_form(
+    spec: dict,
+    mechanism_id: str,
+    scenario_name: str,
+    is_practice: bool,
+    user_path: Path,
+    after_submit,
+) -> "pn.Column":
+    """Construct a Panel column with one widget per question and a
+    Submit button. On submit, validates required fields, persists the
+    answers, and calls `after_submit()` so the caller can swap in the
+    next-round Load form."""
+    title = str(spec.get("title", "About this negotiation"))
+    intro = str(spec.get("intro") or "")
+    questions = list(spec.get("questions") or [])
+
+    blocks: list = [pn.pane.Markdown(f"### {title}")]
+    if intro:
+        blocks.append(pn.pane.Markdown(intro))
+
+    widgets: dict[str, tuple] = {}  # id -> (widget, type, required)
+    for q in questions:
+        if not isinstance(q, dict) or not q.get("id") or not q.get("type"):
+            continue
+        qid = str(q["id"])
+        qtype = str(q["type"])
+        text = str(q.get("text", qid))
+        required = bool(q.get("required", False))
+        label = text + (" *" if required else "")
+        if qtype in ("likert5", "likert7"):
+            n = 7 if qtype == "likert7" else 5
+            labels = q.get("labels") or {}
+            extra = ""
+            if labels.get(1) is not None:
+                extra += f" (1 = {labels[1]}"
+            if labels.get(n) is not None:
+                extra += (", " if extra else " (") + f"{n} = {labels[n]}"
+            if extra:
+                extra += ")"
+            w = pn.widgets.RadioBoxGroup(
+                name=label + extra,
+                options=list(range(1, n + 1)),
+                inline=True,
+            )
+        elif qtype == "yes_no":
+            w = pn.widgets.RadioBoxGroup(
+                name=label, options=["yes", "no"], inline=True
+            )
+        elif qtype == "select":
+            opts = [str(o) for o in (q.get("options") or [])]
+            w = pn.widgets.Select(name=label, options=[""] + opts)
+        else:
+            w = pn.widgets.TextAreaInput(name=label, height=70, max_length=2000)
+        widgets[qid] = (w, qtype, required)
+        blocks.append(w)
+
+    err = pn.pane.HTML("")
+    blocks.append(err)
+    btn = pn.widgets.Button(
+        name="Submit and continue", button_type="primary"
+    )
+    submitted_flag = {"done": False}
+
+    def _on_click(event):
+        if submitted_flag["done"]:
+            return
+        answers: dict = {}
+        for qid, (w, qtype, required) in widgets.items():
+            v = w.value
+            if required and (v is None or v == "" or v == []):
+                err.object = (
+                    "<div style='color:red'>Please answer every required "
+                    "question (marked with *).</div>"
+                )
+                return
+            answers[qid] = v
+        try:
+            _save_per_neg_answers(
+                user_path, mechanism_id, scenario_name, is_practice, answers
+            )
+        except Exception as e:
+            err.object = f"<div style='color:red'>Could not save: {e}</div>"
+            return
+        submitted_flag["done"] = True
+        btn.disabled = True
+        try:
+            after_submit()
+        except Exception as e:
+            print(f"[yellow]per-neg form after_submit failed: {e}[/yellow]")
+
+    btn.on_click(_on_click)
+    blocks.append(btn)
+    return pn.Column(*blocks)
 
 
 def _load_prolific_schedule(user_path: Path) -> list[dict] | None:
