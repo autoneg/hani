@@ -2403,8 +2403,9 @@ LAST_SCENARIO_FILE = "last_scenario.txt"
 # When the user identifier is "prolific_<PID>" (set by set_user() when the
 # guest interface is opened with a PROLIFIC_PID URL arg), HANI runs in a
 # constrained mode: a single scenario type for the entire session, a fixed
-# total of MAX_PROLIFIC_NEGS negotiations (first one flagged as practice),
-# and a hard wall-clock cap of MAX_PROLIFIC_MINUTES from the first start.
+# total of MAX_PROLIFIC_NEGS negotiations (first one flagged as practice).
+# MAX_PROLIFIC_MINUTES is a recommended duration shown to participants;
+# it is NOT enforced. The only completion gate is MAX_PROLIFIC_NEGS.
 PROLIFIC_PREFIX = "prolific_"
 PROLIFIC_META_FILE = "prolific_session.json"
 PROLIFIC_SCHEDULE_FILE = "schedule.json"
@@ -3121,9 +3122,10 @@ def read_announcements():
                 "your reward and bonus.\n\n"
             )
             top_line = (
-                f"##### You will negotiate up to **{cap} times** against an AI "
-                f"agent, or for up to **{max_minutes} minutes** &mdash; whichever "
-                "finishes first.\n\n"
+                f"##### You will negotiate **{cap} times** against an AI "
+                f"agent. We expect this to take around **{max_minutes} "
+                "minutes**, but there is no time limit &mdash; the session "
+                "finishes once you complete all required negotiations.\n\n"
             )
         else:
             practice_line = (
@@ -3132,9 +3134,10 @@ def read_announcements():
                 "do.\n\n"
             )
             top_line = (
-                f"##### You will negotiate up to **{cap} times** against an AI "
-                f"agent, or for up to **{max_minutes} minutes** &mdash; whichever "
-                "finishes first.\n\n"
+                f"##### You will negotiate **{cap} times** against an AI "
+                f"agent. We expect this to take around **{max_minutes} "
+                "minutes**, but there is no time limit &mdash; the session "
+                "finishes once you complete all required negotiations.\n\n"
             )
         intro_msg = (
             "#### Welcome to the ANAC Human-Agent Negotiation Competition 2026.\n\n"
