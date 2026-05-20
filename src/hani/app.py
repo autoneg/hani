@@ -1080,8 +1080,8 @@ def save_result(m: SAOMechanism):
     # and walking away. Lives in m.full_trace alongside agent moves.
     n_human_actions = 0
     human_step_times: list[float] = []
+    human_id_str = str(session_state.get("human_id", ""))
     try:
-        human_id_str = str(session_state.get("human_id", ""))
         for row in m.full_trace:
             neg = row[3] if len(row) > 3 else None
             if neg is not None and str(neg) == human_id_str:
@@ -1104,6 +1104,40 @@ def save_result(m: SAOMechanism):
     for t in human_step_times:
         per_round_times.append(round(max(0.0, t - prev), 3))
         prev = t
+
+    # Decide who terminated the round. full_trace records OFFERS only,
+    # so Accept and End from the human side need separate accounting.
+    status = get_status(m.state)
+    human_ended = bool(session_state.get("human_ended_negotiation", False))
+    # A success (agreement) is always an explicit human decision: either
+    # the human accepted the agent's offer, or the agent accepted the
+    # human's offer (which means the human at least made one proposal).
+    # An End-by-human is likewise an explicit decision. Either case
+    # should count toward the participant's quota even if full_trace
+    # didn't record a row attributable to the human (e.g. when they
+    # accepted the very first agent offer).
+    if status == "success" or human_ended:
+        n_human_actions = max(n_human_actions, 1)
+    if status == "broken":
+        ended_by = "human" if human_ended else "agent"
+    elif status == "success":
+        # Whoever was *not* the last proposer is the one who accepted.
+        last_proposer = ""
+        try:
+            for row in reversed(m.full_trace):
+                if len(row) > 4 and row[4] is not None:
+                    last_proposer = str(row[3]) if len(row) > 3 else ""
+                    break
+        except Exception:
+            last_proposer = ""
+        if last_proposer and last_proposer == human_id_str:
+            ended_by = "agent"  # agent accepted human's offer
+        elif last_proposer:
+            ended_by = "human"  # human accepted agent's offer
+        else:
+            ended_by = ""
+    else:
+        ended_by = ""
 
     # Wall-clock timings stashed in session_state by load_scenario /
     # start_negotiation. Defensive defaults so an unexpected None never
@@ -1132,7 +1166,8 @@ def save_result(m: SAOMechanism):
             agent_utility=agent_utility,
             welfare=human_utility + agent_utility,
             ended_at=str(datetime.now()),
-            status=get_status(m.state),
+            status=status,
+            ended_by=ended_by,
             mechanism_name=m.name,
             mechanism_id=m.id,
             practice=is_practice,
@@ -1200,16 +1235,30 @@ def save_result(m: SAOMechanism):
             done_counted = _count_counted_this_session(
                 session_state["user_path"], meta.get("started_at", "")
             )
-            # Zero-action timeout this round? Surface that too so the
-            # participant knows it doesn't count.
-            zero_action = (
+            # Did this round count? It does NOT count only when the
+            # human never engaged AND the round terminated without an
+            # explicit decision from them (i.e. agent ended or timed
+            # out with zero human actions).
+            uncounted = (
                 not is_practice and n_human_actions == 0
                 and done_counted < n_required
             )
+            if status == "timedout":
+                outcome_phrase = "timed out"
+            elif status == "broken" and ended_by == "human":
+                outcome_phrase = "was ended by you"
+            elif status == "broken":
+                outcome_phrase = "was ended by the AI agent"
+            elif status == "success":
+                outcome_phrase = "reached an agreement"
+            else:
+                outcome_phrase = "ended"
+
             if is_practice:
                 msg = (
-                    f"Practice complete! The next {n_required} negotiation(s) "
-                    "count toward your reward and bonus."
+                    f"Practice complete (it {outcome_phrase}). The next "
+                    f"{n_required} negotiation(s) count toward your reward "
+                    "and bonus."
                 )
             elif done_counted >= n_required:
                 pid = user[len(PROLIFIC_PREFIX):] if user.startswith(PROLIFIC_PREFIX) else user
@@ -1222,10 +1271,10 @@ def save_result(m: SAOMechanism):
                     f"(opens the post-session questionnaire, then sends "
                     f"you back to Prolific)."
                 )
-            elif zero_action:
+            elif uncounted:
                 msg = (
-                    "This negotiation timed out without any moves on your "
-                    "side, so it does <strong>not</strong> count. "
+                    f"This negotiation {outcome_phrase} without any moves "
+                    "on your side, so it does <strong>not</strong> count. "
                     f"{done_counted} of {n_required} counted so far &mdash; "
                     f"{n_required - done_counted} to go."
                 )
@@ -1494,6 +1543,45 @@ def advance():
         step_to_human()
 
 
+def _render_offer_on_table_html(current_offer: Outcome | None) -> str:
+    """HTML for the bottom 'Offer on the table' line. Uses the scenario's
+    OutcomeDisplay so the text matches the partner's chat bubble exactly
+    (same source-of-truth: same outcome, same formatter)."""
+    if current_offer is None:
+        return ('<div style="font-size: 10pt; color: #666;">'
+                '<b>Offer on the table:</b> No offer yet</div>')
+    scenario = session_state["scenario"]
+    human_ufun = session_state["human_ufun"]
+    outcome_display: OutcomeDisplay = session_state["outcome_display"]
+    body = outcome_display.str(current_offer, scenario, False, False)
+    util = human_ufun(current_offer)
+    is_irrational = util < human_ufun.reserved_value
+    util_color = "red" if is_irrational else "green"
+    return (
+        f'<div style="font-size: 10pt;">'
+        f'<b>Offer on the table:</b> {body} '
+        f'<span style="color: {util_color}; font-weight: bold;">({util:0.1%})</span>'
+        f'</div>'
+    )
+
+
+def _refresh_offer_on_table(current_offer: Outcome | None) -> None:
+    """Update the cached offer-line HTML and Accept button label so they
+    reflect the latest partner offer when action_panel is re-entered."""
+    pane = session_state.get("current_offer_display")
+    if pane is not None:
+        pane.object = _render_offer_on_table_html(current_offer)
+    accept_btn = session_state.get("accept_btn")
+    if accept_btn is not None:
+        if current_offer is None:
+            accept_btn.name = "Accept"
+        else:
+            util = session_state["human_ufun"](current_offer)
+            accept_btn.name = f"Accept ({util:0.1%})"
+    # Keep the latest offer where on_accept/do_accept can find it.
+    session_state["current_partner_offer"] = current_offer
+
+
 def action_panel(
     current_offer: Outcome | None, current_data: dict | None = None
 ) -> pn.Column:
@@ -1504,6 +1592,10 @@ def action_panel(
             partner_offer_section.visible = True
         if undo_btn is not None:
             undo_btn.visible = False
+        # Refresh the offer-on-the-table line + Accept button so the
+        # panel mirrors the most recent partner offer instead of being
+        # frozen at the first one rendered this negotiation.
+        _refresh_offer_on_table(current_offer)
         return session_state["action_panel"][0]
     if not session_state["action_panel_displayed"]:
         session_state["action_panel"].clear()
@@ -1539,22 +1631,29 @@ def action_panel(
         session_state["confirm_dialog"].visible = True
 
     def do_end():
+        # Mark this round as having been explicitly ended by the human
+        # so save_result can credit it toward the counted quota even
+        # though full_trace may not record an END row attributed to us.
+        session_state["human_ended_negotiation"] = True
         session_state["human_action"] = SAOResponse(ResponseType.END_NEGOTIATION, None)
         advance()
 
     def on_accept(event=None):
-        # Show confirmation dialog
-        if current_offer_utility is not None:
-            is_irrational = current_offer_utility < reserved_value
+        # Always read the LATEST partner offer (the closure-captured
+        # current_offer can be stale once a new offer arrives).
+        live_offer = session_state.get("current_partner_offer", current_offer)
+        live_utility = human_ufun(live_offer) if live_offer else None
+        if live_utility is not None:
+            is_irrational = live_utility < reserved_value
             util_color = "red" if is_irrational else "blue"
-            current_offer_str = ", ".join(
-                f"{issue.name}: {val}" for issue, val in zip(issues, current_offer)
+            offer_body = session_state["outcome_display"].str(
+                live_offer, session_state["scenario"], False, False
             )
             confirm_msg = (
                 f'<div style="font-size: 11pt;">'
                 f"Are you sure you want to accept this offer?<br>"
-                f"<b>Offer:</b> {current_offer_str}<br>"
-                f'You will receive: <span style="color: {util_color}; font-weight: bold;">{current_offer_utility:0.1%}</span>'
+                f"<b>Offer:</b> {offer_body}<br>"
+                f'You will receive: <span style="color: {util_color}; font-weight: bold;">{live_utility:0.1%}</span>'
                 f"</div>"
             )
             session_state["confirm_action"] = "accept"
@@ -1562,20 +1661,21 @@ def action_panel(
             session_state["confirm_dialog"].visible = True
 
     def do_accept():
+        live_offer = session_state.get("current_partner_offer", current_offer)
         session_state["human_action"] = SAOResponse(
-            ResponseType.ACCEPT_OFFER, current_offer
+            ResponseType.ACCEPT_OFFER, live_offer
         )
 
         # Log acceptance event
         try:
             utility = (
-                session_state.get("human_ufun")(current_offer)
-                if current_offer
+                session_state.get("human_ufun")(live_offer)
+                if live_offer
                 else None
             )
             log_negotiation_event(
                 event_type=EventType.OFFER_ACCEPTED,
-                offer={"outcome": str(current_offer)} if current_offer else None,
+                offer={"outcome": str(live_offer)} if live_offer else None,
                 utility_value=float(utility) if utility is not None else None,
                 round_number=session_state.get("mechanism", {}).state.step
                 if hasattr(session_state.get("mechanism", {}), "state")
@@ -1859,26 +1959,14 @@ def action_panel(
             if current_offer_text:
                 current_offer_text = current_offer_text.strip()
 
-    if has_current_offer:
-        current_offer_util = human_ufun(current_offer)
-        is_irrational = current_offer_util < human_ufun.reserved_value
-        util_color = "red" if is_irrational else "green"
-        current_offer_str = ", ".join(
-            f"{issue.name}: {val}" for issue, val in zip(issues, current_offer)
-        )
-        # Display only the offer without text (text is shown in history panel)
-        offer_html = (
-            f'<div style="font-size: 10pt;">'
-            f"<b>Partner Offer:</b> {current_offer_str} "
-            f'<span style="color: {util_color}; font-weight: bold;">({current_offer_util:0.1%})</span>'
-            f"</div>"
-        )
-        current_offer_display = pn.pane.HTML(offer_html, sizing_mode="stretch_width")
-    else:
-        current_offer_display = pn.pane.HTML(
-            '<div style="font-size: 10pt; color: #666;"><b>Partner Offer:</b> No offer yet</div>',
-            sizing_mode="stretch_width",
-        )
+    # Render the "Offer on the table" line via the scenario's
+    # OutcomeDisplay so it matches the partner's chat-bubble exactly.
+    current_offer_display = pn.pane.HTML(
+        _render_offer_on_table_html(current_offer),
+        sizing_mode="stretch_width",
+    )
+    session_state["current_offer_display"] = current_offer_display
+    session_state["current_partner_offer"] = current_offer
 
     # Row with current offer, Accept (only if offer exists), and End buttons
     reject_counter_btn = create_tracked_button(
@@ -2842,31 +2930,47 @@ def _build_per_neg_form(
         qtype = str(q["type"])
         text = str(q.get("text", qid))
         required = bool(q.get("required", False))
-        label = text + (" *" if required else "")
+        # Render the question text as Markdown *above* the widget so it
+        # is always visible regardless of widget chrome. The widget's
+        # own `name` was previously the only carrier of the question
+        # text and Panel renders that small / sometimes truncated.
+        marker = ' <span style="color:#c00">*</span>' if required else ""
+        scale_hint = ""
         if qtype in ("likert5", "likert7"):
             n = 7 if qtype == "likert7" else 5
             labels = q.get("labels") or {}
-            extra = ""
-            if labels.get(1) is not None:
-                extra += f" (1 = {labels[1]}"
-            if labels.get(n) is not None:
-                extra += (", " if extra else " (") + f"{n} = {labels[n]}"
-            if extra:
-                extra += ")"
-            w = pn.widgets.RadioBoxGroup(
-                name=label + extra,
-                options=list(range(1, n + 1)),
-                inline=True,
+            lo = labels.get(1)
+            hi = labels.get(n)
+            bits = []
+            if lo is not None: bits.append(f"1 = {lo}")
+            if hi is not None: bits.append(f"{n} = {hi}")
+            if bits:
+                scale_hint = f' <span style="color:#666;font-size:90%">({", ".join(bits)})</span>'
+        blocks.append(pn.pane.HTML(
+            f'<div style="margin-top:14px;margin-bottom:4px;font-weight:500">'
+            f'{text}{marker}{scale_hint}</div>',
+            sizing_mode="stretch_width",
+        ))
+        if qtype in ("likert5", "likert7"):
+            n = 7 if qtype == "likert7" else 5
+            # RadioBoxGroup auto-selects the first option; that lets a
+            # user skip the question and silently bank a "1". Use a
+            # Select with a blank default so we can detect "untouched"
+            # in the required-field validation below.
+            w = pn.widgets.Select(
+                name="",
+                options=[""] + [str(i) for i in range(1, n + 1)],
+                value="",
             )
         elif qtype == "yes_no":
-            w = pn.widgets.RadioBoxGroup(
-                name=label, options=["yes", "no"], inline=True
+            w = pn.widgets.Select(
+                name="", options=["", "yes", "no"], value="",
             )
         elif qtype == "select":
             opts = [str(o) for o in (q.get("options") or [])]
-            w = pn.widgets.Select(name=label, options=[""] + opts)
+            w = pn.widgets.Select(name="", options=[""] + opts)
         else:
-            w = pn.widgets.TextAreaInput(name=label, height=70, max_length=2000)
+            w = pn.widgets.TextAreaInput(name="", height=70, max_length=2000)
         widgets[qid] = (w, qtype, required)
         blocks.append(w)
 
@@ -3000,6 +3104,8 @@ def load_scenario(event=None):
     session_state["load_at_dt"] = datetime.now()
     session_state["start_at_dt"] = None
     session_state["new_scenario_loaded"] = True
+    # Fresh round: clear any "the human pressed End last time" flag.
+    session_state["human_ended_negotiation"] = False
     session_state["scenario"] = get_scenario()
     session_state["outcome_display"] = DISPLAY_MAP.get(  # type: ignore
         session_state["scenario"].outcome_space.name,  # type: ignore
