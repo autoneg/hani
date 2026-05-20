@@ -1056,13 +1056,22 @@ def save_result(m: SAOMechanism):
         scenario_name = scenario_name.split("/")[-1]
     if "." in scenario_name:
         scenario_name = scenario_name.split(".")[0]
-    # In a Prolific session the first negotiation is a practice round that
-    # doesn't count toward the participant's 5 required negotiations.
+    # In a Prolific session the first negotiation is a practice round
+    # that doesn't count toward the participant's 5 required negotiations.
+    # A practice round with zero human actions replays as practice again
+    # ("as if the missing negotiation did not happen"), so the practice
+    # flag is keyed off the per-session "has the participant completed
+    # at least one practice with actions yet?" check, not the absolute
+    # row count.
     user = session_state.get("user")
     is_practice = False
     if _is_prolific_user(user):
-        # Count BEFORE adding the new row: 0 means this is the very first.
-        is_practice = _count_existing_negotiations(session_state["user_path"]) == 0
+        meta = _prolific_meta(session_state["user_path"], user)
+        is_returning = _is_returning_user(session_state["user_path"], meta)
+        if not is_returning:
+            is_practice = not _has_completed_practice_this_session(
+                session_state["user_path"], meta.get("started_at", "")
+            )
 
     # Count how many actions the human took during this negotiation. A
     # zero-action row indicates the participant let the round time out
@@ -1070,14 +1079,46 @@ def save_result(m: SAOMechanism):
     # so a participant can't bank time by repeatedly loading scenarios
     # and walking away. Lives in m.full_trace alongside agent moves.
     n_human_actions = 0
+    human_step_times: list[float] = []
     try:
         human_id_str = str(session_state.get("human_id", ""))
         for row in m.full_trace:
             neg = row[3] if len(row) > 3 else None
             if neg is not None and str(neg) == human_id_str:
                 n_human_actions += 1
+                # relative_time field (TRACE_COLUMNS[1]) = seconds since
+                # negotiation start. Used below to compute per-round
+                # response times (delta between consecutive human steps).
+                try:
+                    human_step_times.append(float(row[1]))
+                except (TypeError, ValueError, IndexError):
+                    pass
     except Exception:
         n_human_actions = 0
+        human_step_times = []
+
+    # Per-round response times = deltas between consecutive human moves
+    # (first delta = time from negotiation start to first move).
+    per_round_times: list[float] = []
+    prev = 0.0
+    for t in human_step_times:
+        per_round_times.append(round(max(0.0, t - prev), 3))
+        prev = t
+
+    # Wall-clock timings stashed in session_state by load_scenario /
+    # start_negotiation. Defensive defaults so an unexpected None never
+    # blows up save_result.
+    now_dt = datetime.now()
+    load_at_dt = session_state.get("load_at_dt")
+    start_at_dt = session_state.get("start_at_dt")
+    load_to_start_seconds = (
+        round((start_at_dt - load_at_dt).total_seconds(), 3)
+        if (load_at_dt and start_at_dt) else None
+    )
+    duration_seconds = (
+        round((now_dt - start_at_dt).total_seconds(), 3)
+        if start_at_dt else None
+    )
 
     result = serialize(
         session_state.get("scenario_info", dict())
@@ -1096,6 +1137,11 @@ def save_result(m: SAOMechanism):
             mechanism_id=m.id,
             practice=is_practice,
             n_human_actions=n_human_actions,
+            load_at=load_at_dt.isoformat() if load_at_dt else "",
+            start_at=start_at_dt.isoformat() if start_at_dt else "",
+            load_to_start_seconds=load_to_start_seconds,
+            duration_seconds=duration_seconds,
+            per_round_times=json.dumps(per_round_times),
         )
         | asdict(m.state)
         | {
@@ -2231,24 +2277,30 @@ def start_negotiation(event=None):
         types = SELECTED_AGENT_TYPES
 
     partner_type = None
-    # Prolific schedule: pick the finalist for the current slot if available.
-    # First negotiation per participant is practice and must NOT use a
-    # finalist -- draw from pan.py's personality-adjusted pool instead so
-    # the controlled finalist x slot cells are reserved for counted rounds.
+    # Prolific schedule: pick the finalist for the current counted-slot.
+    # Zero-action rounds keep the same opponent (counted_slot stays
+    # put). Practice rounds (until the participant successfully
+    # completes one) use a random pan.py opponent, reserving the
+    # finalist x slot cells for counted rounds only.
     if _is_prolific_user(session_state.get("user", "")):
         meta = _prolific_meta(session_state["user_path"], session_state["user"])
-        slot = _count_this_session(session_state["user_path"],
-                                   meta.get("started_at", ""))
         is_returning = _is_returning_user(session_state["user_path"], meta)
-        is_practice_round = (slot == 0 and not is_returning)
+        is_practice_round = (
+            not is_returning
+            and not _has_completed_practice_this_session(
+                session_state["user_path"], meta.get("started_at", "")
+            )
+        )
         if is_practice_round:
             partner_type = _pick_practice_pan_partner() or partner_type
         else:
+            counted_slot = _count_counted_this_session(
+                session_state["user_path"], meta.get("started_at", "")
+            )
             sched = _load_prolific_schedule(session_state["user_path"]) or []
-            # In returning sessions the schedule has 5 entries indexed 0..4
-            # but `slot` is also counted from 0, so the same lookup works.
-            if 0 <= slot < len(sched):
-                wanted = sched[slot].get("agent_class_name") if isinstance(sched[slot], dict) else None
+            if 0 <= counted_slot < len(sched):
+                wanted = sched[counted_slot].get("agent_class_name") \
+                    if isinstance(sched[counted_slot], dict) else None
                 if wanted:
                     for t in types:
                         if str(t).split(".")[-1] == wanted or str(t) == wanted:
@@ -2264,6 +2316,10 @@ def start_negotiation(event=None):
     # actually faced (the schedule entry's planned name + the actual
     # string passed to make_mechanism).
     session_state["last_partner_type"] = str(partner_type)
+    # Wall-clock timestamp for the moment Start was pressed (or auto-
+    # fired). Diffed against load_at_dt and the eventual end time to
+    # populate load_to_start_seconds + duration_seconds in results.csv.
+    session_state["start_at_dt"] = datetime.now()
     if session_state["partners"]["show_partner_type"].value:
         session_state["history"].append(pn.pane.HTML(f"Partner type: {partner_type}"))
 
@@ -2457,6 +2513,45 @@ def _count_this_session(user_path: Path, since_iso: str) -> int:
         if ended >= since:
             n += 1
     return n
+
+
+def _has_completed_practice_this_session(user_path: Path, since_iso: str) -> bool:
+    """True iff this session already has a practice row with at least
+    one human action. Used to decide whether the next round should be
+    practice again (= participant failed their first practice without
+    moving) or the first counted round."""
+    try:
+        since = datetime.fromisoformat(since_iso)
+    except Exception:
+        since = None
+    for header, row in _iter_result_rows(user_path):
+        if "practice" not in header or "n_human_actions" not in header:
+            continue
+        # ended_at filter
+        if since is not None and "ended_at" in header:
+            idx = header.index("ended_at")
+            if idx < len(row):
+                try:
+                    ended = datetime.fromisoformat(row[idx])
+                except Exception:
+                    try:
+                        ended = datetime.strptime(row[idx][:19], "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        continue
+                if ended < since:
+                    continue
+        p_idx = header.index("practice")
+        n_idx = header.index("n_human_actions")
+        if p_idx >= len(row) or n_idx >= len(row):
+            continue
+        if str(row[p_idx]).strip().lower() not in ("1", "true", "yes", "t"):
+            continue
+        try:
+            if int(row[n_idx]) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
 
 
 def _count_counted_this_session(user_path: Path, since_iso: str) -> int:
@@ -2657,6 +2752,8 @@ def _save_per_neg_answers(
     agent_type: str,
     is_practice: bool,
     answers: dict,
+    shown_at_iso: str = "",
+    duration_seconds: float | None = None,
 ) -> None:
     """Append one row to <user>/negotiation_questionnaires.csv.
 
@@ -2669,14 +2766,21 @@ def _save_per_neg_answers(
     import csv as _csv
     path = user_path / "negotiation_questionnaires.csv"
     is_new = not path.exists()
-    base_fields = ["mechanism_id", "scenario", "agent_type", "practice", "submitted_at"]
+    base_fields = [
+        "mechanism_id", "scenario", "agent_type", "practice",
+        "shown_at", "submitted_at", "duration_seconds",
+    ]
     answer_fields = sorted(answers.keys())
     row = {
         "mechanism_id": mechanism_id,
         "scenario": scenario_name,
         "agent_type": agent_type,
         "practice": "True" if is_practice else "False",
+        "shown_at": shown_at_iso,
         "submitted_at": datetime.now().isoformat(),
+        "duration_seconds": (
+            f"{duration_seconds:.3f}" if duration_seconds is not None else ""
+        ),
         **answers,
     }
     with path.open("a", newline="") as fh:
@@ -2698,8 +2802,9 @@ def _build_per_neg_form(
 ) -> "pn.Column":
     """Construct a Panel column with one widget per question and a
     Submit button. On submit, validates required fields, persists the
-    answers, and calls `after_submit()` so the caller can swap in the
-    next-round Load form."""
+    answers (plus shown_at + duration), and calls `after_submit()` so
+    the caller can swap in the next-round Load form."""
+    shown_at_dt = datetime.now()
     title = str(spec.get("title", "About this negotiation"))
     intro = str(spec.get("intro") or "")
     questions = list(spec.get("questions") or [])
@@ -2765,9 +2870,12 @@ def _build_per_neg_form(
                 return
             answers[qid] = v
         try:
+            duration = (datetime.now() - shown_at_dt).total_seconds()
             _save_per_neg_answers(
                 user_path, mechanism_id, scenario_name, agent_type,
                 is_practice, answers,
+                shown_at_iso=shown_at_dt.isoformat(),
+                duration_seconds=duration,
             )
         except Exception as e:
             err.object = f"<div style='color:red'>Could not save: {e}</div>"
@@ -2821,15 +2929,25 @@ def get_scenario() -> Scenario:
         index = int(path.read_text()) + 1
     if _is_prolific_user(user):
         meta = _prolific_meta(session_state["user_path"], user)
-        # Slot within this session: 0 = practice (first session only) or
-        # first counted neg (returning session). The schedule is keyed by
-        # this slot so the same finalist+ufun layout is reproducible.
-        slot = _count_this_session(session_state["user_path"],
-                                   meta.get("started_at", ""))
         is_returning = _is_returning_user(session_state["user_path"], meta)
-        is_practice_round = (slot == 0 and not is_returning)
+        # Practice round if the participant hasn't yet completed one
+        # WITH actions this session (replays after a zero-action
+        # practice; skipped entirely for returning participants).
+        is_practice_round = (
+            not is_returning
+            and not _has_completed_practice_this_session(
+                session_state["user_path"], meta.get("started_at", "")
+            )
+        )
+        # The schedule slot for counted rounds is the count of rounds
+        # that have already counted -- zero-action rounds don't
+        # advance it, so the participant sees the same finalist again
+        # until they actually engage.
+        counted_slot = _count_counted_this_session(
+            session_state["user_path"], meta.get("started_at", "")
+        )
         sched = _load_prolific_schedule(session_state["user_path"]) or []
-        entry = sched[slot] if 0 <= slot < len(sched) else None
+        entry = sched[counted_slot] if 0 <= counted_slot < len(sched) else None
         type_ = (
             (entry or {}).get("scenario_type")
             or meta.get("scenario_type")
@@ -2838,7 +2956,9 @@ def get_scenario() -> Scenario:
         # Scenario index: practice uses a random / on-the-fly scenario
         # (Option B in the docs); counted rounds use the schedule's
         # deterministic index so the controlled (domain, ufun) pool is
-        # exercised uniformly.
+        # exercised uniformly. Re-using the same counted_slot also
+        # re-uses the same scenario_index, which is what we want for
+        # "redo the same opponent on the same scenario".
         if not is_practice_round:
             sched_index = (entry or {}).get("scenario_index")
             if isinstance(sched_index, int) and sched_index >= 0:
@@ -2853,6 +2973,11 @@ def get_scenario() -> Scenario:
 
 
 def load_scenario(event=None):
+    # Stamp the moment the participant pressed Load (for Prolific
+    # timing analytics: time spent reading preferences before Start,
+    # and total elapsed from session-start before the practice round).
+    session_state["load_at_dt"] = datetime.now()
+    session_state["start_at_dt"] = None
     session_state["new_scenario_loaded"] = True
     session_state["scenario"] = get_scenario()
     session_state["outcome_display"] = DISPLAY_MAP.get(  # type: ignore
