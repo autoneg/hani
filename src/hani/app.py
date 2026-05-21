@@ -1985,7 +1985,7 @@ def action_panel(
         widgets.append(widget)
 
     reject_btn = create_tracked_button(
-        name="Send offer", icon="send", button_type="primary"
+        name="Send", icon="send", button_type="primary", width=80
     )
     reject_btn.on_click(on_reject)
 
@@ -2085,7 +2085,7 @@ def action_panel(
 
     # Undo decision button (initially hidden, shown when Reject and counter is clicked)
     undo_decision_btn = create_tracked_button(
-        name="Undo decision", icon="arrow-back", button_type="default"
+        name="Undo", icon="arrow-back", button_type="default", width=80
     )
     undo_decision_btn.visible = False
     undo_decision_btn.on_click(on_undo_decision)
@@ -2213,7 +2213,7 @@ def action_panel(
     if session_state["toggles"]["allow_text_human"]:
         text_input = pn.widgets.TextAreaInput(
             placeholder="Type your message here...",
-            height=80,
+            height=140,
             sizing_mode="stretch_width",
         )
         session_state["text_input_widget"] = text_input
