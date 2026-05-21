@@ -2184,8 +2184,15 @@ def action_panel(
         pn.Row(llm_status_widget, pn.Spacer(), align="center"),
     )
 
-    # Row with Send button and Undo decision button (undo is initially hidden)
-    send_row = pn.Row(reject_btn, undo_decision_btn)
+    # Send button + Undo decision button. The Undo button is hidden
+    # until the user clicks Reject (then it lets them return to the
+    # accept/end/reject decision panel).
+    send_buttons_col = pn.Column(
+        reject_btn,
+        undo_decision_btn,
+        align="center",
+        margin=(0, 4),
+    )
 
     # Alert widget for validation messages (initially hidden)
     validation_alert = pn.pane.Alert(
@@ -2197,13 +2204,17 @@ def action_panel(
     session_state["validation_alert"] = validation_alert
 
     col = pn.Column(
-        partner_offer_section, validation_alert, outcome_section, my_util, send_row
+        partner_offer_section, validation_alert, outcome_section, my_util
     )
 
-    # Add text input section if allowed
+    # Add text input section if allowed. The Send / Undo Decision
+    # buttons live next to the text box (right-hand column) so they
+    # stay visible without scrolling even for tall domains like Island.
     if session_state["toggles"]["allow_text_human"]:
         text_input = pn.widgets.TextAreaInput(
-            placeholder="Type your message here...", height=80
+            placeholder="Type your message here...",
+            height=80,
+            sizing_mode="stretch_width",
         )
         session_state["text_input_widget"] = text_input
 
@@ -2265,9 +2276,20 @@ def action_panel(
         else:
             text_row = pn.Row(extract_btn, generate_text_btn, align="center")
 
-        text_section = pn.Column(text_input, text_row)
-        # Insert text section after the divider (index 2: after current_offer_row and Divider)
+        # Put Send / Undo Decision beside the text box rather than
+        # below the action panel (which gets pushed off-screen for tall
+        # domains like Island).
+        text_section = pn.Column(
+            pn.Row(text_input, send_buttons_col, sizing_mode="stretch_width"),
+            text_row,
+            sizing_mode="stretch_width",
+        )
+        # Insert text section after the divider (index 2: after
+        # current_offer_row and Divider)
         col.insert(2, text_section)
+    else:
+        # No text input: keep the buttons at the bottom as before.
+        col.append(pn.Row(reject_btn, undo_decision_btn, align="center"))
 
     session_state["action_panel"].append(col)
     return col
