@@ -1482,8 +1482,8 @@ def display_state(state: SAOState) -> pn.Column:
     if state.current_offer is not None and not state.done:
         offer_label = pn.pane.HTML(
             f'<span style="color: black; font-weight: bold; '
-            f'font-size: {font_size}px; white-space: nowrap;">OFFER:</span>',
-            margin=(0, 4, 0, 0),
+            f'font-size: {font_size}px; white-space: nowrap;">OFFER: </span>',
+            margin=0,
         )
         outcome_display.append(
             pn.Row(
@@ -1491,7 +1491,7 @@ def display_state(state: SAOState) -> pn.Column:
                 offer_pane,
                 margin=0,
                 sizing_mode="stretch_width",
-                styles={"gap": "4px", "align-items": "center"},
+                styles={"gap": "0px", "align-items": "center"},
             )
         )
     else:
