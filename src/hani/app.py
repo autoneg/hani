@@ -1434,8 +1434,8 @@ def display_state(state: SAOState) -> pn.Column:
         "border": "1px solid black",
         "background-color": background_color,
         "color": color,
-        "padding": "3px",  # Minimal internal padding
-        "margin-bottom": "0px",  # No margin below
+        "padding": "2px 6px",  # tight vertical, a little horizontal breathing room
+        "margin-bottom": "0px",
     }
     outcome_display = pn.Column(
         styles=border | {"font-size": f"{font_size}px", "gap": "0px"}, margin=0
@@ -1446,14 +1446,25 @@ def display_state(state: SAOState) -> pn.Column:
             txt = data.pop("text")
             txt = txt.strip()
             if txt:
-                spacer = pn.Spacer(width=session_state["display"]["extra_margin"])
                 outcome_display.append(
-                    pn.pane.Markdown(txt, styles={"font-size": f"{font_size}px"})
+                    pn.pane.Markdown(
+                        txt,
+                        styles={"font-size": f"{font_size}px"},
+                        margin=(0, 0),
+                    )
                 )
         if data:
-            outcome_display.append(pn.pane.Str("**Data:**"))
+            outcome_display.append(pn.pane.Str("**Data:**", margin=(0, 0)))
             outcome_display.append(pn.pane.DataFrame(pd.DataFrame([data])))
 
+    if state.current_offer is not None and not state.done:
+        outcome_display.append(
+            pn.pane.HTML(
+                f'<span style="color: black; font-weight: bold; '
+                f'font-size: {font_size}px;">OFFER:</span>',
+                margin=(0, 0),
+            )
+        )
     outcome_display.append(
         display_outcome(
             state.current_offer,
@@ -2375,6 +2386,7 @@ def display_outcome(
             ),
             index=False,
             sizing_mode="stretch_width",
+            margin=(0, 0),
             # formatters={"Your utility": lambda x: f"{x:0.03}"},
             styles={"color": color, "font-size": f"{font_size}px"},
         )
@@ -2384,6 +2396,7 @@ def display_outcome(
                 outcome, session_state["scenario"], is_done, from_human
             ),
             sizing_mode="stretch_width",
+            margin=(0, 0),
             styles={"color": color, "font-size": f"{font_size}px"},
         )
     return outcome_display.panel(
