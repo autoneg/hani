@@ -5,6 +5,76 @@ All notable changes to the HANI (Human-Agent Negotiation Interface) project will
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-05-22
+
+### Added
+- **Prolific integration**, end-to-end:
+  - PID-derived user identity, per-PID state under
+    `~/negmas/hani/db/prolific_<PID>/` (`prolific_session.json`,
+    `schedule.json`, `results.csv`, `last_scenario.txt`).
+  - Practice round + `PROLIFIC_N_REQUIRED` counted rounds, zero-action
+    rounds replay with the same finalist, returning-participant skip
+    of practice, deterministic per-PID domain pinning when no schedule.
+  - Env knobs: `PROLIFIC_N_REQUIRED`, `PROLIFIC_MAX_MINUTES`,
+    `PROLIFIC_AUTO_START_SECONDS`, `PROLIFIC_FINALISTS`,
+    `PROLIFIC_PER_NEG_YAML`, `SCMLWEB_BASE_URL`.
+  - Auto-start timer on Load, completion link to
+    `{SCMLWEB_BASE_URL}/prolific/done?PROLIFIC_PID=<pid>`.
+  - Per-negotiation YAML questionnaire (likert/yes_no/select/text),
+    rendered between counted rounds.
+  - New `docs/prolific.md` documenting all of the above.
+- **Typing indicator** ("Partner is thinking…") shown in the history
+  column while the partner computes a response; partner step is
+  deferred to the next Bokeh tick so the indicator paints first.
+- **Offer panel UX**:
+  - `n_issue_columns: 1|2` field in each domain's `_info.yaml`; all
+    three defaults (Trade, Grocery, Island) switched to 2.
+  - Counter-offer UI hidden until the participant clicks Reject, with
+    a new "Offer Panel Always Visible" toggle to override.
+  - Reject keeps the "Offer on the table" line visible; only the
+    decision buttons hide.
+  - Send / Undo Decision moved next to the text input; text input
+    enlarged.
+  - 1- or 2-column issue layout, with much tighter vertical spacing
+    between issue rows and the utility line.
+  - Chat bubbles: smaller internal padding, no blank line between text
+    and offer, inline blue `OFFER:` label.
+- **Confirmation dialog**: when the user is about to accept an offer
+  whose utility is below their reserved value, a red warning explains
+  that ending the negotiation would yield the (higher) reserved value
+  instead.
+- `--port` flag on every entry point (`hani`, `hani main`,
+  `hani guest`, `hani-app`, `hani-guest`, `hani-reg`), with envvar
+  fallbacks `HANI_PORT`, `HANI_GUEST_PORT`, `HANI_REG_PORT`.
+
+### Changed
+- **Admin-only settings are hidden, not just disabled.** Text & Offers,
+  Offer Initialization, Timing, Scenario, and Partner cards (and their
+  inner widgets) are invisible to non-admins. In particular, Prolific
+  participants can no longer see the partner agent types.
+- **Sidebar locks** at the start of the first counted Prolific round
+  for non-admins, so appearance/behavior settings can't be changed
+  mid-session.
+- "Reject & Counter" button renamed to "Reject".
+- "Value in case of Disagreement" → "Value on Disagreement" throughout.
+- "User Results" pane hidden in guest/Prolific mode.
+- Lowered `requires-python` to `>=3.11` (no 3.12/3.13-only syntax used
+  anywhere in `src/`). CI matrix expanded to 3.11/3.12/3.13.
+
+### Fixed
+- "Offer on the table" line at the bottom of the action panel no
+  longer freezes at the first partner offer; it updates on every
+  round, and `on_accept`/`do_accept` read the *latest* partner offer.
+- Counter-offer UI re-appears on the round after the participant sent
+  a counter (cached action panel was returning stale visibility flags).
+- End-of-round toast now reflects the actual outcome ("timed out",
+  "was ended by you", "was ended by the AI agent",
+  "reached an agreement"); `results.csv` gains an `ended_by` column.
+- Accept and human-side End now reliably count toward the Prolific
+  quota even when `full_trace` did not attribute a row to the human.
+- Per-negotiation questionnaire labels rendered above the widgets
+  (Panel sometimes truncated `name` inside Select/RadioBoxGroup).
+
 ## [0.3.1] - 2026-05-18
 
 ### Changed
