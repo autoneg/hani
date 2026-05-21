@@ -1661,13 +1661,15 @@ def action_panel(
         counter_section = session_state.get("counter_offer_section")
         undo_btn = session_state.get("undo_decision_btn")
         has_offer_now = current_offer is not None
+        always_toggle = session_state["toggles"].get("offer_panel_always_visible")
+        always_visible = bool(always_toggle.value) if always_toggle is not None else False
         if partner_offer_section is not None:
             partner_offer_section.visible = True
         if counter_section is not None:
             # Hide counter-offer UI on new round if there's a partner
             # offer to react to; otherwise leave it visible so the
             # participant can make an opening offer.
-            counter_section.visible = not has_offer_now
+            counter_section.visible = (not has_offer_now) or always_visible
         if undo_btn is not None:
             undo_btn.visible = False
         # Refresh the offer-on-the-table line + Accept button so the
@@ -2008,7 +2010,7 @@ def action_panel(
         name=accept_label,
         icon="circle-check",
         button_type="success",
-        width=110,
+        sizing_mode="stretch_width",
         margin=(0, 2),
         stylesheets=[":host { font-size: 11px; }"],
     )
@@ -2017,7 +2019,7 @@ def action_panel(
         name=end_label,
         icon="circle-x",
         button_type="danger",
-        width=100,
+        sizing_mode="stretch_width",
         margin=(0, 2),
         stylesheets=[":host { font-size: 11px; }"],
     )
@@ -2068,7 +2070,7 @@ def action_panel(
         name="Reject",
         icon="arrow-back-up",
         button_type="primary",
-        width=100,
+        sizing_mode="stretch_width",
         margin=(0, 2),
         stylesheets=[":host { font-size: 11px; }"],
     )
@@ -2133,21 +2135,28 @@ def action_panel(
             reject_counter_btn,
             accept_btn,
             end_btn,
-            align="center",
             margin=(5, 0),
-            styles={"gap": "2px"},
+            sizing_mode="stretch_width",
+            styles={"gap": "4px"},
         )
         # Section containing partner offer, buttons, confirmation dialog, and divider (can be hidden)
         partner_offer_section = pn.Column(
-            current_offer_display, buttons_row, confirm_dialog, pn.layout.Divider()
+            current_offer_display,
+            buttons_row,
+            confirm_dialog,
+            pn.layout.Divider(),
+            sizing_mode="stretch_width",
+            margin=(0, 4),
         )
     else:
         # Section containing partner offer, buttons, and divider (can be hidden)
         partner_offer_section = pn.Column(
             current_offer_display,
-            pn.Row(end_btn, align="center"),
+            pn.Row(end_btn, sizing_mode="stretch_width"),
             confirm_dialog,
             pn.layout.Divider(),
+            sizing_mode="stretch_width",
+            margin=(0, 4),
         )
     session_state["partner_offer_section"] = partner_offer_section
 
@@ -2328,8 +2337,11 @@ def action_panel(
     # If the partner has an offer on the table, hide the counter-offer
     # UI until the participant clicks Reject. Without a partner offer
     # (typically first move) the counter-offer UI must stay visible so
-    # the participant can make an opening offer.
-    if has_current_offer:
+    # the participant can make an opening offer. The
+    # offer_panel_always_visible setting overrides the hiding behavior.
+    always_toggle = session_state["toggles"].get("offer_panel_always_visible")
+    always_visible = bool(always_toggle.value) if always_toggle is not None else False
+    if has_current_offer and not always_visible:
         counter_offer_section.visible = False
 
     session_state["action_panel"].append(col)
@@ -3914,6 +3926,9 @@ def main():
     session_state["toggles"]["show_human_offers"] = pn.widgets.Checkbox(
         name="Show Human Offers", value=True
     )
+    session_state["toggles"]["offer_panel_always_visible"] = pn.widgets.Checkbox(
+        name="Offer Panel Always Visible", value=False
+    )
     # Text & Offers settings (separate group)
     session_state["text_offers"] = dict()
     session_state["text_offers"]["allow_text_agent"] = pn.widgets.Checkbox(
@@ -4181,7 +4196,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     )
 
     # Separate toggles into groups
-    display_toggle_keys = ["show_history", "show_human_offers"]
+    display_toggle_keys = [
+        "show_history",
+        "show_human_offers",
+        "offer_panel_always_visible",
+    ]
     display_toggles = [session_state["toggles"][k] for k in display_toggle_keys]
 
     offer_init_keys = ["init_with_last", "init_with_best"]
