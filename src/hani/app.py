@@ -903,7 +903,11 @@ class CountdownTimer(pn.pane.HTML):
         while self.running and time.time() < end_time:
             remaining = int(end_time - time.time())
             color = "black" if remaining > 10 else "red"
-            self.object = f'<h5 style="color:{color}">{humanize_time(remaining).strip()}  remaining{self.relative()}</h5>'  # type: ignore
+            self.object = (
+                f'<div style="color:{color}; font-weight: bold; '
+                f'font-size: 11pt; margin: 0;">'
+                f"{humanize_time(remaining).strip()} remaining{self.relative()}</div>"
+            )
             time.sleep(self.update_interval)
 
         if self.running:  # if the timer finished naturally, rather than being stopped.
@@ -926,7 +930,11 @@ class CountdownTimer(pn.pane.HTML):
         self.stop()
         if new_duration is not None:
             self.set_duration(new_duration)
-        self.object = f"## {humanize_time(self.duration)}  remaining" + self.relative()
+        self.object = (
+            f'<div style="font-weight: bold; font-size: 11pt; margin: 0;">'
+            f"{humanize_time(self.duration)} remaining"
+            f"{self.relative()}</div>"
+        )
 
 
 def read_scenario(path: Path | None = None) -> Scenario:  # type: ignore
@@ -1389,13 +1397,14 @@ def display_state(state: SAOState) -> pn.Column:
         steps, tlimit = "", ""
     # update progress
     session_state["progress"].value = int(state.relative_time * 100)
-    session_state["summary"].pop(0)
-    session_state["summary"].insert(
-        0, pn.pane.HTML(f"<h5>Step: {state.step}{steps}{tlimit}</h5>")
+    step_html = (
+        f'<div style="font-weight: bold; font-size: 11pt; margin: 0;">'
+        f"Step: {state.step}{steps}{tlimit}</div>"
     )
-    session_state["step_value"] = pn.pane.HTML(
-        f"<h5>Step: {state.step}{steps}{tlimit}</h5>"
-    )
+    # Update the existing step_value in place so the layout doesn't
+    # have to re-render the Row.
+    session_state["step_value"].object = step_html
+    session_state["step_value"] = session_state["step_value"]
     human_id = session_state["human_id"]
     from_human = state.current_proposer == human_id
     color = (
@@ -1451,28 +1460,40 @@ def display_state(state: SAOState) -> pn.Column:
                         txt,
                         styles={"font-size": f"{font_size}px"},
                         margin=(0, 0),
+                        stylesheets=[
+                            ":host p, :host h1, :host h2, :host h3, "
+                            ":host h4, :host h5, :host h6 "
+                            "{ margin: 0 !important; padding: 0 !important; }"
+                        ],
                     )
                 )
         if data:
             outcome_display.append(pn.pane.Str("**Data:**", margin=(0, 0)))
             outcome_display.append(pn.pane.DataFrame(pd.DataFrame([data])))
 
+    offer_pane = display_outcome(
+        state.current_offer,
+        s=session_state["scenario"],
+        from_human=from_human,
+        is_done=state.done,
+    )
     if state.current_offer is not None and not state.done:
+        offer_label = pn.pane.HTML(
+            f'<span style="color: black; font-weight: bold; '
+            f'font-size: {font_size}px; white-space: nowrap;">OFFER:</span>',
+            margin=(0, 4, 0, 0),
+        )
         outcome_display.append(
-            pn.pane.HTML(
-                f'<span style="color: black; font-weight: bold; '
-                f'font-size: {font_size}px;">OFFER:</span>',
-                margin=(0, 0),
+            pn.Row(
+                offer_label,
+                offer_pane,
+                margin=0,
+                sizing_mode="stretch_width",
+                styles={"gap": "4px", "align-items": "center"},
             )
         )
-    outcome_display.append(
-        display_outcome(
-            state.current_offer,
-            s=session_state["scenario"],
-            from_human=from_human,
-            is_done=state.done,
-        )
-    )
+    else:
+        outcome_display.append(offer_pane)
     uval = session_state["human_ufun"](state.current_offer)
     irrational = uval < session_state["human_ufun"].reserved_value
     ucolor = "red" if irrational else "blue"
@@ -3744,16 +3765,25 @@ def main():
         logout if pn.state.user else None,
         align="center",
     )
-    progress = pn.widgets.Progress(value=1, bar_color="primary")
+    progress = pn.widgets.Progress(value=1, bar_color="primary", margin=(2, 4))
     session_state["progress"] = progress
-    session_state["step_value"] = pn.pane.HTML("<h5>Step: 0</h5>")
+    session_state["step_value"] = pn.pane.HTML(
+        '<div style="font-weight: bold; font-size: 11pt; margin: 0;">Step: 0</div>',
+        margin=(0, 4),
+    )
     session_state["timer"] = CountdownTimer(duration=None)
     summary = pn.Column(
-        session_state["step_value"],
+        pn.Row(
+            session_state["step_value"],
+            pn.Spacer(),
+            session_state["timer"],
+            sizing_mode="stretch_width",
+            margin=0,
+        ),
         progress,
-        session_state["timer"],
-        sizing_mode="stretch_both",
-        margin=0,
+        sizing_mode="stretch_width",
+        margin=(0, 0),
+        styles={"gap": "0px"},
     )
     session_state["summary"] = summary
     session_state["action_panel_displayed"] = False
