@@ -2603,6 +2603,19 @@ def send_event_to_tools(event):
                 print(f"{tool.name} failed to load scenario: {e}")
 
 
+def _lock_sidebar_settings():
+    """Disable every interactive sidebar widget so a Prolific
+    participant cannot tweak appearance/behavior mid-session once a
+    counted round has begun.
+    """
+    for group in ("toggles", "text_offers", "display", "timing", "scenarios", "partners"):
+        for widget in session_state.get(group, {}).values():
+            try:
+                widget.disabled = True
+            except Exception:
+                pass
+
+
 def start_negotiation(event=None):
     # Cancel any pending Prolific auto-start timer (scheduled by
     # load_scenario when the participant pressed Load but hadn't
@@ -2654,6 +2667,11 @@ def start_negotiation(event=None):
                 session_state["user_path"], meta.get("started_at", "")
             )
         )
+        # Once a Prolific participant enters a counted round, freeze
+        # the sidebar so they cannot change appearance / behavior
+        # settings mid-session. Admins are exempt.
+        if not is_practice_round and not is_admin():
+            _lock_sidebar_settings()
         if is_practice_round:
             partner_type = _pick_practice_pan_partner() or partner_type
         else:
@@ -4325,7 +4343,12 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     sidebar = pn.Column(
         image,
         pn.Card(*display_toggles, title="Display Toggles", collapsed=True),
-        pn.Card(*offer_init_toggles, title="Offer Initialization", collapsed=True),
+        pn.Card(
+            *offer_init_toggles,
+            title="Offer Initialization",
+            collapsed=True,
+            visible=is_admin(),
+        ),
         pn.Card(
             *session_state["text_offers"].values(),
             title="Text & Offers",
