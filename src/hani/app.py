@@ -1480,6 +1480,14 @@ def display_state(state: SAOState) -> pn.Column:
         is_done=state.done,
     )
     if state.current_offer is not None and not state.done:
+        # Don't let the offer pane stretch — that pushes the text far
+        # right from the OFFER: label. Size it to its content so it
+        # sits immediately after the label.
+        try:
+            offer_pane.sizing_mode = None  # type: ignore[attr-defined]
+            offer_pane.margin = 0  # type: ignore[attr-defined]
+        except Exception:
+            pass
         offer_label = pn.pane.HTML(
             f'<span style="color: black; font-weight: bold; '
             f'font-size: {font_size}px; white-space: nowrap;">OFFER: </span>',
@@ -1490,7 +1498,6 @@ def display_state(state: SAOState) -> pn.Column:
                 offer_label,
                 offer_pane,
                 margin=0,
-                sizing_mode="stretch_width",
                 styles={"gap": "0px", "align-items": "center"},
             )
         )
