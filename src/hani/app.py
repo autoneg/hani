@@ -1473,36 +1473,46 @@ def display_state(state: SAOState) -> pn.Column:
             outcome_display.append(pn.pane.Str("**Data:**", margin=(0, 0)))
             outcome_display.append(pn.pane.DataFrame(pd.DataFrame([data])))
 
-    offer_pane = display_outcome(
-        state.current_offer,
-        s=session_state["scenario"],
-        from_human=from_human,
-        is_done=state.done,
-    )
-    if state.current_offer is not None and not state.done:
-        # Don't let the offer pane stretch — that pushes the text far
-        # right from the OFFER: label. Size it to its content so it
-        # sits immediately after the label.
-        try:
-            offer_pane.sizing_mode = None  # type: ignore[attr-defined]
-            offer_pane.margin = 0  # type: ignore[attr-defined]
-        except Exception:
-            pass
-        offer_label = pn.pane.HTML(
-            f'<span style="color: black; font-weight: bold; '
-            f'font-size: {font_size}px; white-space: nowrap;">OFFER: </span>',
-            margin=0,
+    show_offer_label = state.current_offer is not None and not state.done
+    display_method = session_state["display"]["outcome_display_method"].value
+    od: OutcomeDisplay = session_state["outcome_display"]
+    if show_offer_label and display_method == OutcomeDisplayMethod.String:
+        # Inline OFFER: with the offer text in a single HTML pane so
+        # the offer sits flush left next to the label (no stretched
+        # container pushing it to the right).
+        offer_str = od.str(
+            state.current_offer, session_state["scenario"], state.done, from_human
         )
-        outcome_display.append(
-            pn.Row(
-                offer_label,
-                offer_pane,
-                margin=0,
-                styles={"gap": "0px", "align-items": "center"},
-            )
+        combined = (
+            f'<div style="font-size: {font_size}px; margin: 0;">'
+            f'<span style="color: black; font-weight: bold;">OFFER: </span>'
+            f'<span style="color: {color};">{offer_str}</span>'
+            f"</div>"
         )
+        outcome_display.append(pn.pane.HTML(combined, margin=0))
     else:
-        outcome_display.append(offer_pane)
+        offer_pane = display_outcome(
+            state.current_offer,
+            s=session_state["scenario"],
+            from_human=from_human,
+            is_done=state.done,
+        )
+        if show_offer_label:
+            offer_label = pn.pane.HTML(
+                f'<span style="color: black; font-weight: bold; '
+                f'font-size: {font_size}px; white-space: nowrap;">OFFER: </span>',
+                margin=0,
+            )
+            outcome_display.append(
+                pn.Row(
+                    offer_label,
+                    offer_pane,
+                    margin=0,
+                    styles={"gap": "0px", "align-items": "center"},
+                )
+            )
+        else:
+            outcome_display.append(offer_pane)
     uval = session_state["human_ufun"](state.current_offer)
     irrational = uval < session_state["human_ufun"].reserved_value
     ucolor = "red" if irrational else "blue"
