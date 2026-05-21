@@ -1,5 +1,6 @@
 Name: Grocery
 title: Groceries Distribution
+n_issue_columns: 2
 issue_description:
   Apple 🍉: How many apples you get
   Banana 🍌: How many bananas you get

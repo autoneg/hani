@@ -2135,18 +2135,37 @@ def action_panel(
         )
     session_state["partner_offer_section"] = partner_offer_section
 
-    # Build the structured outcome section with generate text button
-    outcome_widgets_list = []
-    for i, w in zip(issues, widgets):
-        outcome_widgets_list.append(
-            pn.Row(
-                pn.pane.Markdown(
-                    f"**{i.name}**", styles={"font-size": "10pt"}, width=None
-                ),
-                w,
-                align="center",
-            )
+    # Build the structured outcome section with generate text button.
+    # The domain's _info.yaml may set `n_issue_columns: 1` or `2`
+    # (default 1) to lay out the issue widgets in 1 or 2 columns, which
+    # shrinks the action panel vertically and keeps the Send button
+    # visible without scrolling.
+    issue_rows = [
+        pn.Row(
+            pn.pane.Markdown(
+                f"**{i.name}**", styles={"font-size": "10pt"}, width=None
+            ),
+            w,
+            align="center",
         )
+        for i, w in zip(issues, widgets)
+    ]
+    scenario_info = getattr(session_state.get("scenario"), "info", None) or {}
+    n_cols_raw = scenario_info.get("n_issue_columns", 1)
+    try:
+        n_cols = int(n_cols_raw)
+    except (TypeError, ValueError):
+        n_cols = 1
+    n_cols = 2 if n_cols == 2 else 1
+    if n_cols == 2 and len(issue_rows) > 1:
+        mid = (len(issue_rows) + 1) // 2
+        left_col = pn.Column(*issue_rows[:mid], sizing_mode="stretch_width")
+        right_col = pn.Column(*issue_rows[mid:], sizing_mode="stretch_width")
+        outcome_widgets_list = [
+            pn.Row(left_col, right_col, sizing_mode="stretch_width")
+        ]
+    else:
+        outcome_widgets_list = issue_rows
 
     # Add Generate Text button beside the outcome section
     generate_text_btn = pn.widgets.Button(

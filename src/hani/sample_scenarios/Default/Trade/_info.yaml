@@ -1,5 +1,6 @@
 Name: Trade
 title: Simple Trading Scenario
+n_issue_columns: 2
 issue_description:
   Quantity: The quantity to be traded
   Price: The unit price to trade at

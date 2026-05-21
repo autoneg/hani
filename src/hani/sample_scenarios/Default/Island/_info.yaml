@@ -1,5 +1,6 @@
 Name: Island
 title: Island Survival Scenario
+n_issue_columns: 2
 issue_description:
   Compass 🧭: Who gets the compass
   Container 🧰: Who gets the container
