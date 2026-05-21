@@ -1658,6 +1658,7 @@ def action_panel(
 ) -> pn.Column:
     if session_state["action_panel_displayed"]:
         partner_offer_section = session_state.get("partner_offer_section")
+        decision_row = session_state.get("decision_buttons_row")
         counter_section = session_state.get("counter_offer_section")
         undo_btn = session_state.get("undo_decision_btn")
         has_offer_now = current_offer is not None
@@ -1665,6 +1666,8 @@ def action_panel(
         always_visible = bool(always_toggle.value) if always_toggle is not None else False
         if partner_offer_section is not None:
             partner_offer_section.visible = True
+        if decision_row is not None:
+            decision_row.visible = True
         if counter_section is not None:
             # Hide counter-offer UI on new round if there's a partner
             # offer to react to; otherwise leave it visible so the
@@ -2076,12 +2079,12 @@ def action_panel(
     )
 
     def on_reject_counter(event=None):
-        """Hide the partner offer section to let user focus on their counter-offer."""
-        partner_offer_section = session_state.get("partner_offer_section")
+        """Hide only the decision buttons; keep the offer line visible."""
+        decision_row = session_state.get("decision_buttons_row")
         counter_section = session_state.get("counter_offer_section")
         undo_btn = session_state.get("undo_decision_btn")
-        if partner_offer_section:
-            partner_offer_section.visible = False
+        if decision_row is not None:
+            decision_row.visible = False
         if counter_section is not None:
             counter_section.visible = True
         if undo_btn:
@@ -2090,12 +2093,12 @@ def action_panel(
     reject_counter_btn.on_click(on_reject_counter)
 
     def on_undo_decision(event=None):
-        """Show the partner offer section again."""
-        partner_offer_section = session_state.get("partner_offer_section")
+        """Show the decision buttons again."""
+        decision_row = session_state.get("decision_buttons_row")
         counter_section = session_state.get("counter_offer_section")
         undo_btn = session_state.get("undo_decision_btn")
-        if partner_offer_section:
-            partner_offer_section.visible = True
+        if decision_row is not None:
+            decision_row.visible = True
         if counter_section is not None:
             counter_section.visible = False
         if undo_btn:
@@ -2139,6 +2142,9 @@ def action_panel(
             sizing_mode="stretch_width",
             styles={"gap": "4px"},
         )
+        # The decision buttons can be hidden on Reject while the offer
+        # line stays visible.
+        session_state["decision_buttons_row"] = buttons_row
         # Section containing partner offer, buttons, confirmation dialog, and divider (can be hidden)
         partner_offer_section = pn.Column(
             current_offer_display,
