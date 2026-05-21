@@ -2041,6 +2041,7 @@ def action_panel(
         return pn.pane.Markdown(
             f"Your Utility if this offer is accepted by your partner: **{human_ufun(outcome):0.1%}**",
             styles={"font-size": "9pt"},
+            margin=(0, 5),
         )
 
     my_util = pn.bind(offer_util, *widgets)
@@ -2212,7 +2213,9 @@ def action_panel(
 
     outcome_section = pn.Column(
         *outcome_widgets_list,
-        pn.Row(llm_status_widget, pn.Spacer(), align="center"),
+        llm_status_widget,
+        margin=(0, 0),
+        styles={"gap": "0px"},
     )
 
     # Send button + Undo decision button. The Undo button is hidden
@@ -2305,17 +2308,12 @@ def action_panel(
         extract_btn.visible = extract_btn.visible and admin_user
         generate_text_btn.visible = generate_text_btn.visible and admin_user
 
-        # Build the text section row with text_only on left, extract + generate text on right
+        # Build the text section row with extract + generate text on right.
+        # The Text Only checkbox (when present) lives in the Send/Undo
+        # column to the right of the text box rather than under it.
+        text_row = pn.Row(extract_btn, generate_text_btn, align="center")
         if text_only_checkbox is not None:
-            text_row = pn.Row(
-                text_only_checkbox,
-                pn.Spacer(),
-                extract_btn,
-                generate_text_btn,
-                align="center",
-            )
-        else:
-            text_row = pn.Row(extract_btn, generate_text_btn, align="center")
+            send_buttons_col.append(text_only_checkbox)
 
         # Put Send / Undo Decision beside the text box rather than
         # below the action panel (which gets pushed off-screen for tall
