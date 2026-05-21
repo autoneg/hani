@@ -2027,6 +2027,12 @@ def action_panel(
             )
         session_state[f"issue_{issue.name}"] = widget
         widgets.append(widget)
+    # Tight vertical packing for issue widgets.
+    for w in widgets:
+        try:
+            w.margin = (0, 4)
+        except Exception:
+            pass
 
     reject_btn = create_tracked_button(
         name="Send", icon="send", button_type="primary", width=80
@@ -2204,13 +2210,23 @@ def action_panel(
     # (default 1) to lay out the issue widgets in 1 or 2 columns, which
     # shrinks the action panel vertically and keeps the Send button
     # visible without scrolling.
+    _issue_label_stylesheet = (
+        ":host p, :host h1, :host h2, :host h3, :host h4, :host h5, :host h6 "
+        "{ margin: 0 !important; padding: 0 !important; }"
+    )
     issue_rows = [
         pn.Row(
             pn.pane.Markdown(
-                f"**{i.name}**", styles={"font-size": "10pt"}, width=None
+                f"**{i.name}**",
+                styles={"font-size": "10pt"},
+                width=None,
+                margin=(0, 4),
+                stylesheets=[_issue_label_stylesheet],
             ),
             w,
             align="center",
+            margin=(0, 0),
+            styles={"gap": "4px"},
         )
         for i, w in zip(issues, widgets)
     ]
@@ -2223,10 +2239,26 @@ def action_panel(
     n_cols = 2 if n_cols == 2 else 1
     if n_cols == 2 and len(issue_rows) > 1:
         mid = (len(issue_rows) + 1) // 2
-        left_col = pn.Column(*issue_rows[:mid], sizing_mode="stretch_width")
-        right_col = pn.Column(*issue_rows[mid:], sizing_mode="stretch_width")
+        left_col = pn.Column(
+            *issue_rows[:mid],
+            sizing_mode="stretch_width",
+            styles={"gap": "0px"},
+            margin=0,
+        )
+        right_col = pn.Column(
+            *issue_rows[mid:],
+            sizing_mode="stretch_width",
+            styles={"gap": "0px"},
+            margin=0,
+        )
         outcome_widgets_list = [
-            pn.Row(left_col, right_col, sizing_mode="stretch_width")
+            pn.Row(
+                left_col,
+                right_col,
+                sizing_mode="stretch_width",
+                styles={"gap": "8px"},
+                margin=0,
+            )
         ]
     else:
         outcome_widgets_list = issue_rows
@@ -2276,7 +2308,11 @@ def action_panel(
     # we hide this whole block until the participant clicks Reject —
     # the panel starts as just the decision row (Reject / Accept / End)
     # and the counter-offer UI appears only once a counter is desired.
-    counter_offer_section = pn.Column(sizing_mode="stretch_width")
+    counter_offer_section = pn.Column(
+        sizing_mode="stretch_width",
+        styles={"gap": "2px"},
+        margin=(0, 0),
+    )
     session_state["counter_offer_section"] = counter_offer_section
     counter_offer_section.append(outcome_section)
     counter_offer_section.append(my_util)
