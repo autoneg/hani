@@ -1301,6 +1301,14 @@ def get_action(state: SAOState) -> SAOResponse:
 
 
 def end_session():
+    # Make sure the typing indicator isn't left visible if a negotiation
+    # ends while a partner step was in flight.
+    try:
+        pane = session_state.get("typing_indicator")
+        if pane is not None:
+            pane.object = ""
+    except Exception:
+        pass
     mechanism = session_state["mechanism"]
     human_index = session_state["human_index"]
     # Capture is_practice BEFORE save_result writes the row so it lines up
@@ -1526,6 +1534,51 @@ def start_button():
     return pn.Column(strt_btn)
 
 
+_TYPING_INDICATOR_HTML = """
+<style>
+  @keyframes hani-blink {
+    0%, 80%, 100% { opacity: 0.2; }
+    40%           { opacity: 1.0; }
+  }
+  .hani-typing { display: inline-flex; align-items: center; gap: 6px;
+                 padding: 6px 10px; border-radius: 12px;
+                 background: #f1f3f5; color: #495057;
+                 font-size: 10pt; font-style: italic; }
+  .hani-typing .dot { width: 6px; height: 6px; border-radius: 50%;
+                      background: #6c757d; display: inline-block;
+                      animation: hani-blink 1.2s infinite both; }
+  .hani-typing .dot:nth-child(2) { animation-delay: 0.2s; }
+  .hani-typing .dot:nth-child(3) { animation-delay: 0.4s; }
+</style>
+<div class="hani-typing">
+  <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+  <span>Partner is thinking…</span>
+</div>
+"""
+
+
+def _show_typing_indicator():
+    pane = session_state.get("typing_indicator")
+    if pane is not None:
+        pane.object = _TYPING_INDICATOR_HTML
+
+
+def _hide_typing_indicator():
+    pane = session_state.get("typing_indicator")
+    if pane is not None:
+        pane.object = ""
+
+
+def _set_action_buttons_disabled(disabled: bool):
+    for key in ("accept_btn", "end_btn", "reject_btn"):
+        btn = session_state.get(key)
+        if btn is not None:
+            btn.disabled = disabled
+    # The Reject & Counter button lives only inside the action panel, but
+    # its enclosing partner_offer_section is hidden during the wait when
+    # the user clicked it last, and visible otherwise — fine either way.
+
+
 def advance():
     mechanism = session_state["mechanism"]
     mechanism.step()
@@ -1539,8 +1592,26 @@ def advance():
         )
     if session_state["toggles"]["show_human_offers"].value:
         add_to_history()
-    if not negoiation_completed():
-        step_to_human()
+    if negoiation_completed():
+        return
+    # Show "Partner is thinking…" and defer the partner step(s) to the
+    # next Bokeh tick so the indicator paints before the (possibly slow)
+    # agent call runs.
+    _show_typing_indicator()
+    _set_action_buttons_disabled(True)
+
+    def _continue():
+        try:
+            step_to_human()
+        finally:
+            _hide_typing_indicator()
+            _set_action_buttons_disabled(False)
+
+    doc = pn.state.curdoc
+    if doc is not None:
+        doc.add_next_tick_callback(_continue)
+    else:
+        _continue()
 
 
 def _render_offer_on_table_html(current_offer: Outcome | None) -> str:
@@ -3586,6 +3657,20 @@ def main():
         scroll_button_threshold=100,  # Show scroll button after 100px
     )
     session_state["history"] = hist
+    # Typing indicator shown while waiting for the partner's response.
+    # Lives as a sibling of `hist` (not a child) so step_to_human's
+    # history.clear() doesn't wipe it.
+    typing_indicator = pn.pane.HTML(
+        "",
+        sizing_mode="stretch_width",
+        margin=(0, 8, 4, 8),
+        styles={"min-height": "24px"},
+    )
+    session_state["typing_indicator"] = typing_indicator
+    hist_wrapper = pn.Column(
+        hist, typing_indicator, sizing_mode="stretch_both", margin=0
+    )
+    session_state["history_wrapper"] = hist_wrapper
     session_state["showing_announcements"] = False
     read_announcements()
     show_announcements(None)
@@ -4080,7 +4165,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     offer = load_form(selectable_scenario_type)
     session_state["action_panel"] = offer
     template.main[4:5, 0:5] = summary  # type: ignore
-    template.main[0:2, 5:12] = hist  # type: ignore
+    template.main[0:2, 5:12] = hist_wrapper  # type: ignore
     if CONFIG.has_side_tabs:
         template.main[2:5, 5:9] = offer  # type: ignore
         template.main[2:5, 9:12] = side_tabs  # type: ignore
