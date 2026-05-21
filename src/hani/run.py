@@ -335,20 +335,27 @@ def run_main(
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Do not open browser automatically"
     ),
+    port: int = typer.Option(
+        MAIN_PORT,
+        "--port",
+        help=f"Port for the main app (default: {MAIN_PORT}). "
+        "Can also be set via the HANI_PORT env var.",
+        envvar="HANI_PORT",
+    ),
 ):
     """
-    Run only the main HANI app (port 5006).
+    Run only the main HANI app (default port 5006).
 
     This is the primary negotiation interface for authenticated users.
     """
     console.print(
-        f"[bold blue]Starting HANI Main App on port {MAIN_PORT}...[/bold blue]"
+        f"[bold blue]Starting HANI Main App on port {port}...[/bold blue]"
     )
 
     if not no_browser:
-        open_browser_when_ready(f"http://localhost:{MAIN_PORT}/app")
+        open_browser_when_ready(f"http://localhost:{port}/app")
 
-    run_subprocess("runapp.py", [], agents, verbose)
+    run_subprocess("runapp.py", ["--port", str(port)], agents, verbose)
 
 
 @app.command(name="guest")
@@ -362,20 +369,27 @@ def run_guest(
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Do not open browser automatically"
     ),
+    port: int = typer.Option(
+        GUEST_PORT,
+        "--port",
+        help=f"Port for the guest app (default: {GUEST_PORT}). "
+        "Can also be set via the HANI_GUEST_PORT env var.",
+        envvar="HANI_GUEST_PORT",
+    ),
 ):
     """
-    Run only the guest/playground app (port 5008).
+    Run only the guest/playground app (default port 5008).
 
     This allows users to try negotiations without authentication.
     """
     console.print(
-        f"[bold blue]Starting HANI Guest/Playground on port {GUEST_PORT}...[/bold blue]"
+        f"[bold blue]Starting HANI Guest/Playground on port {port}...[/bold blue]"
     )
 
     if not no_browser:
-        open_browser_when_ready(f"http://localhost:{GUEST_PORT}/app")
+        open_browser_when_ready(f"http://localhost:{port}/app")
 
-    run_subprocess("runguest.py", [], agents, verbose)
+    run_subprocess("runguest.py", ["--port", str(port)], agents, verbose)
 
 
 @app.command(name="auth")
