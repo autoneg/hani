@@ -2002,6 +2002,7 @@ def action_panel(
         icon="circle-check",
         button_type="success",
         width=110,
+        margin=(0, 2),
         stylesheets=[":host { font-size: 11px; }"],
     )
     accept_btn.on_click(on_accept)
@@ -2010,6 +2011,7 @@ def action_panel(
         icon="circle-x",
         button_type="danger",
         width=100,
+        margin=(0, 2),
         stylesheets=[":host { font-size: 11px; }"],
     )
     end_btn.on_click(on_end)
@@ -2060,6 +2062,7 @@ def action_panel(
         icon="arrow-back-up",
         button_type="primary",
         width=100,
+        margin=(0, 2),
         stylesheets=[":host { font-size: 11px; }"],
     )
 
@@ -2119,7 +2122,7 @@ def action_panel(
             end_btn,
             align="center",
             margin=(5, 0),
-            styles={"gap": "8px"},
+            styles={"gap": "2px"},
         )
         # Section containing partner offer, buttons, confirmation dialog, and divider (can be hidden)
         partner_offer_section = pn.Column(
