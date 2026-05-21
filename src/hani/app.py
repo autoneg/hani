@@ -4076,6 +4076,8 @@ def main():
     # just disabling them, so the option doesn't exist visually.
     if not is_admin():
         for _key in (
+            "allow_text_agent",
+            "allow_text_human",
             "text_only_mode",
             "auto_extract_outcome",
             "auto_generate_text",
@@ -4353,6 +4355,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             *session_state["text_offers"].values(),
             title="Text & Offers",
             collapsed=True,
+            visible=is_admin(),
         ),
         pn.Card(
             *session_state["display"].values(), title="Display Control", collapsed=True
