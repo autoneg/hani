@@ -122,7 +122,7 @@ class PreferencesTool(Tool):
     @param.depends("ufun")
     def reserved(self):
         return pn.pane.Markdown(
-            f"**Value in case of Disagreement:** {self.ufun.reserved_value:0.1%}"
+            f"**Value on Disagreement:** {self.ufun.reserved_value:0.1%}"
         )
 
     def panel(self):
@@ -222,7 +222,7 @@ class AgentPreferencesTool(Tool):
         if self.ufun is None:
             return pn.pane.Markdown("")
         return pn.pane.Markdown(
-            f"**Value in case of Disagreement:** {self.ufun.reserved_value:0.1%}"
+            f"**Value on Disagreement:** {self.ufun.reserved_value:0.1%}"
         )
 
     def panel(self):

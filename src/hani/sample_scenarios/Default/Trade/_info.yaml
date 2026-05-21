@@ -31,4 +31,4 @@ long_description: |
 
   The importance of these two factors is controlled through a weighing factor that converts *value of quantity* and *value of money* to the same units.
 
-  **Value in case of Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option.
+  **Value on Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option.

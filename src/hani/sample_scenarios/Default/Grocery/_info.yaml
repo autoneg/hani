@@ -19,4 +19,4 @@ long_description: |
 
   **Utility Function** Each fruit has some value for each of the two negotiators. The more items you get, the higher the utility you get.
 
-  **Value in case of Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option.
+  **Value on Disagreement (Reservation Value)** The value you get from disagreement. You can think of this as an outside option.
