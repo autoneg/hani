@@ -1658,9 +1658,16 @@ def action_panel(
 ) -> pn.Column:
     if session_state["action_panel_displayed"]:
         partner_offer_section = session_state.get("partner_offer_section")
+        counter_section = session_state.get("counter_offer_section")
         undo_btn = session_state.get("undo_decision_btn")
+        has_offer_now = current_offer is not None
         if partner_offer_section is not None:
             partner_offer_section.visible = True
+        if counter_section is not None:
+            # Hide counter-offer UI on new round if there's a partner
+            # offer to react to; otherwise leave it visible so the
+            # participant can make an opening offer.
+            counter_section.visible = not has_offer_now
         if undo_btn is not None:
             undo_btn.visible = False
         # Refresh the offer-on-the-table line + Accept button so the
@@ -2069,9 +2076,12 @@ def action_panel(
     def on_reject_counter(event=None):
         """Hide the partner offer section to let user focus on their counter-offer."""
         partner_offer_section = session_state.get("partner_offer_section")
+        counter_section = session_state.get("counter_offer_section")
         undo_btn = session_state.get("undo_decision_btn")
         if partner_offer_section:
             partner_offer_section.visible = False
+        if counter_section is not None:
+            counter_section.visible = True
         if undo_btn:
             undo_btn.visible = True
 
@@ -2080,9 +2090,12 @@ def action_panel(
     def on_undo_decision(event=None):
         """Show the partner offer section again."""
         partner_offer_section = session_state.get("partner_offer_section")
+        counter_section = session_state.get("counter_offer_section")
         undo_btn = session_state.get("undo_decision_btn")
         if partner_offer_section:
             partner_offer_section.visible = True
+        if counter_section is not None:
+            counter_section.visible = False
         if undo_btn:
             undo_btn.visible = False
 
@@ -2207,9 +2220,18 @@ def action_panel(
     )
     session_state["validation_alert"] = validation_alert
 
-    col = pn.Column(
-        partner_offer_section, validation_alert, outcome_section, my_util
-    )
+    # counter_offer_section gathers everything the participant needs to
+    # craft a counter-offer (text box, issue widgets, utility line, Send
+    # / Undo buttons). When the partner has put an offer on the table,
+    # we hide this whole block until the participant clicks Reject —
+    # the panel starts as just the decision row (Reject / Accept / End)
+    # and the counter-offer UI appears only once a counter is desired.
+    counter_offer_section = pn.Column(sizing_mode="stretch_width")
+    session_state["counter_offer_section"] = counter_offer_section
+    counter_offer_section.append(outcome_section)
+    counter_offer_section.append(my_util)
+
+    col = pn.Column(partner_offer_section, validation_alert, counter_offer_section)
 
     # Add text input section if allowed. The Send / Undo Decision
     # buttons live next to the text box (right-hand column) so they
@@ -2293,12 +2315,22 @@ def action_panel(
             text_row,
             sizing_mode="stretch_width",
         )
-        # Insert text section after the divider (index 2: after
-        # current_offer_row and Divider)
-        col.insert(2, text_section)
+        # Place the text section at the top of the counter-offer
+        # group so it sits above the outcome widgets.
+        counter_offer_section.insert(0, text_section)
     else:
-        # No text input: keep the buttons at the bottom as before.
-        col.append(pn.Row(reject_btn, undo_decision_btn, align="center"))
+        # No text input: tack the Send/Undo buttons at the bottom of
+        # the counter-offer section.
+        counter_offer_section.append(
+            pn.Row(reject_btn, undo_decision_btn, align="center")
+        )
+
+    # If the partner has an offer on the table, hide the counter-offer
+    # UI until the participant clicks Reject. Without a partner offer
+    # (typically first move) the counter-offer UI must stay visible so
+    # the participant can make an opening offer.
+    if has_current_offer:
+        counter_offer_section.visible = False
 
     session_state["action_panel"].append(col)
     return col
