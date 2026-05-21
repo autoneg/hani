@@ -1483,10 +1483,11 @@ def display_state(state: SAOState) -> pn.Column:
         offer_str = od.str(
             state.current_offer, session_state["scenario"], state.done, from_human
         )
+        offer_text_color = "#1f6feb"  # blue
         combined = (
             f'<div style="font-size: {font_size}px; margin: 0;">'
-            f'<span style="color: black; font-weight: bold;">OFFER: </span>'
-            f'<span style="color: {color};">{offer_str}</span>'
+            f'<span style="color: {offer_text_color}; font-weight: bold;">OFFER: </span>'
+            f'<span style="color: {offer_text_color};">{offer_str}</span>'
             f"</div>"
         )
         outcome_display.append(pn.pane.HTML(combined, margin=0))
@@ -2355,10 +2356,11 @@ def action_panel(
         )
         extract_btn.on_click(on_extract_outcome)
 
-        # Text only checkbox - only show if allow_text_only_offers is enabled
+        # Text only checkbox - admin-only, and only when
+        # allow_text_only_offers is enabled.
         allow_text_only = session_state["toggles"]["allow_text_only_offers"].value
         text_only_checkbox = None
-        if allow_text_only:
+        if allow_text_only and is_admin():
             text_only_checkbox = pn.widgets.Checkbox(
                 name="Text Only", value=session_state["toggles"]["text_only_mode"].value
             )
@@ -4052,9 +4054,16 @@ def main():
     session_state["text_offers"]["allow_text_only_offers"] = pn.widgets.Checkbox(
         name="Allow Text Only Offers (Admin)", value=CONFIG.allow_text_only_offers
     )
-    # Make allow_text_only_offers admin-only
+    # Admin-only controls: hide from non-admins entirely rather than
+    # just disabling them, so the option doesn't exist visually.
     if not is_admin():
-        session_state["text_offers"]["allow_text_only_offers"].disabled = True
+        for _key in (
+            "text_only_mode",
+            "auto_extract_outcome",
+            "auto_generate_text",
+            "allow_text_only_offers",
+        ):
+            session_state["text_offers"][_key].visible = False
     # Create aliases in toggles for backward compatibility
     session_state["toggles"]["allow_text_agent"] = session_state["text_offers"][
         "allow_text_agent"
@@ -4107,10 +4116,14 @@ def main():
         ),
         value=CONFIG.display.outcome_display_method,
     )
+    # Admin-only settings are hidden entirely from non-admin users
+    # (not just disabled). The Partner card is hidden for non-admins in
+    # all modes — and in particular it must never reveal the partner
+    # agent types to a Prolific participant.
     if not is_admin():
         for group in ("timing", "scenarios", "partners"):
             for widget in session_state[group].values():
-                widget.disabled = True
+                widget.visible = False
 
     # session_state["display"]["tools"] = pn.widgets.MultiSelect(
     #     name="Tools", options=TOOLS, size=1, value=TOOLS
@@ -4321,9 +4334,24 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         pn.Card(
             *session_state["display"].values(), title="Display Control", collapsed=True
         ),
-        pn.Card(*session_state["timing"].values(), title="Timing", collapsed=True),
-        pn.Card(*session_state["scenarios"].values(), title="Scenario", collapsed=True),
-        pn.Card(*session_state["partners"].values(), title="Partner", collapsed=True),
+        pn.Card(
+            *session_state["timing"].values(),
+            title="Timing",
+            collapsed=True,
+            visible=is_admin(),
+        ),
+        pn.Card(
+            *session_state["scenarios"].values(),
+            title="Scenario",
+            collapsed=True,
+            visible=is_admin(),
+        ),
+        pn.Card(
+            *session_state["partners"].values(),
+            title="Partner",
+            collapsed=True,
+            visible=is_admin(),
+        ),
         llm_card,
         # Add modals at end of sidebar (they're overlays, won't affect width)
         extraction_modal,
