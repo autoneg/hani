@@ -24,6 +24,13 @@ def main(
     verbose: bool = typer.Option(
         False, "--verbose", help="Enable verbose output for negotiators (if supported)"
     ),
+    port: int = typer.Option(
+        HANI_GUEST_PORT,
+        "--port",
+        help=f"Port to serve the guest app on (default: {HANI_GUEST_PORT}). "
+        "Can also be set via the HANI_GUEST_PORT env var.",
+        envvar="HANI_GUEST_PORT",
+    ),
 ):
     """Run HANI guest/playground application (no authentication required)."""
 
@@ -49,13 +56,25 @@ def main(
         # Get extra args from context
         extra_args = list(ctx.args) if ctx.args else []
 
+        # If the user passed --port via extra_args, prefer the value the
+        # typer flag already captured (typer + ignore_unknown_options
+        # leaves --port in ctx.args too).
+        extra_args = [
+            a
+            for i, a in enumerate(extra_args)
+            if not (
+                a == "--port"
+                or a.startswith("--port=")
+                or (i > 0 and extra_args[i - 1] == "--port")
+            )
+        ]
         subprocess.run(
             [
                 "panel",
                 "serve",
                 str(Path(__file__).parent / "app.py"),
                 "--port",
-                str(HANI_GUEST_PORT),
+                str(port),
             ]
             + extra_args,
             check=True,

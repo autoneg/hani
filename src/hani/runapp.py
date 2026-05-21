@@ -68,7 +68,13 @@ def main(
     dev: bool = typer.Option(
         False, "--dev", help="Run in development mode with auto-reload"
     ),
-    port: int = typer.Option(5006, "--port", help="Port to serve on"),
+    port: int = typer.Option(
+        5006,
+        "--port",
+        help="Port to serve the authenticated app on (default: 5006). "
+        "Can also be set via the HANI_PORT env var.",
+        envvar="HANI_PORT",
+    ),
 ):
     """Run HANI application with authentication."""
 
@@ -121,6 +127,16 @@ def main(
 
     # Add extra user args from context
     extra_args = list(ctx.args) if ctx.args else []
+    # Drop any --port from extra_args so the typer-captured value wins.
+    extra_args = [
+        a
+        for i, a in enumerate(extra_args)
+        if not (
+            a == "--port"
+            or a.startswith("--port=")
+            or (i > 0 and extra_args[i - 1] == "--port")
+        )
+    ]
 
     if auth_mode == "oauth":
         # OAuth-only mode - use GitHub/Google/etc authentication

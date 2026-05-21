@@ -26,6 +26,13 @@ def main(
     dev: bool = typer.Option(
         False, "--dev", help="Run in development mode with auto-reload"
     ),
+    port: int = typer.Option(
+        REG_PORT,
+        "--port",
+        help=f"Port to serve the registration app on (default: {REG_PORT}). "
+        "Can also be set via the HANI_REG_PORT env var.",
+        envvar="HANI_REG_PORT",
+    ),
 ):
     """Run HANI registration server."""
 
@@ -42,7 +49,7 @@ def main(
         "serve",
         str(Path(__file__).parent / "register.py"),
         "--port",
-        str(REG_PORT),
+        str(port),
     ]
 
     # Add dev flag if requested
@@ -50,6 +57,16 @@ def main(
 
     # Get extra args from context
     extra_args = list(ctx.args) if ctx.args else []
+    # Drop any --port from extra_args so the typer-captured value wins.
+    extra_args = [
+        a
+        for i, a in enumerate(extra_args)
+        if not (
+            a == "--port"
+            or a.startswith("--port=")
+            or (i > 0 and extra_args[i - 1] == "--port")
+        )
+    ]
 
     if auth_mode == "oauth":
         # OAuth mode - use GitHub/Google/etc authentication

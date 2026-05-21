@@ -50,10 +50,18 @@ Then open your browser to `http://localhost:5006` and log in:
 |---------|-------------|
 | `hani` | Start all services (main app + guest playground) |
 | `hani setup` | Initialize settings directory with default configuration |
-| `hani main` | Start only the main app (port 5006) |
-| `hani guest` | Start only the guest/playground app (port 5008) |
+| `hani main` | Start only the main app (default port 5006) |
+| `hani guest` | Start only the guest/playground app (default port 5008) |
 | `hani auth` | Show OAuth setup instructions |
 | `hani --help` | Show all available commands and options |
+
+Each command accepts a `--port` flag (e.g. `hani guest --port 12000`,
+`hani-app --port 6006`, `hani-reg --port 5107`). The top-level `hani`
+command takes `--main-port` / `--guest-port` to override both services
+at once. Equivalent env vars: `HANI_PORT`, `HANI_GUEST_PORT`,
+`HANI_REG_PORT`.
+
+For paid Prolific studies, see [docs/prolific.md](docs/prolific.md).
 
 ### Command Options
 

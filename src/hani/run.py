@@ -93,6 +93,8 @@ def _start_services(
     no_main: bool = False,
     no_guest: bool = False,
     no_browser: bool = False,
+    main_port: int = MAIN_PORT,
+    guest_port: int = GUEST_PORT,
     extra_args: Optional[list] = None,
 ):
     """Start HANI services."""
@@ -103,15 +105,17 @@ def _start_services(
     processes = []
 
     if not no_main:
+        main_args = filtered_args + ["--port", str(main_port)]
         app_process = Process(
-            target=run_subprocess, args=("runapp.py", filtered_args, agents, verbose)
+            target=run_subprocess, args=("runapp.py", main_args, agents, verbose)
         )
         app_process.start()
         processes.append(app_process)
 
     if not no_guest:
+        guest_args = filtered_args + ["--port", str(guest_port)]
         playground = Process(
-            target=run_subprocess, args=("runguest.py", filtered_args, agents, verbose)
+            target=run_subprocess, args=("runguest.py", guest_args, agents, verbose)
         )
         playground.start()
         processes.append(playground)
@@ -123,9 +127,9 @@ def _start_services(
     # Open browser when ready - prefer main app, fall back to guest
     if not no_browser:
         if not no_main:
-            open_browser_when_ready(f"http://localhost:{MAIN_PORT}/app")
+            open_browser_when_ready(f"http://localhost:{main_port}/app")
         elif not no_guest:
-            open_browser_when_ready(f"http://localhost:{GUEST_PORT}/app")
+            open_browser_when_ready(f"http://localhost:{guest_port}/app")
 
     for p in processes:
         p.join()
@@ -153,17 +157,31 @@ def main(
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Do not open browser automatically"
     ),
+    main_port: int = typer.Option(
+        MAIN_PORT,
+        "--main-port",
+        help=f"Port for the authenticated main app (default: {MAIN_PORT}). "
+        "Can also be set via the HANI_PORT env var.",
+        envvar="HANI_PORT",
+    ),
+    guest_port: int = typer.Option(
+        GUEST_PORT,
+        "--guest-port",
+        help=f"Port for the guest/playground app (default: {GUEST_PORT}). "
+        "Can also be set via the HANI_GUEST_PORT env var.",
+        envvar="HANI_GUEST_PORT",
+    ),
 ):
     """
     Run HANI (Human-Agent Negotiation Interface) with all services.
 
     Starts two processes by default:
-    - Main app (port 5006) - includes login, registration, and negotiation
-    - Guest/playground (port 5008) - no authentication required
+    - Main app (default port 5006) - includes login, registration, and negotiation
+    - Guest/playground (default port 5008) - no authentication required
 
-    Use --no-main or --no-guest to disable specific services.
-
-    Use 'hani setup' to initialize configuration files.
+    Override ports with --main-port / --guest-port (or HANI_PORT /
+    HANI_GUEST_PORT env vars). Use --no-main or --no-guest to disable
+    specific services. Use 'hani setup' to initialize configuration files.
     """
     # Only run services if no subcommand was invoked
     if ctx.invoked_subcommand is None:
@@ -173,6 +191,8 @@ def main(
             no_main=no_main,
             no_guest=no_guest,
             no_browser=no_browser,
+            main_port=main_port,
+            guest_port=guest_port,
         )
 
 

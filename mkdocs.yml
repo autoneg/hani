@@ -75,6 +75,7 @@ nav:
   - Tools: tools.md
   - Offer Generators: offer-generators.md
   - Defining Scenarios: scenarios.md
+  - Prolific Integration: prolific.md
   - Changelog: changelog.md
 
 extra:
