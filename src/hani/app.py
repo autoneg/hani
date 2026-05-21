@@ -905,7 +905,7 @@ class CountdownTimer(pn.pane.HTML):
             color = "black" if remaining > 10 else "red"
             self.object = (
                 f'<div style="color:{color}; font-weight: bold; '
-                f'font-size: 11pt; margin: 0;">'
+                f'font-size: 11pt; margin: 0; white-space: nowrap;">'
                 f"{humanize_time(remaining).strip()} remaining{self.relative()}</div>"
             )
             time.sleep(self.update_interval)
@@ -931,7 +931,8 @@ class CountdownTimer(pn.pane.HTML):
         if new_duration is not None:
             self.set_duration(new_duration)
         self.object = (
-            f'<div style="font-weight: bold; font-size: 11pt; margin: 0;">'
+            f'<div style="font-weight: bold; font-size: 11pt; margin: 0; '
+            f'white-space: nowrap;">'
             f"{humanize_time(self.duration)} remaining"
             f"{self.relative()}</div>"
         )
@@ -1398,7 +1399,8 @@ def display_state(state: SAOState) -> pn.Column:
     # update progress
     session_state["progress"].value = int(state.relative_time * 100)
     step_html = (
-        f'<div style="font-weight: bold; font-size: 11pt; margin: 0;">'
+        f'<div style="font-weight: bold; font-size: 11pt; margin: 0; '
+        f'white-space: nowrap;">'
         f"Step: {state.step}{steps}{tlimit}</div>"
     )
     # Update the existing step_value in place so the layout doesn't
@@ -3804,7 +3806,8 @@ def main():
     progress = pn.widgets.Progress(value=1, bar_color="primary", margin=(2, 4))
     session_state["progress"] = progress
     session_state["step_value"] = pn.pane.HTML(
-        '<div style="font-weight: bold; font-size: 11pt; margin: 0;">Step: 0</div>',
+        '<div style="font-weight: bold; font-size: 11pt; margin: 0; '
+        'white-space: nowrap;">Step: 0</div>',
         margin=(0, 4),
     )
     session_state["timer"] = CountdownTimer(duration=None)
