@@ -2001,7 +2001,7 @@ def action_panel(
         name=accept_label,
         icon="circle-check",
         button_type="success",
-        width=130,
+        width=110,
         stylesheets=[":host { font-size: 11px; }"],
     )
     accept_btn.on_click(on_accept)
@@ -2009,7 +2009,7 @@ def action_panel(
         name=end_label,
         icon="circle-x",
         button_type="danger",
-        width=110,
+        width=100,
         stylesheets=[":host { font-size: 11px; }"],
     )
     end_btn.on_click(on_end)
@@ -2059,7 +2059,7 @@ def action_panel(
         name="Reject",
         icon="arrow-back-up",
         button_type="primary",
-        width=140,
+        width=100,
         stylesheets=[":host { font-size: 11px; }"],
     )
 
@@ -2192,6 +2192,7 @@ def action_panel(
         undo_decision_btn,
         align="center",
         margin=(0, 4),
+        width=90,
     )
 
     # Alert widget for validation messages (initially hidden)
@@ -2280,7 +2281,12 @@ def action_panel(
         # below the action panel (which gets pushed off-screen for tall
         # domains like Island).
         text_section = pn.Column(
-            pn.Row(text_input, send_buttons_col, sizing_mode="stretch_width"),
+            pn.Row(
+                text_input,
+                send_buttons_col,
+                sizing_mode="stretch_width",
+                styles={"gap": "8px"},
+            ),
             text_row,
             sizing_mode="stretch_width",
         )
