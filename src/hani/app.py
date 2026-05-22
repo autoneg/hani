@@ -1163,6 +1163,15 @@ def save_result(m: SAOMechanism):
         if start_at_dt else None
     )
 
+    # View settings captured at session start (see _resolve_view in
+    # the layout builder). Recorded on every negotiation row so the
+    # analysis can compare full vs. simple participant behaviour and
+    # tell *why* a given session ended up in one mode (explicit
+    # query, returning-user cookie, mobile UA, or default).
+    view_mode_val   = session_state.get("view_mode", "")
+    view_source_val = session_state.get("view_source", "")
+    user_agent_val  = session_state.get("user_agent", "")
+
     result = serialize(
         session_state.get("scenario_info", dict())
         | dict(
@@ -1186,6 +1195,9 @@ def save_result(m: SAOMechanism):
             load_to_start_seconds=load_to_start_seconds,
             duration_seconds=duration_seconds,
             per_round_times=json.dumps(per_round_times),
+            view_mode=view_mode_val,        # "full" | "simple" | ""
+            view_source=view_source_val,    # query | cookie | user_agent | default | ""
+            user_agent=user_agent_val,
         )
         | asdict(m.state)
         | {
@@ -4417,7 +4429,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # scenario info beside the action panel) or 'full' (existing
     # tools-rich grid). Precedence: explicit ?view= query > hani_view
     # cookie > User-Agent (phone => simple) > 'full'.
-    def _resolve_view() -> str:
+    def _resolve_view() -> tuple[str, str]:
+        """Return (view_mode, source). source is one of:
+            query | cookie | user_agent | default
+        so save_result() can record *how* the mode was picked, not
+        just what it ended up being."""
         try:
             args = getattr(pn.state, "session_args", None) or {}
             q = args.get("view")
@@ -4429,28 +4445,37 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
                 val = str(val).strip().lower()
                 if val in ("simple", "full"):
                     print(f"[view] from query={val}")
-                    return val
+                    return val, "query"
         except Exception as e:
             print(f"[view] query parse failed: {e}")
         try:
             cookies = getattr(pn.state, "cookies", None) or {}
             v = cookies.get("hani_view")
             if v in ("simple", "full"):
-                return v
+                return v, "cookie"
         except Exception:
             pass
         try:
             ua = (getattr(pn.state, "headers", None) or {}).get("User-Agent", "")
             import re as _re
             if _re.search(r"(Android|iPhone|iPod|Mobile)", ua or ""):
-                return "simple"
+                return "simple", "user_agent"
         except Exception:
             pass
-        return "full"
+        return "full", "default"
 
-    view_mode = _resolve_view()
-    session_state["view_mode"] = view_mode
-    print(f"[view] mode={view_mode}")
+    view_mode, view_source = _resolve_view()
+    session_state["view_mode"]   = view_mode
+    session_state["view_source"] = view_source
+    # Capture the User-Agent string once at session start so save_result
+    # can persist it on every negotiation row without re-reading headers.
+    try:
+        session_state["user_agent"] = (
+            (getattr(pn.state, "headers", None) or {}).get("User-Agent", "") or ""
+        )
+    except Exception:
+        session_state["user_agent"] = ""
+    print(f"[view] mode={view_mode} source={view_source}")
 
     template = pn.template.FastGridTemplate(
         site="",
