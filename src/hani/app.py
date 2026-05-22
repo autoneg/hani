@@ -2502,6 +2502,13 @@ def negoiation_completed(event=None) -> bool:
         f"Negotiation done with agreement {session_state['outcome_display'].str(state.agreement, session_state['scenario'], True, False)}"
     )
     end_session()
+    # Round over — let the user switch views again.
+    _vt = session_state.get("view_toggle")
+    if _vt is not None:
+        try:
+            _vt.disabled = False
+        except Exception:
+            pass
     return True
 
 
@@ -2725,6 +2732,14 @@ def start_negotiation(event=None):
     session_state["timer"].start()
     session_state["human_action"] = None
     session_state["negotiation_started"] = True
+    # Switching view reloads the page, which would kill the live
+    # negotiation. Lock the view toggle until the round ends.
+    _vt = session_state.get("view_toggle")
+    if _vt is not None:
+        try:
+            _vt.disabled = True
+        except Exception:
+            pass
     step_to_human()
     add_tools(Timing.Start)
     send_event_to_tools("negotiation_started")
@@ -4404,6 +4419,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     def _resolve_view() -> str:
         try:
             args = getattr(pn.state, "session_args", None) or {}
+            print(f"[view] session_args={dict(args)!r}")
             q = args.get("view")
             if q:
                 val = q[0] if isinstance(q, (list, tuple)) else q
@@ -4411,9 +4427,10 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
                     val = val.decode("utf-8", errors="ignore")
                 val = str(val).strip().lower()
                 if val in ("simple", "full"):
+                    print(f"[view] from query={val}")
                     return val
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[view] query parse failed: {e}")
         try:
             cookies = getattr(pn.state, "cookies", None) or {}
             v = cookies.get("hani_view")
@@ -4432,6 +4449,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
 
     view_mode = _resolve_view()
     session_state["view_mode"] = view_mode
+    print(f"[view] mode={view_mode}")
 
     template = pn.template.FastGridTemplate(
         site="",
@@ -4449,8 +4467,10 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     view_toggle = pn.widgets.Switch(
         name="Simple view", value=(view_mode == "simple")
     )
+    session_state["view_toggle"] = view_toggle
     view_toggle.jscallback(
         value="""
+        if (cb_obj.disabled) return;
         const v = cb_obj.value ? 'simple' : 'full';
         document.cookie = 'hani_view=' + v + '; path=/; max-age=31536000; SameSite=Lax';
         const u = new URL(window.location.href);
@@ -4485,49 +4505,29 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     session_state["action_panel"] = offer
 
     if view_mode == "simple":
-        # Simplified layout: history on top (full width), then a Row
-        # with [Preferences + Scenario Info] beside the action panel.
-        # We instantiate second copies of the Preferences and Scenario
-        # Info tools so the originals (in upper_tabs) keep their event
-        # subscriptions intact for the engine.
-        try:
-            prefs_view = ToolConfig(
-                "Preferences",
-                TOOL_MAP["Preferences"],
-                timing=Timing.Load,
-                params=dict(ufun="session:human_ufun"),
-            ).make()
-        except Exception as e:
-            print(f"[simple-view] could not build Preferences pane: {e}")
-            prefs_view = pn.pane.Markdown("*Preferences unavailable*")
-        try:
-            sinfo_view = ToolConfig(
-                "Scenario Info",
-                TOOL_MAP["Scenario Info"],
-                timing=Timing.Load,
-                params=dict(
-                    scenario="session:scenario", human_id="session:human_id"
-                ),
-            ).make()
-        except Exception as e:
-            print(f"[simple-view] could not build Scenario Info pane: {e}")
-            sinfo_view = pn.pane.Markdown("*Scenario Info unavailable*")
+        # Simplified layout:
+        #   top row: history (full width), with summary below it
+        #   bottom-left (1/3): one Tabs widget holding Scenario Info,
+        #     Preferences, every other tool, and the offer-generator
+        #   bottom-right (2/3): action panel
+        # We re-parent the panes from upper_tabs/lower_tabs/side_tabs
+        # into a single combined Tabs so the engine's tool callbacks
+        # (registered against the same Tool objects) keep firing.
+        combined_tabs = pn.Tabs(sizing_mode="stretch_both")
+        for src in (upper_tabs, lower_tabs, side_tabs):
+            try:
+                names = list(getattr(src, "_names", None) or [])
+                panes = list(src.objects)
+                for name, pane in zip(names, panes):
+                    combined_tabs.append((name, pane))
+                src.objects = []
+            except Exception as e:
+                print(f"[simple-view] could not move tabs from {src}: {e}")
 
-        info_col = pn.Column(
-            pn.pane.Markdown("### Scenario Info"),
-            sinfo_view,
-            pn.layout.Divider(),
-            pn.pane.Markdown("### Preferences"),
-            prefs_view,
-            sizing_mode="stretch_width",
-        )
-        simple_main = pn.Column(
-            hist_wrapper,
-            summary,
-            pn.Row(info_col, offer, sizing_mode="stretch_width"),
-            sizing_mode="stretch_both",
-        )
-        template.main[0:5, 0:12] = simple_main  # type: ignore
+        template.main[0:1, 0:12] = hist_wrapper  # type: ignore
+        template.main[1:2, 0:12] = summary  # type: ignore
+        template.main[2:5, 0:4] = combined_tabs  # type: ignore
+        template.main[2:5, 4:12] = offer  # type: ignore
     else:
         if CONFIG.has_one_tool_pane:
             template.main[0:4, 0:5] = upper_tabs  # type: ignore
