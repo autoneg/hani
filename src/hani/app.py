@@ -4465,37 +4465,23 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # Header switch: toggles between full and simplified views by
     # setting a cookie and reloading with the corresponding query
     # parameter.
-    view_toggle = pn.widgets.Switch(
-        name="Simple view", value=(view_mode == "simple")
-    )
-    session_state["view_toggle"] = view_toggle
-    def _on_view_toggle(event):
-        # Server-side: write the cookie via response headers (best-effort)
-        # and trigger a client-side reload to the other view via
-        # pn.state.location, which works reliably whether or not the
-        # widget's jscallback fires through the FastGridTemplate header.
-        target = "simple" if event.new else "full"
-        print(f"[view] toggle -> {target}")
-        # Update the URL search params and trigger a reload.
-        loc = getattr(pn.state, "location", None)
-        if loc is None:
-            return
-        try:
-            loc.search = f"view={target}"
-            loc.reload = True
-        except Exception as e:
-            print(f"[view] navigation failed: {e}")
-
-    view_toggle.param.watch(_on_view_toggle, "value")
-    view_toggle_row = pn.Row(
-        pn.pane.HTML(
-            '<span style="color:white; font-size: 10pt; margin-right: 6px;">'
-            "Simple view</span>",
-            margin=0,
+    # Plain anchor styled as a button — no Bokeh callbacks involved.
+    # Reliably navigates in both directions; full page reload picks up
+    # the new ?view= and resolves the layout server-side.
+    target_view = "full" if view_mode == "simple" else "simple"
+    label = "Full view" if view_mode == "simple" else "Simple view"
+    view_toggle_row = pn.pane.HTML(
+        (
+            f'<a href="?view={target_view}" '
+            f'onclick="document.cookie=\'hani_view={target_view}; path=/; '
+            f'max-age=31536000; SameSite=Lax\';" '
+            f'style="display: inline-block; padding: 4px 10px; '
+            f'color: white; background: rgba(255,255,255,0.12); '
+            f'border-radius: 4px; text-decoration: none; '
+            f'font-size: 10pt; margin: 0 12px;">'
+            f"Switch to {label}</a>"
         ),
-        view_toggle,
-        align="center",
-        margin=(0, 12),
+        margin=0,
     )
     session_state["view_toggle_row"] = view_toggle_row
     try:
