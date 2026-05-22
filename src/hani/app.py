@@ -4397,6 +4397,42 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             # safe_name
         )
 
+    # Resolve which view to render: 'simple' (history on top, prefs +
+    # scenario info beside the action panel) or 'full' (existing
+    # tools-rich grid). Precedence: explicit ?view= query > hani_view
+    # cookie > User-Agent (phone => simple) > 'full'.
+    def _resolve_view() -> str:
+        try:
+            args = getattr(pn.state, "session_args", None) or {}
+            q = args.get("view")
+            if q:
+                val = q[0] if isinstance(q, (list, tuple)) else q
+                if isinstance(val, (bytes, bytearray)):
+                    val = val.decode("utf-8", errors="ignore")
+                val = str(val).strip().lower()
+                if val in ("simple", "full"):
+                    return val
+        except Exception:
+            pass
+        try:
+            cookies = getattr(pn.state, "cookies", None) or {}
+            v = cookies.get("hani_view")
+            if v in ("simple", "full"):
+                return v
+        except Exception:
+            pass
+        try:
+            ua = (getattr(pn.state, "headers", None) or {}).get("User-Agent", "")
+            import re as _re
+            if _re.search(r"(Android|iPhone|iPod|Mobile)", ua or ""):
+                return "simple"
+        except Exception:
+            pass
+        return "full"
+
+    view_mode = _resolve_view()
+    session_state["view_mode"] = view_mode
+
     template = pn.template.FastGridTemplate(
         site="",
         title=title_html,
@@ -4407,29 +4443,106 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         header_background="#282D3C",  # Dark primary color from theme
     )
 
+    # Header switch: toggles between full and simplified views by
+    # setting a cookie and reloading with the corresponding query
+    # parameter.
+    view_toggle = pn.widgets.Switch(
+        name="Simple view", value=(view_mode == "simple")
+    )
+    view_toggle.jscallback(
+        value="""
+        const v = cb_obj.value ? 'simple' : 'full';
+        document.cookie = 'hani_view=' + v + '; path=/; max-age=31536000; SameSite=Lax';
+        const u = new URL(window.location.href);
+        u.searchParams.set('view', v);
+        window.location.href = u.toString();
+        """
+    )
+    try:
+        template.header.append(
+            pn.Row(
+                pn.pane.HTML(
+                    '<span style="color:white; font-size: 10pt; margin-right: 6px;">'
+                    "Simple view</span>",
+                    margin=0,
+                ),
+                view_toggle,
+                align="center",
+                margin=(0, 12),
+            )
+        )
+    except Exception:
+        pass
+
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
     session_state["side_tabs"] = side_tabs = pn.Tabs()
     session_state["tools"] = []
     add_tools(Timing.Always)
 
-    if CONFIG.has_one_tool_pane:
-        template.main[0:4, 0:5] = upper_tabs  # type: ignore
-    else:
-        template.main[0:2, 0:5] = upper_tabs  # type: ignore
-        template.main[2:4, 0:5] = lower_tabs  # type: ignore
-
     load_scenario()
     offer = load_form(selectable_scenario_type)
     session_state["action_panel"] = offer
-    template.main[4:5, 0:5] = summary  # type: ignore
-    template.main[0:2, 5:12] = hist_wrapper  # type: ignore
-    if CONFIG.has_side_tabs:
-        template.main[2:5, 5:9] = offer  # type: ignore
-        template.main[2:5, 9:12] = side_tabs  # type: ignore
+
+    if view_mode == "simple":
+        # Simplified layout: history on top (full width), then a Row
+        # with [Preferences + Scenario Info] beside the action panel.
+        # We instantiate second copies of the Preferences and Scenario
+        # Info tools so the originals (in upper_tabs) keep their event
+        # subscriptions intact for the engine.
+        try:
+            prefs_view = ToolConfig(
+                "Preferences",
+                TOOL_MAP["Preferences"],
+                timing=Timing.Load,
+                params=dict(ufun="session:human_ufun"),
+            ).make()
+        except Exception as e:
+            print(f"[simple-view] could not build Preferences pane: {e}")
+            prefs_view = pn.pane.Markdown("*Preferences unavailable*")
+        try:
+            sinfo_view = ToolConfig(
+                "Scenario Info",
+                TOOL_MAP["Scenario Info"],
+                timing=Timing.Load,
+                params=dict(
+                    scenario="session:scenario", human_id="session:human_id"
+                ),
+            ).make()
+        except Exception as e:
+            print(f"[simple-view] could not build Scenario Info pane: {e}")
+            sinfo_view = pn.pane.Markdown("*Scenario Info unavailable*")
+
+        info_col = pn.Column(
+            pn.pane.Markdown("### Scenario Info"),
+            sinfo_view,
+            pn.layout.Divider(),
+            pn.pane.Markdown("### Preferences"),
+            prefs_view,
+            sizing_mode="stretch_width",
+        )
+        simple_main = pn.Column(
+            hist_wrapper,
+            summary,
+            pn.Row(info_col, offer, sizing_mode="stretch_width"),
+            sizing_mode="stretch_both",
+        )
+        template.main[0:5, 0:12] = simple_main  # type: ignore
     else:
-        template.main[2:5, 5:12] = offer  # type: ignore
-    # template.main[0:5, 10:12] = tools_pane
+        if CONFIG.has_one_tool_pane:
+            template.main[0:4, 0:5] = upper_tabs  # type: ignore
+        else:
+            template.main[0:2, 0:5] = upper_tabs  # type: ignore
+            template.main[2:4, 0:5] = lower_tabs  # type: ignore
+
+        template.main[4:5, 0:5] = summary  # type: ignore
+        template.main[0:2, 5:12] = hist_wrapper  # type: ignore
+        if CONFIG.has_side_tabs:
+            template.main[2:5, 5:9] = offer  # type: ignore
+            template.main[2:5, 9:12] = side_tabs  # type: ignore
+        else:
+            template.main[2:5, 5:12] = offer  # type: ignore
+        # template.main[0:5, 10:12] = tools_pane
 
     session_state["template"] = template
     template.servable(title="Human Agent Negotiation Interface")
