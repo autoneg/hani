@@ -4551,12 +4551,15 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         for _src in sources:
             _install_mirror(_src, sources)
 
-        # Summary gets its own short row at the bottom of the left
-        # column, mirroring the full view's grid placement.
+        # Action panel on the LEFT (2/3 width), tools tabs + summary
+        # on the RIGHT (1/3 width). This ordering means that on narrow
+        # screens the right column reflows BELOW the action panel, so
+        # what the participant sees right under the history is the
+        # action panel itself rather than the tools.
         template.main[0:2, 0:12] = hist_wrapper  # type: ignore
-        template.main[2:4, 0:4] = combined_tabs  # type: ignore
-        template.main[4:5, 0:4] = summary  # type: ignore
-        template.main[2:5, 4:12] = offer  # type: ignore
+        template.main[2:5, 0:8] = offer  # type: ignore
+        template.main[2:4, 8:12] = combined_tabs  # type: ignore
+        template.main[4:5, 8:12] = summary  # type: ignore
     else:
         if CONFIG.has_one_tool_pane:
             template.main[0:4, 0:5] = upper_tabs  # type: ignore
