@@ -2502,6 +2502,13 @@ def negoiation_completed(event=None) -> bool:
         f"Negotiation done with agreement {session_state['outcome_display'].str(state.agreement, session_state['scenario'], True, False)}"
     )
     end_session()
+    # Round over — show the view toggle again.
+    _vt_row = session_state.get("view_toggle_row")
+    if _vt_row is not None:
+        try:
+            _vt_row.visible = True
+        except Exception:
+            pass
     return True
 
 
@@ -2725,6 +2732,15 @@ def start_negotiation(event=None):
     session_state["timer"].start()
     session_state["human_action"] = None
     session_state["negotiation_started"] = True
+    # Switching view reloads the page, which would kill the live
+    # negotiation. Hide the view toggle (and its label) until the
+    # round ends.
+    _vt_row = session_state.get("view_toggle_row")
+    if _vt_row is not None:
+        try:
+            _vt_row.visible = False
+        except Exception:
+            pass
     step_to_human()
     add_tools(Timing.Start)
     send_event_to_tools("negotiation_started")
@@ -3851,10 +3867,10 @@ def main():
     summary = pn.Column(
         pn.Row(
             session_state["step_value"],
-            pn.Spacer(),
             session_state["timer"],
             sizing_mode="stretch_width",
             margin=0,
+            styles={"gap": "12px"},
         ),
         progress,
         sizing_mode="stretch_width",
@@ -4397,6 +4413,45 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             # safe_name
         )
 
+    # Resolve which view to render: 'simple' (history on top, prefs +
+    # scenario info beside the action panel) or 'full' (existing
+    # tools-rich grid). Precedence: explicit ?view= query > hani_view
+    # cookie > User-Agent (phone => simple) > 'full'.
+    def _resolve_view() -> str:
+        try:
+            args = getattr(pn.state, "session_args", None) or {}
+            q = args.get("view")
+            print(f"[view] session_args view-raw={q!r} type={type(q).__name__}")
+            if q:
+                val = q[0] if isinstance(q, (list, tuple)) else q
+                if isinstance(val, (bytes, bytearray)):
+                    val = val.decode("utf-8", errors="ignore")
+                val = str(val).strip().lower()
+                if val in ("simple", "full"):
+                    print(f"[view] from query={val}")
+                    return val
+        except Exception as e:
+            print(f"[view] query parse failed: {e}")
+        try:
+            cookies = getattr(pn.state, "cookies", None) or {}
+            v = cookies.get("hani_view")
+            if v in ("simple", "full"):
+                return v
+        except Exception:
+            pass
+        try:
+            ua = (getattr(pn.state, "headers", None) or {}).get("User-Agent", "")
+            import re as _re
+            if _re.search(r"(Android|iPhone|iPod|Mobile)", ua or ""):
+                return "simple"
+        except Exception:
+            pass
+        return "full"
+
+    view_mode = _resolve_view()
+    session_state["view_mode"] = view_mode
+    print(f"[view] mode={view_mode}")
+
     template = pn.template.FastGridTemplate(
         site="",
         title=title_html,
@@ -4407,29 +4462,119 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         header_background="#282D3C",  # Dark primary color from theme
     )
 
+    # Header switch: toggles between full and simplified views by
+    # setting a cookie and reloading with the corresponding query
+    # parameter.
+    # Plain anchor styled as a button — no Bokeh callbacks involved.
+    # Reliably navigates in both directions; full page reload picks up
+    # the new ?view= and resolves the layout server-side.
+    target_view = "full" if view_mode == "simple" else "simple"
+    label = "Full view" if view_mode == "simple" else "Simple view"
+    view_toggle_row = pn.pane.HTML(
+        (
+            f'<a href="?view={target_view}" '
+            f'onclick="document.cookie=\'hani_view={target_view}; path=/; '
+            f'max-age=31536000; SameSite=Lax\';" '
+            f'style="display: inline-block; padding: 4px 10px; '
+            f'color: white; background: rgba(255,255,255,0.12); '
+            f'border-radius: 4px; text-decoration: none; '
+            f'font-size: 10pt; margin: 0 12px;">'
+            f"Switch to {label}</a>"
+        ),
+        margin=0,
+    )
+    session_state["view_toggle_row"] = view_toggle_row
+    try:
+        template.header.append(view_toggle_row)
+    except Exception:
+        pass
+
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
     session_state["side_tabs"] = side_tabs = pn.Tabs()
     session_state["tools"] = []
     add_tools(Timing.Always)
 
-    if CONFIG.has_one_tool_pane:
-        template.main[0:4, 0:5] = upper_tabs  # type: ignore
-    else:
-        template.main[0:2, 0:5] = upper_tabs  # type: ignore
-        template.main[2:4, 0:5] = lower_tabs  # type: ignore
-
     load_scenario()
     offer = load_form(selectable_scenario_type)
     session_state["action_panel"] = offer
-    template.main[4:5, 0:5] = summary  # type: ignore
-    template.main[0:2, 5:12] = hist_wrapper  # type: ignore
-    if CONFIG.has_side_tabs:
-        template.main[2:5, 5:9] = offer  # type: ignore
-        template.main[2:5, 9:12] = side_tabs  # type: ignore
+
+    if view_mode == "simple":
+        # Simplified layout:
+        #   top row: history (full width)
+        #   bottom-left (1/3): one Tabs widget holding Scenario Info,
+        #     Preferences, every other tool, and the generators
+        #   bottom-left bottom row: progress / timer summary
+        #   bottom-right (2/3): action panel
+        # Build ONE combined Tabs and alias upper_tabs/lower_tabs/
+        # side_tabs to it so any future add_tools(Timing.Start) calls
+        # (which insert into session_state[<...>_tabs]) put the new
+        # tool panes into the combined Tabs too.
+        combined_tabs = pn.Tabs(sizing_mode="stretch_both")
+        sources = (upper_tabs, lower_tabs, side_tabs)
+
+        # Helper to install a watcher that mirrors the source into the
+        # right "section" of combined_tabs. Each section keeps its
+        # source ordering (so at_front insert(0, ...) lands at the
+        # start of that section, not the start of combined_tabs).
+        def _install_mirror(src_tabs: pn.Tabs, sources_tuple):
+            seen = {id(o) for o in src_tabs.objects}
+            # Initial copy of any panes already present.
+            initial_names = list(getattr(src_tabs, "_names", None) or [])
+            for name, pane in zip(initial_names, src_tabs.objects):
+                combined_tabs.append((name, pane))
+
+            def _on_change(event):
+                src_names = list(getattr(src_tabs, "_names", None) or [])
+                src_objs = list(src_tabs.objects)
+                # Compute section offset = total panes from earlier sources.
+                offset = 0
+                for s in sources_tuple:
+                    if s is src_tabs:
+                        break
+                    offset += len(s.objects)
+                # Figure out which panes are new (not yet in combined)
+                # and insert each at its src position + offset.
+                combined_ids = {id(o) for o in combined_tabs.objects}
+                for i, (name, pane) in enumerate(zip(src_names, src_objs)):
+                    if id(pane) in combined_ids:
+                        continue
+                    target = offset + i
+                    if target >= len(combined_tabs.objects):
+                        combined_tabs.append((name, pane))
+                    else:
+                        combined_tabs.insert(target, (name, pane))
+                    combined_ids.add(id(pane))
+
+            src_tabs.param.watch(_on_change, "objects")
+
+        for _src in sources:
+            _install_mirror(_src, sources)
+
+        # Action panel on the LEFT (2/3 width), tools tabs + summary
+        # on the RIGHT (1/3 width). This ordering means that on narrow
+        # screens the right column reflows BELOW the action panel, so
+        # what the participant sees right under the history is the
+        # action panel itself rather than the tools.
+        template.main[0:2, 0:12] = hist_wrapper  # type: ignore
+        template.main[2:5, 0:8] = offer  # type: ignore
+        template.main[2:4, 8:12] = combined_tabs  # type: ignore
+        template.main[4:5, 8:12] = summary  # type: ignore
     else:
-        template.main[2:5, 5:12] = offer  # type: ignore
-    # template.main[0:5, 10:12] = tools_pane
+        if CONFIG.has_one_tool_pane:
+            template.main[0:4, 0:5] = upper_tabs  # type: ignore
+        else:
+            template.main[0:2, 0:5] = upper_tabs  # type: ignore
+            template.main[2:4, 0:5] = lower_tabs  # type: ignore
+
+        template.main[4:5, 0:5] = summary  # type: ignore
+        template.main[0:2, 5:12] = hist_wrapper  # type: ignore
+        if CONFIG.has_side_tabs:
+            template.main[2:5, 5:9] = offer  # type: ignore
+            template.main[2:5, 9:12] = side_tabs  # type: ignore
+        else:
+            template.main[2:5, 5:12] = offer  # type: ignore
+        # template.main[0:5, 10:12] = tools_pane
 
     session_state["template"] = template
     template.servable(title="Human Agent Negotiation Interface")
