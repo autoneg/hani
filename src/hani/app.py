@@ -4511,37 +4511,45 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         # (which insert into session_state[<...>_tabs]) put the new
         # tool panes into the combined Tabs too.
         combined_tabs = pn.Tabs(sizing_mode="stretch_both")
-        for src in (upper_tabs, lower_tabs, side_tabs):
-            try:
-                names = list(getattr(src, "_names", None) or [])
-                panes = list(src.objects)
-                for name, pane in zip(names, panes):
-                    combined_tabs.append((name, pane))
-                src.objects = []
-            except Exception as e:
-                print(f"[simple-view] could not move tabs from {src}: {e}")
+        sources = (upper_tabs, lower_tabs, side_tabs)
 
-        # Future add_tools(Timing.Start) appends/inserts into
-        # upper/lower/side_tabs. Mirror those additions into
-        # combined_tabs by always APPENDING (never honouring at_front
-        # insert(0, ...)) so tools added mid-session — e.g. Value
-        # Histogram — come after the originals like Scenario Info /
-        # Preferences instead of pushing in front of them.
-        def _mirror(src_tabs: pn.Tabs):
-            seen_ids: set[int] = {id(o) for o in combined_tabs.objects}
+        # Helper to install a watcher that mirrors the source into the
+        # right "section" of combined_tabs. Each section keeps its
+        # source ordering (so at_front insert(0, ...) lands at the
+        # start of that section, not the start of combined_tabs).
+        def _install_mirror(src_tabs: pn.Tabs, sources_tuple):
+            seen = {id(o) for o in src_tabs.objects}
+            # Initial copy of any panes already present.
+            initial_names = list(getattr(src_tabs, "_names", None) or [])
+            for name, pane in zip(initial_names, src_tabs.objects):
+                combined_tabs.append((name, pane))
 
             def _on_change(event):
-                names = list(getattr(src_tabs, "_names", None) or [])
-                for name, pane in zip(names, src_tabs.objects):
-                    if id(pane) in seen_ids:
+                src_names = list(getattr(src_tabs, "_names", None) or [])
+                src_objs = list(src_tabs.objects)
+                # Compute section offset = total panes from earlier sources.
+                offset = 0
+                for s in sources_tuple:
+                    if s is src_tabs:
+                        break
+                    offset += len(s.objects)
+                # Figure out which panes are new (not yet in combined)
+                # and insert each at its src position + offset.
+                combined_ids = {id(o) for o in combined_tabs.objects}
+                for i, (name, pane) in enumerate(zip(src_names, src_objs)):
+                    if id(pane) in combined_ids:
                         continue
-                    combined_tabs.append((name, pane))
-                    seen_ids.add(id(pane))
+                    target = offset + i
+                    if target >= len(combined_tabs.objects):
+                        combined_tabs.append((name, pane))
+                    else:
+                        combined_tabs.insert(target, (name, pane))
+                    combined_ids.add(id(pane))
 
             src_tabs.param.watch(_on_change, "objects")
 
-        for _src in (upper_tabs, lower_tabs, side_tabs):
-            _mirror(_src)
+        for _src in sources:
+            _install_mirror(_src, sources)
 
         # Summary gets its own short row at the bottom of the left
         # column, mirroring the full view's grid placement.
