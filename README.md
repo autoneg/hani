@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/hani.svg)](https://pypi.python.org/pypi/hani)
 [![Downloads](https://img.shields.io/pypi/dm/hani.svg)](https://pypi.python.org/pypi/hani)
 [![License](https://img.shields.io/pypi/l/hani.svg)](https://pypi.python.org/pypi/hani)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://yasserfarouk.github.io/hani/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://autoneg.github.io/hani/)
 
 ![hani](hani.png)
 
@@ -342,7 +342,7 @@ LLM API keys can be set in `~/negmas/hani/settings/llm_settings.json` or via env
 To contribute, clone this repo and install development dependencies:
 
 ```bash
-git clone https://github.com/yasserfarouk/hani.git
+git clone https://github.com/autoneg/hani.git
 cd hani
 pip install -e ".[dev]"
 ```

@@ -36,7 +36,7 @@ pip install hani[dev]
 To install the latest development version:
 
 ```bash
-git clone https://github.com/yasserfarouk/hani.git
+git clone https://github.com/autoneg/hani.git
 cd hani
 pip install -e .
 ```

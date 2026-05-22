@@ -1,9 +1,9 @@
 site_name: HANI Documentation
 site_description: Human-Agent Negotiation Interface - A web-based interface for conducting negotiations between humans and AI agents
 site_author: Yasser Mohammad
-site_url: https://yasserfarouk.github.io/hani/
-repo_name: yasserfarouk/hani
-repo_url: https://github.com/yasserfarouk/hani
+site_url: https://autoneg.github.io/hani/
+repo_name: autoneg/hani
+repo_url: https://github.com/autoneg/hani
 
 theme:
   name: material
@@ -81,7 +81,7 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/yasserfarouk/hani
+      link: https://github.com/autoneg/hani
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/hani/
 

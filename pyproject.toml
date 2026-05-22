@@ -30,10 +30,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yasserfarouk/hani"
-Documentation = "https://yasserfarouk.github.io/hani/"
-Repository = "https://github.com/yasserfarouk/hani"
-Changelog = "https://github.com/yasserfarouk/hani/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/autoneg/hani"
+Documentation = "https://autoneg.github.io/hani/"
+Repository = "https://github.com/autoneg/hani"
+Changelog = "https://github.com/autoneg/hani/blob/main/CHANGELOG.md"
 
 [build-system]
 # requires = ["hatchling"]
