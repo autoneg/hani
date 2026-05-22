@@ -4524,9 +4524,13 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             except Exception as e:
                 print(f"[simple-view] could not move tabs from {src}: {e}")
 
-        template.main[0:1, 0:12] = hist_wrapper  # type: ignore
-        template.main[1:2, 0:12] = summary  # type: ignore
-        template.main[2:5, 0:4] = combined_tabs  # type: ignore
+        # Left column packs the tools tabs above the progress/timer
+        # summary so the action panel on the right gets the full height.
+        left_col = pn.Column(
+            combined_tabs, summary, sizing_mode="stretch_both"
+        )
+        template.main[0:2, 0:12] = hist_wrapper  # type: ignore
+        template.main[2:5, 0:4] = left_col  # type: ignore
         template.main[2:5, 4:12] = offer  # type: ignore
     else:
         if CONFIG.has_one_tool_pane:
