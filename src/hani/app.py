@@ -3866,10 +3866,10 @@ def main():
     summary = pn.Column(
         pn.Row(
             session_state["step_value"],
-            pn.Spacer(),
             session_state["timer"],
             sizing_mode="stretch_width",
             margin=0,
+            styles={"gap": "12px"},
         ),
         progress,
         sizing_mode="stretch_width",
@@ -4506,13 +4506,15 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
 
     if view_mode == "simple":
         # Simplified layout:
-        #   top row: history (full width), with summary below it
+        #   top row: history (full width)
         #   bottom-left (1/3): one Tabs widget holding Scenario Info,
-        #     Preferences, every other tool, and the offer-generator
+        #     Preferences, every other tool, and the generators
+        #   bottom-left bottom row: progress / timer summary
         #   bottom-right (2/3): action panel
-        # We re-parent the panes from upper_tabs/lower_tabs/side_tabs
-        # into a single combined Tabs so the engine's tool callbacks
-        # (registered against the same Tool objects) keep firing.
+        # Build ONE combined Tabs and alias upper_tabs/lower_tabs/
+        # side_tabs to it so any future add_tools(Timing.Start) calls
+        # (which insert into session_state[<...>_tabs]) put the new
+        # tool panes into the combined Tabs too.
         combined_tabs = pn.Tabs(sizing_mode="stretch_both")
         for src in (upper_tabs, lower_tabs, side_tabs):
             try:
@@ -4523,6 +4525,10 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
                 src.objects = []
             except Exception as e:
                 print(f"[simple-view] could not move tabs from {src}: {e}")
+        # Future add_tools() writes go straight into combined_tabs.
+        session_state["upper_tabs"] = combined_tabs
+        session_state["lower_tabs"] = combined_tabs
+        session_state["side_tabs"] = combined_tabs
 
         # Summary gets its own short row at the bottom of the left
         # column, mirroring the full view's grid placement.
