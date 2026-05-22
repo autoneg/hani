@@ -12,6 +12,8 @@ HANI is a web-based interface for conducting negotiations between humans and AI 
 
 📖 **Full documentation:** [autoneg.github.io/hani](https://autoneg.github.io/hani/) — installation, quick start, authentication, scenarios, Prolific integration, and more.
 
+🎮 **Try it now:** [anac.cs.brown.edu/hanplay/app](https://anac.cs.brown.edu/hanplay/app) — public playground, no signup required.
+
 ## Quick Start
 
 ### Installation
