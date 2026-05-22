@@ -4520,10 +4520,28 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
                 src.objects = []
             except Exception as e:
                 print(f"[simple-view] could not move tabs from {src}: {e}")
-        # Future add_tools() writes go straight into combined_tabs.
-        session_state["upper_tabs"] = combined_tabs
-        session_state["lower_tabs"] = combined_tabs
-        session_state["side_tabs"] = combined_tabs
+
+        # Future add_tools(Timing.Start) appends/inserts into
+        # upper/lower/side_tabs. Mirror those additions into
+        # combined_tabs by always APPENDING (never honouring at_front
+        # insert(0, ...)) so tools added mid-session — e.g. Value
+        # Histogram — come after the originals like Scenario Info /
+        # Preferences instead of pushing in front of them.
+        def _mirror(src_tabs: pn.Tabs):
+            seen_ids: set[int] = {id(o) for o in combined_tabs.objects}
+
+            def _on_change(event):
+                names = list(getattr(src_tabs, "_names", None) or [])
+                for name, pane in zip(names, src_tabs.objects):
+                    if id(pane) in seen_ids:
+                        continue
+                    combined_tabs.append((name, pane))
+                    seen_ids.add(id(pane))
+
+            src_tabs.param.watch(_on_change, "objects")
+
+        for _src in (upper_tabs, lower_tabs, side_tabs):
+            _mirror(_src)
 
         # Summary gets its own short row at the bottom of the left
         # column, mirroring the full view's grid placement.
