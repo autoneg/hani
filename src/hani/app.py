@@ -2502,11 +2502,11 @@ def negoiation_completed(event=None) -> bool:
         f"Negotiation done with agreement {session_state['outcome_display'].str(state.agreement, session_state['scenario'], True, False)}"
     )
     end_session()
-    # Round over — let the user switch views again.
-    _vt = session_state.get("view_toggle")
-    if _vt is not None:
+    # Round over — show the view toggle again.
+    _vt_row = session_state.get("view_toggle_row")
+    if _vt_row is not None:
         try:
-            _vt.disabled = False
+            _vt_row.visible = True
         except Exception:
             pass
     return True
@@ -2733,11 +2733,12 @@ def start_negotiation(event=None):
     session_state["human_action"] = None
     session_state["negotiation_started"] = True
     # Switching view reloads the page, which would kill the live
-    # negotiation. Lock the view toggle until the round ends.
-    _vt = session_state.get("view_toggle")
-    if _vt is not None:
+    # negotiation. Hide the view toggle (and its label) until the
+    # round ends.
+    _vt_row = session_state.get("view_toggle_row")
+    if _vt_row is not None:
         try:
-            _vt.disabled = True
+            _vt_row.visible = False
         except Exception:
             pass
     step_to_human()
@@ -4478,19 +4479,19 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         window.location.href = u.toString();
         """
     )
+    view_toggle_row = pn.Row(
+        pn.pane.HTML(
+            '<span style="color:white; font-size: 10pt; margin-right: 6px;">'
+            "Simple view</span>",
+            margin=0,
+        ),
+        view_toggle,
+        align="center",
+        margin=(0, 12),
+    )
+    session_state["view_toggle_row"] = view_toggle_row
     try:
-        template.header.append(
-            pn.Row(
-                pn.pane.HTML(
-                    '<span style="color:white; font-size: 10pt; margin-right: 6px;">'
-                    "Simple view</span>",
-                    margin=0,
-                ),
-                view_toggle,
-                align="center",
-                margin=(0, 12),
-            )
-        )
+        template.header.append(view_toggle_row)
     except Exception:
         pass
 
