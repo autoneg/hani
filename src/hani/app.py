@@ -4431,9 +4431,13 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # cookie > User-Agent (phone => simple) > 'full'.
     def _resolve_view() -> tuple[str, str]:
         """Return (view_mode, source). source is one of:
-            query | cookie | user_agent | default
+            query | user_agent | default
         so save_result() can record *how* the mode was picked, not
-        just what it ended up being."""
+        just what it ended up being. No cookie is read or written —
+        keeping the resolver cookie-free means Prolific (and any other
+        EU-jurisdiction visitor) doesn't need a cookie banner for
+        preference storage. The view-toggle link below puts the choice
+        in the URL (?view=…) so it survives reloads within the session."""
         try:
             args = getattr(pn.state, "session_args", None) or {}
             q = args.get("view")
@@ -4448,13 +4452,6 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
                     return val, "query"
         except Exception as e:
             print(f"[view] query parse failed: {e}")
-        try:
-            cookies = getattr(pn.state, "cookies", None) or {}
-            v = cookies.get("hani_view")
-            if v in ("simple", "full"):
-                return v, "cookie"
-        except Exception:
-            pass
         try:
             ua = (getattr(pn.state, "headers", None) or {}).get("User-Agent", "")
             import re as _re
@@ -4488,18 +4485,18 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     )
 
     # Header switch: toggles between full and simplified views by
-    # setting a cookie and reloading with the corresponding query
-    # parameter.
+    # reloading with the corresponding ?view= query string. No cookie
+    # is set — keeping HANI cookie-free dodges the EU consent banner
+    # requirement (Prolific participants in particular skip any
+    # preference-cookie prompt). The choice persists inside the
+    # current session because the URL carries it; users who want to
+    # lock a preference can bookmark `…/hanplay/app?view=simple`.
     # Plain anchor styled as a button — no Bokeh callbacks involved.
-    # Reliably navigates in both directions; full page reload picks up
-    # the new ?view= and resolves the layout server-side.
     target_view = "full" if view_mode == "simple" else "simple"
     label = "Full view" if view_mode == "simple" else "Simple view"
     view_toggle_row = pn.pane.HTML(
         (
             f'<a href="?view={target_view}" '
-            f'onclick="document.cookie=\'hani_view={target_view}; path=/; '
-            f'max-age=31536000; SameSite=Lax\';" '
             f'style="display: inline-block; padding: 4px 10px; '
             f'color: white; background: rgba(255,255,255,0.12); '
             f'border-radius: 4px; text-decoration: none; '
