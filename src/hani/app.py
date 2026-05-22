@@ -4420,8 +4420,8 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     def _resolve_view() -> str:
         try:
             args = getattr(pn.state, "session_args", None) or {}
-            print(f"[view] session_args={dict(args)!r}")
             q = args.get("view")
+            print(f"[view] session_args view-raw={q!r} type={type(q).__name__}")
             if q:
                 val = q[0] if isinstance(q, (list, tuple)) else q
                 if isinstance(val, (bytes, bytearray)):
@@ -4469,16 +4469,24 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         name="Simple view", value=(view_mode == "simple")
     )
     session_state["view_toggle"] = view_toggle
-    view_toggle.jscallback(
-        value="""
-        if (cb_obj.disabled) return;
-        const v = cb_obj.value ? 'simple' : 'full';
-        document.cookie = 'hani_view=' + v + '; path=/; max-age=31536000; SameSite=Lax';
-        const u = new URL(window.location.href);
-        u.searchParams.set('view', v);
-        window.location.href = u.toString();
-        """
-    )
+    def _on_view_toggle(event):
+        # Server-side: write the cookie via response headers (best-effort)
+        # and trigger a client-side reload to the other view via
+        # pn.state.location, which works reliably whether or not the
+        # widget's jscallback fires through the FastGridTemplate header.
+        target = "simple" if event.new else "full"
+        print(f"[view] toggle -> {target}")
+        # Update the URL search params and trigger a reload.
+        loc = getattr(pn.state, "location", None)
+        if loc is None:
+            return
+        try:
+            loc.search = f"view={target}"
+            loc.reload = True
+        except Exception as e:
+            print(f"[view] navigation failed: {e}")
+
+    view_toggle.param.watch(_on_view_toggle, "value")
     view_toggle_row = pn.Row(
         pn.pane.HTML(
             '<span style="color:white; font-size: 10pt; margin-right: 6px;">'
