@@ -24,6 +24,53 @@ LAYOUT_OPTIONS = dict(
     font=dict(family="Segoe UI, sans-serif", color="#282D3C"),
 )
 
+# Long, plain-language explanation of how the participant's utility is
+# computed, with two worked numeric examples. Shown at the top of the
+# Preferences pane in a collapsible card. No Markdown tables (Panel's
+# Markdown pane doesn't render them reliably) -- plain text + lists only.
+PREFERENCES_HELP_MD = """
+Your **preferences** say how good each possible agreement is *for you*, on a
+scale from **0% (worst) to 100% (best)**. Your AI opponent has its own
+preferences, and you usually value things differently — that difference is
+what makes a deal worth doing.
+
+**How a deal's value is worked out**
+
+An agreement fixes one option for every *issue* (for example a price, a
+quantity, a delivery time). Each issue feeds your overall score in two steps:
+
+- **Issue value** — within a single issue, each option is worth a percentage
+  to you (the bar chart on the right, after you pick an issue). 100% is your
+  favourite option for that issue, 0% your least favourite.
+- **Issue weight** — issues aren't equally important. The pie chart shows how
+  much each issue *weighs*; the weights add up to 100%.
+
+Your total score for a deal is the **weighted sum** of the issue values:
+
+> total = weight₁ × value₁ + weight₂ × value₂ + … (across all issues)
+
+**Value on Disagreement** is what you score if the negotiation ends with **no
+agreement**. A deal worth *more* than that beats walking away; a deal worth
+*less* is worse than no deal at all.
+
+**A worked example (two issues: Price and Delivery)**
+
+Say Price weighs **70%** and Delivery weighs **30%**, and your values are:
+
+- Price: **$10 → 100%**, **$20 → 50%**
+- Delivery: **Fast → 100%**, **Slow → 20%**
+
+Then:
+
+- Deal A — *$20, Fast*: 0.70 × 50% + 0.30 × 100% = 35% + 30% = **65%**
+- Deal B — *$10, Slow*: 0.70 × 100% + 0.30 × 20% = 70% + 6% = **76%**
+
+So **Deal B is better for you (76% vs 65%)** — a low price matters enough that
+you'd take slow delivery to get it. If your *Value on Disagreement* were
+**40%**, both deals beat no deal, but you should still aim for the
+higher-scoring one.
+"""
+
 # Layout for issue value bar charts (smaller font)
 ISSUE_LAYOUT_OPTIONS = dict(
     showlegend=False,
@@ -128,11 +175,22 @@ class PreferencesTool(Tool):
     def panel(self):
         ufun = self.ufun
         issue_index = pn.widgets.Select.from_param(self.param.issue_index, name="")
-        return pn.Row(
-            pn.Column(
-                pn.pane.Markdown("**Issue Weights**"), self.weights, self.reserved
+        explanation = pn.Card(
+            pn.pane.Markdown(PREFERENCES_HELP_MD, sizing_mode="stretch_width"),
+            title="How your preferences work",
+            collapsed=False,
+            sizing_mode="stretch_width",
+            margin=(0, 0, 8, 0),
+        )
+        return pn.Column(
+            explanation,
+            pn.Row(
+                pn.Column(
+                    pn.pane.Markdown("**Issue Weights**"), self.weights, self.reserved
+                ),
+                pn.Column(issue_index, self._issue_view),
             ),
-            pn.Column(issue_index, self._issue_view),
+            sizing_mode="stretch_width",
         )
 
 

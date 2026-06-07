@@ -1291,15 +1291,15 @@ def save_result(m: SAOMechanism):
                     "and bonus."
                 )
             elif done_counted >= n_required:
-                pid = user[len(PROLIFIC_PREFIX):] if user.startswith(PROLIFIC_PREFIX) else user
-                submit_url = _prolific_submit_url(pid)
+                # No submit link here on purpose: end_session() still has to
+                # show the per-negotiation questionnaire for THIS (final)
+                # round below, and a link here would let the participant
+                # skip it. The "Finish & submit" link appears only after
+                # that last questionnaire is submitted (see end_session).
                 msg = (
                     f"All {n_required} counted negotiations are done. "
-                    f'<a href="{submit_url}" target="_top" '
-                    f'style="font-weight:bold;text-decoration:underline">'
-                    f"Click here to submit your session</a> "
-                    f"(opens the post-session questionnaire, then sends "
-                    f"you back to Prolific)."
+                    f"Complete the final step shown below to finish and "
+                    f"submit on Prolific."
                 )
             elif uncounted:
                 msg = (
@@ -1364,6 +1364,24 @@ def end_session():
     # block the participant. Diagnostic prints land in runguest.log
     # so it's easy to tell which fallback path was taken.
     if _is_prolific_user(user):
+        # Did THIS round complete the session (counted >= quota)? If so,
+        # after the per-negotiation questionnaire we show a "Finish &
+        # submit" panel instead of another Load button -- and that panel
+        # holds the only submit link, so it can't be reached before the
+        # final questionnaire is answered.
+        prolific_done = False
+        pid_clean = (
+            user[len(PROLIFIC_PREFIX):] if user.startswith(PROLIFIC_PREFIX) else user
+        )
+        try:
+            _meta = _prolific_meta(session_state["user_path"], user)
+            _done_counted = _count_counted_this_session(
+                session_state["user_path"], _meta.get("started_at", "")
+            )
+            prolific_done = _done_counted >= PROLIFIC_N_REQUIRED
+        except Exception:
+            prolific_done = False
+
         spec = _per_neg_questionnaire_spec()
         if spec and spec.get("questions"):
             scenario_name = ""
@@ -1374,11 +1392,17 @@ def end_session():
             agent_type_str = str(session_state.get("last_partner_type", ""))
 
             def _after_submit():
-                # Replace the form with the regular Load button.
+                # Session finished -> finish/submit panel; otherwise the
+                # regular Load button for the next negotiation.
                 session_state["action_panel"].clear()
-                session_state["action_panel"].append(
-                    load_form(session_state["selectable_scenario_type"])
-                )
+                if prolific_done:
+                    session_state["action_panel"].append(
+                        _prolific_finish_panel(pid_clean)
+                    )
+                else:
+                    session_state["action_panel"].append(
+                        load_form(session_state["selectable_scenario_type"])
+                    )
 
             print(
                 f"[per-neg] rendering form for mechanism_id={mechanism.id} "
@@ -1403,6 +1427,14 @@ def end_session():
                 "(checked $PROLIFIC_PER_NEG_YAML, ~/scmlweb/..., "
                 "~/code/sites/scmlweb/...); skipping questionnaire form"
             )
+            # No per-negotiation questionnaire, but if the session is done
+            # still send the participant to finish rather than offering
+            # another Load button.
+            if prolific_done:
+                session_state["action_panel"].append(
+                    _prolific_finish_panel(pid_clean)
+                )
+                return
 
     session_state["action_panel"].append(
         load_form(session_state["selectable_scenario_type"])
@@ -2673,6 +2705,40 @@ def _lock_sidebar_settings():
                 pass
 
 
+def _set_phase_badge(label: str | None, *, practice: bool = False):
+    """Update the header badge shown beside the title. `label` None/empty
+    clears it. Used for Prolific rounds: "Practice Negotiation" / "Negotiation X".
+    No-op when the badge pane isn't present (e.g. mid-build)."""
+    badge = session_state.get("phase_badge")
+    if badge is None:
+        return
+    if not label:
+        badge.object = ""
+        return
+    bg = "#f59f00" if practice else "#4dabf7"
+    badge.object = (
+        f'<span style="display:inline-block;padding:3px 12px;margin:0 12px;'
+        f'background:{bg};color:#fff;border-radius:12px;font-size:11pt;'
+        f'font-weight:600;vertical-align:middle;white-space:nowrap;">{label}</span>'
+    )
+
+
+def _focus_preferences_tab():
+    """Switch the on-screen tool tabs to the Preferences pane (used when a
+    negotiation starts so the participant sees their own preferences rather
+    than the scenario info). Works in both the full view (upper_tabs) and the
+    simple view (combined_tabs) via session_state["display_tabs"]."""
+    tabs = session_state.get("display_tabs")
+    if tabs is None:
+        return
+    try:
+        names = list(getattr(tabs, "_names", None) or [])
+        idx = names.index("Preferences")
+        tabs.active = idx
+    except Exception:
+        pass
+
+
 def start_negotiation(event=None):
     # Cancel any pending Prolific auto-start timer (scheduled by
     # load_scenario when the participant pressed Load but hadn't
@@ -2736,11 +2802,14 @@ def start_negotiation(event=None):
         if is_practice_round:
             partner_type = _pick_practice_pan_partner() or partner_type
             prolific_time_limit = PROLIFIC_PRACTICE_TIME_LIMIT
+            _set_phase_badge("Practice Negotiation", practice=True)
         else:
             prolific_time_limit = PROLIFIC_COUNTED_TIME_LIMIT
             counted_slot = _count_counted_this_session(
                 session_state["user_path"], meta.get("started_at", "")
             )
+            # The round about to start is the (counted_slot + 1)-th counted one.
+            _set_phase_badge(f"Negotiation {counted_slot + 1}")
             sched = _load_prolific_schedule(session_state["user_path"]) or []
             if 0 <= counted_slot < len(sched):
                 entry = sched[counted_slot] if isinstance(sched[counted_slot], dict) else {}
@@ -2820,6 +2889,9 @@ def start_negotiation(event=None):
             step_to_human()
             add_tools(Timing.Start)
             send_event_to_tools("negotiation_started")
+            # Surface the participant's own preferences now that the
+            # round is live (instead of leaving Scenario Info focused).
+            _focus_preferences_tab()
         finally:
             _hide_typing_indicator()
             _set_action_buttons_disabled(False)
@@ -2906,7 +2978,7 @@ PROLIFIC_FINALIST_TYPES: list[str] = [
 # top; returning sessions skip practice (cap is just N_REQUIRED).
 PROLIFIC_N_REQUIRED = int(os.environ.get("PROLIFIC_N_REQUIRED", "4"))
 MAX_PROLIFIC_NEGS = PROLIFIC_N_REQUIRED + 1  # 1 practice + N counted (first session)
-MAX_PROLIFIC_MINUTES = int(os.environ.get("PROLIFIC_MAX_MINUTES", "45"))
+MAX_PROLIFIC_MINUTES = int(os.environ.get("PROLIFIC_MAX_MINUTES", "60"))
 # Per-round negotiation time caps (seconds). The familiarization
 # (practice) round stays short; counted rounds get longer. These are
 # fallbacks: when schedule.json carries a per-entry "time_limit"
@@ -3206,6 +3278,32 @@ def _prolific_submit_url(pid: str) -> str:
     """
     base = os.environ.get("SCMLWEB_BASE_URL", "https://anac.cs.brown.edu").rstrip("/")
     return f"{base}/prolific/done?PROLIFIC_PID={pid}"
+
+
+def _prolific_finish_panel(pid: str):
+    """End-of-session panel shown in the action area AFTER the final
+    per-negotiation questionnaire is submitted. It carries the only
+    "Finish & submit" link (-> scmlweb /prolific/done, which runs the
+    post-session questionnaire then returns the participant to Prolific),
+    so the link can never be reached before that last questionnaire."""
+    url = _prolific_submit_url(pid)
+    return pn.pane.HTML(
+        f"""<div style="padding:16px;border:2px solid #69db7c;border-radius:10px;
+             background:#ebfbee;">
+          <div style="font-size:14pt;font-weight:700;color:#2b8a3e;margin-bottom:6px;">
+            You're all done &mdash; thank you!</div>
+          <p style="margin:0 0 12px 0;color:#2b3a2b;">
+            You've completed every negotiation and questionnaire. Click below to
+            answer one short final questionnaire and submit your session on
+            Prolific. You can also return to the Prolific tab you started from and
+            click <strong>I'm done</strong>. You may close this tab once you're
+            back on Prolific.</p>
+          <a href="{url}" target="_top" style="display:inline-block;padding:10px 18px;
+             background:#2f9e44;color:#fff;border-radius:6px;text-decoration:none;
+             font-weight:600;font-size:12pt;">Finish &amp; submit on Prolific</a>
+        </div>""",
+        sizing_mode="stretch_width",
+    )
 
 
 # Seconds to wait after Load before HANI auto-starts the negotiation
@@ -4564,6 +4662,16 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         header_background="#282D3C",  # Dark primary color from theme
     )
 
+    # Header badge shown beside the title. Empty until a negotiation
+    # starts; for Prolific rounds it reads "Practice session" or
+    # "Negotiation X" (see _set_phase_badge / start_negotiation).
+    phase_badge = pn.pane.HTML("", margin=0)
+    session_state["phase_badge"] = phase_badge
+    try:
+        template.header.append(phase_badge)
+    except Exception:
+        pass
+
     # Header switch: toggles between full and simplified views by
     # reloading with the corresponding ?view= query string. No cookie
     # is set — keeping HANI cookie-free dodges the EU consent banner
@@ -4601,6 +4709,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
     session_state["side_tabs"] = side_tabs = pn.Tabs()
     session_state["tools"] = []
+    # The tabs widget that actually displays Preferences / Scenario Info,
+    # so _focus_preferences_tab can switch to Preferences regardless of
+    # view. Full view shows upper_tabs directly; simple view replaces this
+    # with the combined Tabs below.
+    session_state["display_tabs"] = upper_tabs
     add_tools(Timing.Always)
 
     load_scenario()
@@ -4619,6 +4732,9 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         # (which insert into session_state[<...>_tabs]) put the new
         # tool panes into the combined Tabs too.
         combined_tabs = pn.Tabs(sizing_mode="stretch_both")
+        # In the simple view the combined Tabs is what's on screen, so
+        # focusing the Preferences tab must target it (not upper_tabs).
+        session_state["display_tabs"] = combined_tabs
         sources = (upper_tabs, lower_tabs, side_tabs)
 
         # Helper to install a watcher that mirrors the source into the
