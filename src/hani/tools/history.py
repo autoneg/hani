@@ -91,6 +91,16 @@ class NegotiationTraceTool(Tool):
         return pn.pane.DataFrame(df, index=False)
 
     def panel(self):
+        # The "Show Agent Utility" toggle is admin-only: regular
+        # participants must not see the agent's utilities. Lazy import of
+        # is_admin avoids a circular import (app imports this module).
+        try:
+            from hani.app import is_admin
+            admin = is_admin()
+        except Exception:
+            admin = False
+        if not admin:
+            return pn.Column(self.table)
         show_agent_checkbox = pn.widgets.Checkbox.from_param(
             self.param.show_agent_ufun, name="Show Agent Utility"
         )

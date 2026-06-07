@@ -183,13 +183,15 @@ class PreferencesTool(Tool):
             margin=(0, 0, 8, 0),
         )
         return pn.Column(
-            explanation,
             pn.Row(
                 pn.Column(
                     pn.pane.Markdown("**Issue Weights**"), self.weights, self.reserved
                 ),
                 pn.Column(issue_index, self._issue_view),
             ),
+            # Explainer goes last -- after the weights/issue charts and the
+            # Value on Disagreement.
+            explanation,
             sizing_mode="stretch_width",
         )
 
