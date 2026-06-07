@@ -535,6 +535,12 @@ class DisplayConfig:
     reverse_offers: bool = (
         True  # Show latest offers at top since autoscroll doesn't work
     )
+    # When False, the "Switch to Simple/Full view" link in the header is
+    # hidden and the resolver ignores ?view=… / mobile User-Agent hints —
+    # everyone gets the full view. Admins flip this on if they want to
+    # let participants pick a layout. Default is False so Prolific
+    # sessions render a uniform layout unless explicitly opted in.
+    allow_view_switching: bool = False
 
 
 TOOL_MAP = {
@@ -1631,14 +1637,27 @@ def _indicator_html(message: str) -> str:
 
 
 _TYPING_INDICATOR_HTML = _indicator_html("Partner is thinking…")
-_FIRST_OFFER_INDICATOR_HTML = _indicator_html("Partner is preparing the first offer…")
+_FIRST_OFFER_INDICATOR_HTML = _indicator_html("Loading…")
 _LOADING_SCENARIO_INDICATOR_HTML = _indicator_html("Loading scenario…")
 
 
 def _show_typing_indicator(html: str = _TYPING_INDICATOR_HTML):
     pane = session_state.get("typing_indicator")
-    if pane is not None:
-        pane.object = html
+    if pane is None:
+        return
+    # Park the indicator next to where new offers appear: above the
+    # history when "Last Offer on Top" is on (reverse_offers), below it
+    # otherwise. Otherwise the dots end up off-screen when the user has
+    # to scroll to see them.
+    wrapper = session_state.get("history_wrapper")
+    hist = session_state.get("history")
+    reverse_toggle = session_state.get("display", {}).get("reverse_offers")
+    reversed_view = bool(reverse_toggle.value) if reverse_toggle is not None else False
+    if wrapper is not None and hist is not None:
+        want = [pane, hist] if reversed_view else [hist, pane]
+        if list(wrapper.objects) != want:
+            wrapper.objects = want
+    pane.object = html
 
 
 def _hide_typing_indicator():
@@ -2568,6 +2587,11 @@ def step_to_human(event=None):
         # print(next_neg_ids[0], human_id, next_neg_ids[0] == human_id)
         if mechanism.state.done:
             break
+    # Partner's offer is now in the history. Hide the "thinking" /
+    # "loading" indicator before the (potentially slow) tool callbacks
+    # and action-panel rebuild run, so the dots disappear as soon as
+    # the user can read the offer rather than after the full UI redraws.
+    _hide_typing_indicator()
     human_index = session_state["human_index"]
     for tool in session_state["tools"]:
         tool.action_requested(session_state, mechanism.negotiators[human_index].nmi)
@@ -4489,6 +4513,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         EU-jurisdiction visitor) doesn't need a cookie banner for
         preference storage. The view-toggle link below puts the choice
         in the URL (?view=…) so it survives reloads within the session."""
+        # Admin-controlled lock: when view switching is disabled the
+        # resolver short-circuits to 'full' and ignores ?view= /
+        # User-Agent hints so the layout is uniform for everyone.
+        if not CONFIG.display.allow_view_switching:
+            return "full", "locked"
         try:
             args = getattr(pn.state, "session_args", None) or {}
             q = args.get("view")
@@ -4543,24 +4572,30 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # current session because the URL carries it; users who want to
     # lock a preference can bookmark `…/hanplay/app?view=simple`.
     # Plain anchor styled as a button — no Bokeh callbacks involved.
-    target_view = "full" if view_mode == "simple" else "simple"
-    label = "Full view" if view_mode == "simple" else "Simple view"
-    view_toggle_row = pn.pane.HTML(
-        (
-            f'<a href="?view={target_view}" '
-            f'style="display: inline-block; padding: 4px 10px; '
-            f'color: white; background: rgba(255,255,255,0.12); '
-            f'border-radius: 4px; text-decoration: none; '
-            f'font-size: 10pt; margin: 0 12px;">'
-            f"Switch to {label}</a>"
-        ),
-        margin=0,
-    )
-    session_state["view_toggle_row"] = view_toggle_row
-    try:
-        template.header.append(view_toggle_row)
-    except Exception:
-        pass
+    # Only render the toggle when the admin has opted into letting
+    # participants pick a layout (CONFIG.display.allow_view_switching).
+    # Otherwise the header stays clean and the view is locked to 'full'.
+    if CONFIG.display.allow_view_switching:
+        target_view = "full" if view_mode == "simple" else "simple"
+        label = "Full view" if view_mode == "simple" else "Simple view"
+        view_toggle_row = pn.pane.HTML(
+            (
+                f'<a href="?view={target_view}" '
+                f'style="display: inline-block; padding: 4px 10px; '
+                f'color: white; background: rgba(255,255,255,0.12); '
+                f'border-radius: 4px; text-decoration: none; '
+                f'font-size: 10pt; margin: 0 12px;">'
+                f"Switch to {label}</a>"
+            ),
+            margin=0,
+        )
+        session_state["view_toggle_row"] = view_toggle_row
+        try:
+            template.header.append(view_toggle_row)
+        except Exception:
+            pass
+    else:
+        session_state["view_toggle_row"] = None
 
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
