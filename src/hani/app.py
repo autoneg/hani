@@ -271,6 +271,9 @@ pn.extension(
     sizing_mode="stretch_width", notifications=True,
 )
 pn.config.throttled = True
+# Show Panel's built-in spinner for any component marked loading=True,
+# and for the page itself while Bokeh is still establishing the session.
+pn.config.loading_spinner = "dots"
 
 # Override gray background with white
 pn.config.raw_css.append("""
@@ -1598,7 +1601,7 @@ def start_button():
     return pn.Column(strt_btn)
 
 
-_TYPING_INDICATOR_HTML = """
+_TYPING_INDICATOR_CSS = """
 <style>
   @keyframes hani-blink {
     0%, 80%, 100% { opacity: 0.2; }
@@ -1614,17 +1617,28 @@ _TYPING_INDICATOR_HTML = """
   .hani-typing .dot:nth-child(2) { animation-delay: 0.2s; }
   .hani-typing .dot:nth-child(3) { animation-delay: 0.4s; }
 </style>
-<div class="hani-typing">
-  <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-  <span>Partner is thinking…</span>
-</div>
 """
 
 
-def _show_typing_indicator():
+def _indicator_html(message: str) -> str:
+    return (
+        f'{_TYPING_INDICATOR_CSS}'
+        f'<div class="hani-typing">'
+        f'<span class="dot"></span><span class="dot"></span><span class="dot"></span>'
+        f'<span>{message}</span>'
+        f'</div>'
+    )
+
+
+_TYPING_INDICATOR_HTML = _indicator_html("Partner is thinking…")
+_FIRST_OFFER_INDICATOR_HTML = _indicator_html("Partner is preparing the first offer…")
+_LOADING_SCENARIO_INDICATOR_HTML = _indicator_html("Loading scenario…")
+
+
+def _show_typing_indicator(html: str = _TYPING_INDICATOR_HTML):
     pane = session_state.get("typing_indicator")
     if pane is not None:
-        pane.object = _TYPING_INDICATOR_HTML
+        pane.object = html
 
 
 def _hide_typing_indicator():
@@ -2736,45 +2750,61 @@ def start_negotiation(event=None):
     if session_state["partners"]["show_partner_type"].value:
         session_state["history"].append(pn.pane.HTML(f"Partner type: {partner_type}"))
 
-    # load_scenario()
-    # print("Starting negotiation")
-    scenario = session_state["scenario"]
-    human_index = session_state["human_index"]
-    mechanism = session_state["mechanism"] = make_mechanism(
-        scenario=scenario,
-        one_offer_per_step=True,
-        sync_calls=True,
-        human_index=human_index,
-        n_steps=session_state["timing"]["n_steps"].value,
-        # Prolific rounds use the per-round cap (practice short, counted
-        # long); admins keep the uncapped widget value (None).
-        time_limit=(
-            prolific_time_limit
-            if (prolific_time_limit is not None and not is_admin())
-            else session_state["timing"]["time_limit"].value
-        ),
-        pend=session_state["timing"]["pend"].value,
-        pend_per_second=session_state["timing"]["pend_per_second"].value,
-        step_time_limit=session_state["timing"]["step_time_limit"].value,
-        negotiator_time_limit=session_state["timing"]["negotiator_time_limit"].value,
-        agent_type=partner_type,
-    )
-    session_state["timer"].set_duration(mechanism.time_limit)
-    session_state["timer"].start()
-    session_state["human_action"] = None
-    session_state["negotiation_started"] = True
-    # Switching view reloads the page, which would kill the live
-    # negotiation. Hide the view toggle (and its label) until the
-    # round ends.
-    _vt_row = session_state.get("view_toggle_row")
-    if _vt_row is not None:
+    # Paint the "preparing first offer" indicator before doing any work
+    # that can block (LLM negotiator construction, first agent step).
+    # Timer.start() is also deferred so the per-round countdown does not
+    # tick during LLM warm-up — fairer for Prolific rounds.
+    _show_typing_indicator(_FIRST_OFFER_INDICATOR_HTML)
+    _set_action_buttons_disabled(True)
+
+    def _prepare_and_step():
         try:
-            _vt_row.visible = False
-        except Exception:
-            pass
-    step_to_human()
-    add_tools(Timing.Start)
-    send_event_to_tools("negotiation_started")
+            scenario = session_state["scenario"]
+            human_index = session_state["human_index"]
+            mechanism = session_state["mechanism"] = make_mechanism(
+                scenario=scenario,
+                one_offer_per_step=True,
+                sync_calls=True,
+                human_index=human_index,
+                n_steps=session_state["timing"]["n_steps"].value,
+                # Prolific rounds use the per-round cap (practice short,
+                # counted long); admins keep the uncapped widget value (None).
+                time_limit=(
+                    prolific_time_limit
+                    if (prolific_time_limit is not None and not is_admin())
+                    else session_state["timing"]["time_limit"].value
+                ),
+                pend=session_state["timing"]["pend"].value,
+                pend_per_second=session_state["timing"]["pend_per_second"].value,
+                step_time_limit=session_state["timing"]["step_time_limit"].value,
+                negotiator_time_limit=session_state["timing"]["negotiator_time_limit"].value,
+                agent_type=partner_type,
+            )
+            session_state["timer"].set_duration(mechanism.time_limit)
+            session_state["timer"].start()
+            session_state["human_action"] = None
+            session_state["negotiation_started"] = True
+            # Switching view reloads the page, which would kill the live
+            # negotiation. Hide the view toggle (and its label) until the
+            # round ends.
+            _vt_row = session_state.get("view_toggle_row")
+            if _vt_row is not None:
+                try:
+                    _vt_row.visible = False
+                except Exception:
+                    pass
+            step_to_human()
+            add_tools(Timing.Start)
+            send_event_to_tools("negotiation_started")
+        finally:
+            _hide_typing_indicator()
+            _set_action_buttons_disabled(False)
+
+    doc = pn.state.curdoc
+    if doc is not None:
+        doc.add_next_tick_callback(_prepare_and_step)
+    else:
+        _prepare_and_step()
 
     # Log negotiation started event
     try:
@@ -3486,11 +3516,6 @@ def load_scenario(event=None):
     except Exception as e:
         print(f"Warning: Could not log scenario loaded event: {e}")
 
-    # session_state["tools"] = []
-    # session_state["upper_tabs"] = pn.Tabs()
-    # session_state["lower_tabs"] = pn.Tabs()
-    # session_state["side_tabs"] = pn.Tabs()
-    # add_tools(Timing.Always)
     add_tools(Timing.Load)
     send_event_to_tools("scenario_loaded")
 
