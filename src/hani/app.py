@@ -271,6 +271,9 @@ pn.extension(
     sizing_mode="stretch_width", notifications=True,
 )
 pn.config.throttled = True
+# Show Panel's built-in spinner for any component marked loading=True,
+# and for the page itself while Bokeh is still establishing the session.
+pn.config.loading_spinner = "dots"
 
 # Override gray background with white
 pn.config.raw_css.append("""
@@ -532,6 +535,12 @@ class DisplayConfig:
     reverse_offers: bool = (
         True  # Show latest offers at top since autoscroll doesn't work
     )
+    # When False, the "Switch to Simple/Full view" link in the header is
+    # hidden and the resolver ignores ?view=… / mobile User-Agent hints —
+    # everyone gets the full view. Admins flip this on if they want to
+    # let participants pick a layout. Default is False so Prolific
+    # sessions render a uniform layout unless explicitly opted in.
+    allow_view_switching: bool = False
 
 
 TOOL_MAP = {
@@ -1598,7 +1607,7 @@ def start_button():
     return pn.Column(strt_btn)
 
 
-_TYPING_INDICATOR_HTML = """
+_TYPING_INDICATOR_CSS = """
 <style>
   @keyframes hani-blink {
     0%, 80%, 100% { opacity: 0.2; }
@@ -1614,17 +1623,41 @@ _TYPING_INDICATOR_HTML = """
   .hani-typing .dot:nth-child(2) { animation-delay: 0.2s; }
   .hani-typing .dot:nth-child(3) { animation-delay: 0.4s; }
 </style>
-<div class="hani-typing">
-  <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-  <span>Partner is thinking…</span>
-</div>
 """
 
 
-def _show_typing_indicator():
+def _indicator_html(message: str) -> str:
+    return (
+        f'{_TYPING_INDICATOR_CSS}'
+        f'<div class="hani-typing">'
+        f'<span class="dot"></span><span class="dot"></span><span class="dot"></span>'
+        f'<span>{message}</span>'
+        f'</div>'
+    )
+
+
+_TYPING_INDICATOR_HTML = _indicator_html("Partner is thinking…")
+_FIRST_OFFER_INDICATOR_HTML = _indicator_html("Loading…")
+_LOADING_SCENARIO_INDICATOR_HTML = _indicator_html("Loading scenario…")
+
+
+def _show_typing_indicator(html: str = _TYPING_INDICATOR_HTML):
     pane = session_state.get("typing_indicator")
-    if pane is not None:
-        pane.object = _TYPING_INDICATOR_HTML
+    if pane is None:
+        return
+    # Park the indicator next to where new offers appear: above the
+    # history when "Last Offer on Top" is on (reverse_offers), below it
+    # otherwise. Otherwise the dots end up off-screen when the user has
+    # to scroll to see them.
+    wrapper = session_state.get("history_wrapper")
+    hist = session_state.get("history")
+    reverse_toggle = session_state.get("display", {}).get("reverse_offers")
+    reversed_view = bool(reverse_toggle.value) if reverse_toggle is not None else False
+    if wrapper is not None and hist is not None:
+        want = [pane, hist] if reversed_view else [hist, pane]
+        if list(wrapper.objects) != want:
+            wrapper.objects = want
+    pane.object = html
 
 
 def _hide_typing_indicator():
@@ -2554,6 +2587,11 @@ def step_to_human(event=None):
         # print(next_neg_ids[0], human_id, next_neg_ids[0] == human_id)
         if mechanism.state.done:
             break
+    # Partner's offer is now in the history. Hide the "thinking" /
+    # "loading" indicator before the (potentially slow) tool callbacks
+    # and action-panel rebuild run, so the dots disappear as soon as
+    # the user can read the offer rather than after the full UI redraws.
+    _hide_typing_indicator()
     human_index = session_state["human_index"]
     for tool in session_state["tools"]:
         tool.action_requested(session_state, mechanism.negotiators[human_index].nmi)
@@ -2736,45 +2774,61 @@ def start_negotiation(event=None):
     if session_state["partners"]["show_partner_type"].value:
         session_state["history"].append(pn.pane.HTML(f"Partner type: {partner_type}"))
 
-    # load_scenario()
-    # print("Starting negotiation")
-    scenario = session_state["scenario"]
-    human_index = session_state["human_index"]
-    mechanism = session_state["mechanism"] = make_mechanism(
-        scenario=scenario,
-        one_offer_per_step=True,
-        sync_calls=True,
-        human_index=human_index,
-        n_steps=session_state["timing"]["n_steps"].value,
-        # Prolific rounds use the per-round cap (practice short, counted
-        # long); admins keep the uncapped widget value (None).
-        time_limit=(
-            prolific_time_limit
-            if (prolific_time_limit is not None and not is_admin())
-            else session_state["timing"]["time_limit"].value
-        ),
-        pend=session_state["timing"]["pend"].value,
-        pend_per_second=session_state["timing"]["pend_per_second"].value,
-        step_time_limit=session_state["timing"]["step_time_limit"].value,
-        negotiator_time_limit=session_state["timing"]["negotiator_time_limit"].value,
-        agent_type=partner_type,
-    )
-    session_state["timer"].set_duration(mechanism.time_limit)
-    session_state["timer"].start()
-    session_state["human_action"] = None
-    session_state["negotiation_started"] = True
-    # Switching view reloads the page, which would kill the live
-    # negotiation. Hide the view toggle (and its label) until the
-    # round ends.
-    _vt_row = session_state.get("view_toggle_row")
-    if _vt_row is not None:
+    # Paint the "preparing first offer" indicator before doing any work
+    # that can block (LLM negotiator construction, first agent step).
+    # Timer.start() is also deferred so the per-round countdown does not
+    # tick during LLM warm-up — fairer for Prolific rounds.
+    _show_typing_indicator(_FIRST_OFFER_INDICATOR_HTML)
+    _set_action_buttons_disabled(True)
+
+    def _prepare_and_step():
         try:
-            _vt_row.visible = False
-        except Exception:
-            pass
-    step_to_human()
-    add_tools(Timing.Start)
-    send_event_to_tools("negotiation_started")
+            scenario = session_state["scenario"]
+            human_index = session_state["human_index"]
+            mechanism = session_state["mechanism"] = make_mechanism(
+                scenario=scenario,
+                one_offer_per_step=True,
+                sync_calls=True,
+                human_index=human_index,
+                n_steps=session_state["timing"]["n_steps"].value,
+                # Prolific rounds use the per-round cap (practice short,
+                # counted long); admins keep the uncapped widget value (None).
+                time_limit=(
+                    prolific_time_limit
+                    if (prolific_time_limit is not None and not is_admin())
+                    else session_state["timing"]["time_limit"].value
+                ),
+                pend=session_state["timing"]["pend"].value,
+                pend_per_second=session_state["timing"]["pend_per_second"].value,
+                step_time_limit=session_state["timing"]["step_time_limit"].value,
+                negotiator_time_limit=session_state["timing"]["negotiator_time_limit"].value,
+                agent_type=partner_type,
+            )
+            session_state["timer"].set_duration(mechanism.time_limit)
+            session_state["timer"].start()
+            session_state["human_action"] = None
+            session_state["negotiation_started"] = True
+            # Switching view reloads the page, which would kill the live
+            # negotiation. Hide the view toggle (and its label) until the
+            # round ends.
+            _vt_row = session_state.get("view_toggle_row")
+            if _vt_row is not None:
+                try:
+                    _vt_row.visible = False
+                except Exception:
+                    pass
+            step_to_human()
+            add_tools(Timing.Start)
+            send_event_to_tools("negotiation_started")
+        finally:
+            _hide_typing_indicator()
+            _set_action_buttons_disabled(False)
+
+    doc = pn.state.curdoc
+    if doc is not None:
+        doc.add_next_tick_callback(_prepare_and_step)
+    else:
+        _prepare_and_step()
 
     # Log negotiation started event
     try:
@@ -3486,11 +3540,6 @@ def load_scenario(event=None):
     except Exception as e:
         print(f"Warning: Could not log scenario loaded event: {e}")
 
-    # session_state["tools"] = []
-    # session_state["upper_tabs"] = pn.Tabs()
-    # session_state["lower_tabs"] = pn.Tabs()
-    # session_state["side_tabs"] = pn.Tabs()
-    # add_tools(Timing.Always)
     add_tools(Timing.Load)
     send_event_to_tools("scenario_loaded")
 
@@ -4464,6 +4513,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         EU-jurisdiction visitor) doesn't need a cookie banner for
         preference storage. The view-toggle link below puts the choice
         in the URL (?view=…) so it survives reloads within the session."""
+        # Admin-controlled lock: when view switching is disabled the
+        # resolver short-circuits to 'full' and ignores ?view= /
+        # User-Agent hints so the layout is uniform for everyone.
+        if not CONFIG.display.allow_view_switching:
+            return "full", "locked"
         try:
             args = getattr(pn.state, "session_args", None) or {}
             q = args.get("view")
@@ -4518,24 +4572,30 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # current session because the URL carries it; users who want to
     # lock a preference can bookmark `…/hanplay/app?view=simple`.
     # Plain anchor styled as a button — no Bokeh callbacks involved.
-    target_view = "full" if view_mode == "simple" else "simple"
-    label = "Full view" if view_mode == "simple" else "Simple view"
-    view_toggle_row = pn.pane.HTML(
-        (
-            f'<a href="?view={target_view}" '
-            f'style="display: inline-block; padding: 4px 10px; '
-            f'color: white; background: rgba(255,255,255,0.12); '
-            f'border-radius: 4px; text-decoration: none; '
-            f'font-size: 10pt; margin: 0 12px;">'
-            f"Switch to {label}</a>"
-        ),
-        margin=0,
-    )
-    session_state["view_toggle_row"] = view_toggle_row
-    try:
-        template.header.append(view_toggle_row)
-    except Exception:
-        pass
+    # Only render the toggle when the admin has opted into letting
+    # participants pick a layout (CONFIG.display.allow_view_switching).
+    # Otherwise the header stays clean and the view is locked to 'full'.
+    if CONFIG.display.allow_view_switching:
+        target_view = "full" if view_mode == "simple" else "simple"
+        label = "Full view" if view_mode == "simple" else "Simple view"
+        view_toggle_row = pn.pane.HTML(
+            (
+                f'<a href="?view={target_view}" '
+                f'style="display: inline-block; padding: 4px 10px; '
+                f'color: white; background: rgba(255,255,255,0.12); '
+                f'border-radius: 4px; text-decoration: none; '
+                f'font-size: 10pt; margin: 0 12px;">'
+                f"Switch to {label}</a>"
+            ),
+            margin=0,
+        )
+        session_state["view_toggle_row"] = view_toggle_row
+        try:
+            template.header.append(view_toggle_row)
+        except Exception:
+            pass
+    else:
+        session_state["view_toggle_row"] = None
 
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
