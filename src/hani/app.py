@@ -2672,6 +2672,10 @@ def start_negotiation(event=None):
         types = SELECTED_AGENT_TYPES
 
     partner_type = None
+    # Per-round time cap for Prolific rounds (seconds). Stays None for
+    # non-Prolific users and admins, leaving the configured widget value
+    # (which is None = uncapped for admins) in force.
+    prolific_time_limit = None
     # Prolific schedule: pick the finalist for the current counted-slot.
     # Zero-action rounds keep the same opponent (counted_slot stays
     # put). Practice rounds (until the participant successfully
@@ -2693,14 +2697,23 @@ def start_negotiation(event=None):
             _lock_sidebar_settings()
         if is_practice_round:
             partner_type = _pick_practice_pan_partner() or partner_type
+            prolific_time_limit = PROLIFIC_PRACTICE_TIME_LIMIT
         else:
+            prolific_time_limit = PROLIFIC_COUNTED_TIME_LIMIT
             counted_slot = _count_counted_this_session(
                 session_state["user_path"], meta.get("started_at", "")
             )
             sched = _load_prolific_schedule(session_state["user_path"]) or []
             if 0 <= counted_slot < len(sched):
-                wanted = sched[counted_slot].get("agent_class_name") \
-                    if isinstance(sched[counted_slot], dict) else None
+                entry = sched[counted_slot] if isinstance(sched[counted_slot], dict) else {}
+                wanted = entry.get("agent_class_name")
+                # Per-round cap from schedule.json wins over the env/default
+                # counted cap when present (Laravel writes it per entry).
+                try:
+                    if entry.get("time_limit") is not None:
+                        prolific_time_limit = int(entry["time_limit"])
+                except (TypeError, ValueError):
+                    pass
                 if wanted:
                     for t in types:
                         if str(t).split(".")[-1] == wanted or str(t) == wanted:
@@ -2733,7 +2746,13 @@ def start_negotiation(event=None):
         sync_calls=True,
         human_index=human_index,
         n_steps=session_state["timing"]["n_steps"].value,
-        time_limit=session_state["timing"]["time_limit"].value,
+        # Prolific rounds use the per-round cap (practice short, counted
+        # long); admins keep the uncapped widget value (None).
+        time_limit=(
+            prolific_time_limit
+            if (prolific_time_limit is not None and not is_admin())
+            else session_state["timing"]["time_limit"].value
+        ),
         pend=session_state["timing"]["pend"].value,
         pend_per_second=session_state["timing"]["pend_per_second"].value,
         step_time_limit=session_state["timing"]["step_time_limit"].value,
@@ -2831,9 +2850,16 @@ PROLIFIC_FINALIST_TYPES: list[str] = [
 ]
 # Counted negotiations per session. First session adds one practice on
 # top; returning sessions skip practice (cap is just N_REQUIRED).
-PROLIFIC_N_REQUIRED = int(os.environ.get("PROLIFIC_N_REQUIRED", "5"))
+PROLIFIC_N_REQUIRED = int(os.environ.get("PROLIFIC_N_REQUIRED", "4"))
 MAX_PROLIFIC_NEGS = PROLIFIC_N_REQUIRED + 1  # 1 practice + N counted (first session)
 MAX_PROLIFIC_MINUTES = int(os.environ.get("PROLIFIC_MAX_MINUTES", "45"))
+# Per-round negotiation time caps (seconds). The familiarization
+# (practice) round stays short; counted rounds get longer. These are
+# fallbacks: when schedule.json carries a per-entry "time_limit"
+# (Laravel writes the counted cap there) it wins. Admins stay
+# uncapped. Must mirror scmlweb config/services.php prolific.*_time_limit.
+PROLIFIC_PRACTICE_TIME_LIMIT = int(os.environ.get("PROLIFIC_PRACTICE_TIME_LIMIT", "300"))
+PROLIFIC_COUNTED_TIME_LIMIT = int(os.environ.get("PROLIFIC_COUNTED_TIME_LIMIT", "600"))
 
 
 def _is_prolific_user(user: str | None) -> bool:
