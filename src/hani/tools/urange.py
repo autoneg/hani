@@ -35,14 +35,35 @@ class UtilityInverterTool(OutcomeSelector):
 
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         self.human_index = session_state["human_index"]
-        self._inverter = (
-            session_state["scenario"].ufuns[session_state["human_index"]].invert()
-        )
-        print(
-            f"Inverter recalculated for {session_state['scenario'].outcome_space.name}"
-        )
+        scenario = session_state["scenario"]
+        self._inverter = self._load_cached_inverter(session_state)
+        if self._inverter is None:
+            self._inverter = scenario.ufuns[self.human_index].invert()
+            print(f"Inverter recalculated for {scenario.outcome_space.name}")
+        else:
+            print(f"Inverter loaded from cache for {scenario.outcome_space.name}")
         super().negotiation_started(session_state, nmi)
         self.redraw()
+
+    def _load_cached_inverter(self, session_state: dict[str, Any]):
+        """Return the inverse pickled next to a disk-loaded scenario
+        (inverter_h<idx>.pkl), or None to fall back to recomputing. Computing
+        the inverse is cheap, so any cache miss / error just recomputes."""
+        sdir = session_state.get("scenario_dir")
+        if not sdir:
+            return None
+        try:
+            import pickle
+            from pathlib import Path
+
+            path = Path(sdir) / f"inverter_h{self.human_index}.pkl"
+            if not path.is_file():
+                return None
+            with path.open("rb") as fh:
+                return pickle.load(fh)
+        except Exception as e:  # pragma: no cover - defensive
+            print(f"[urange] cached inverter load failed ({e!r}); recomputing")
+            return None
 
     @param.depends("rng", "min_util")
     def outcomes_tbl(self):

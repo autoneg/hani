@@ -599,13 +599,11 @@ def default_tools():
             ),
             bottom=True,
         ),
-        ToolConfig(
-            "Outcome Plot",
-            TOOL_MAP["Outcome Plot"],
-            Timing.Start,
-            params=dict(mechanism="session:mechanism", human_id="session:human_id"),
-            bottom=True,
-        ),
+        # Outcome Plot and Trace are admin-only (added in the is_admin()
+        # block below). They're relatively expensive Plotly/table panes
+        # built eagerly at negotiation start, so keeping them out of the
+        # participant view shortens the time-to-interface for Prolific
+        # sessions. Admins still get both.
         ToolConfig(
             "Value Histogram",
             TOOL_MAP["Value Histogram"],
@@ -613,15 +611,6 @@ def default_tools():
             params=dict(mechanism="session:mechanism", human_id="session:human_id"),
             bottom=True,
             at_front=True,
-        ),
-        ToolConfig(
-            "Trace",
-            TOOL_MAP["Trace"],
-            Timing.Start,
-            params=dict(
-                mechanism="session:mechanism", human_index="session:human_index"
-            ),
-            bottom=True,
         ),
         # ToolConfig(
         #     "Session Results",
@@ -658,6 +647,24 @@ def default_tools():
     if is_admin():
         tools += [
             ToolConfig(
+                "Outcome Plot",
+                TOOL_MAP["Outcome Plot"],
+                Timing.Start,
+                params=dict(
+                    mechanism="session:mechanism", human_id="session:human_id"
+                ),
+                bottom=True,
+            ),
+            ToolConfig(
+                "Trace",
+                TOOL_MAP["Trace"],
+                Timing.Start,
+                params=dict(
+                    mechanism="session:mechanism", human_index="session:human_index"
+                ),
+                bottom=True,
+            ),
+            ToolConfig(
                 "LLM",
                 TOOL_MAP["Response Generator"],
                 Timing.Start,
@@ -693,9 +700,19 @@ def default_tools():
     return tools
 
 
+# Prolific deployments point this at a pre-generated, curated scenario pool
+# (built by python/generate_prolific_scenarios.py). When unset we fall back to
+# the bundled SAMPLE_SCENRIOS dir. Reading it here finally wires up the
+# HANI_PROLIFIC_SCENARIOS_BASE env documented in scmlweb/exports.sh.
+_PROLIFIC_SCEN_BASE = os.environ.get("HANI_PROLIFIC_SCENARIOS_BASE", "").strip()
+SCENARIOS_BASE_DEFAULT = (
+    Path(_PROLIFIC_SCEN_BASE) if _PROLIFIC_SCEN_BASE else SAMPLE_SCENRIOS
+)
+
+
 @define
 class AppConfig:
-    scenarios_base: Path | str = SAMPLE_SCENRIOS
+    scenarios_base: Path | str = SCENARIOS_BASE_DEFAULT
     human_index: int = 1
     n_steps: int | None = 100
     time_limit: float | None = None if is_admin() else 300
@@ -799,6 +816,17 @@ def load_type(k: str, index: int):
     _indx = index
     last_index = 0
     allow_load = session_state["scenarios"]["load"].value
+    # Prolific participants always draw from the curated, pre-generated pool
+    # (python/generate_prolific_scenarios.py) for experimental control, no
+    # matter the admin "Load Existing Scenarios" checkbox (which defaults off
+    # in the cookie-free guest). Falls back to on-the-fly generation below if
+    # the pool dir is empty, so this is safe even before the pool is built.
+    if _is_prolific_user(session_state.get("user", "")):
+        allow_load = True
+    # Dir the scenario was loaded from (used to pick up a cached ufun inverse).
+    # Stays None whenever we generate on the fly, so the cache is only trusted
+    # when it actually matches the served scenario.
+    session_state["scenario_dir"] = None
 
     if type_base.exists() and allow_load:
         numbers = [int(_.name[:4]) for _ in type_base.glob("*") if _.is_dir()]
@@ -843,6 +871,10 @@ def load_type(k: str, index: int):
         else:
             print(f"[red]Cannot load scenario[/red] from {path}. Will fail.")
             raise ValueError(f"Cannot load scenario from {path}. Will fail.")
+    else:
+        # Loaded straight from disk -> a cached inverse pickled next to it
+        # (inverter_h<idx>.pkl) is valid for this exact scenario.
+        session_state["scenario_dir"] = str(path)
     scenario.info = load(path / INFO_FILE)
     print(
         f"Loaded scenario from {path.name}... with index {index} for {session_state['user']}"
@@ -1127,14 +1159,18 @@ def save_result(m: SAOMechanism):
     # so Accept and End from the human side need separate accounting.
     status = get_status(m.state)
     human_ended = bool(session_state.get("human_ended_negotiation", False))
-    # A success (agreement) is always an explicit human decision: either
-    # the human accepted the agent's offer, or the agent accepted the
-    # human's offer (which means the human at least made one proposal).
-    # An End-by-human is likewise an explicit decision. Either case
-    # should count toward the participant's quota even if full_trace
-    # didn't record a row attributable to the human (e.g. when they
-    # accepted the very first agent offer).
-    if status == "success" or human_ended:
+    # A success (agreement) is always an explicit human action: the human
+    # accepted the agent's offer, or the agent accepted the human's (which
+    # means the human made at least one proposal). Count it even when
+    # full_trace has no row attributable to the human (e.g. they accepted the
+    # very first agent offer).
+    #
+    # A bare End/Leave is deliberately NOT counted as an action: "ended
+    # immediately without doing anything" must NOT count toward the quota (it
+    # shows the red 'did not count' notice and returns to Load instead of a
+    # questionnaire). If the human actually made offers before ending, those
+    # already show up in full_trace, so n_human_actions is > 0 on its own.
+    if status == "success":
         n_human_actions = max(n_human_actions, 1)
     if status == "broken":
         ended_by = "human" if human_ended else "agent"
@@ -1188,6 +1224,12 @@ def save_result(m: SAOMechanism):
             human_index=human_index,
             human_id=session_state["human_id"],
             user=session_state["user"],
+            # Opponent class faced this round (finalist dotted-path in Prolific
+            # mode, PAN-pool class for practice). Recorded as a first-class
+            # column so scores can be averaged per agent_type, and so a
+            # skipped per-negotiation questionnaire can be rebuilt with the
+            # right opponent. Set in start_negotiation() before the round.
+            agent_type=str(session_state.get("last_partner_type", "")),
             agreement=m.agreement,
             human_utility=human_utility,
             agent_utility=agent_utility,
@@ -1221,7 +1263,12 @@ def save_result(m: SAOMechanism):
         ),
         python_class_identifier="type",
     )
-    add_records(session_state["db_path"] / "results.csv", [result])
+    # IMPORTANT: write ONLY the per-participant results.csv. We deliberately do
+    # NOT also append to a shared db/results.csv -- concurrent participants
+    # would race on that single file and corrupt it. The admin "All Results"
+    # view aggregates the per-PID files read-only instead. Every file written
+    # below lives under this session's own user_path, so two live participants
+    # never write the same file.
     path = session_state["user_path"] / "logs" / f"{m.id}.csv"
     path.parent.mkdir(exist_ok=True, parents=True)
     add_records(session_state["user_path"] / "results.csv", [result])
@@ -1256,6 +1303,13 @@ def save_result(m: SAOMechanism):
     session_state["results"].append(result)
     # session_state["results_df"] = pd.DataFrame.from_records(session_state["results"])
 
+    # Surfaced to end_session() so it can decide whether to gate the next
+    # round behind the per-negotiation questionnaire. A round that did not
+    # count (zero human actions) must NOT show a questionnaire -- the
+    # participant is sent straight back to Load/Start with a red notice.
+    _round_uncounted = False
+    _round_outcome_phrase = ""
+
     # Prolific UX: announce progress so the participant always knows where
     # they stand. Done after the row is written so the counts are right.
     if _is_prolific_user(user):
@@ -1273,6 +1327,7 @@ def save_result(m: SAOMechanism):
                 not is_practice and n_human_actions == 0
                 and done_counted < n_required
             )
+            _round_uncounted = uncounted
             if status == "timedout":
                 outcome_phrase = "timed out"
             elif status == "broken" and ended_by == "human":
@@ -1283,6 +1338,7 @@ def save_result(m: SAOMechanism):
                 outcome_phrase = "reached an agreement"
             else:
                 outcome_phrase = "ended"
+            _round_outcome_phrase = outcome_phrase
 
             if is_practice:
                 msg = (
@@ -1303,10 +1359,13 @@ def save_result(m: SAOMechanism):
                 )
             elif uncounted:
                 msg = (
-                    f"This negotiation {outcome_phrase} without any moves "
-                    "on your side, so it does <strong>not</strong> count. "
+                    f"⚠️ This negotiation {outcome_phrase} without any "
+                    "action on your side, so it does <strong>NOT count</strong> "
+                    "toward your reward. "
                     f"{done_counted} of {n_required} counted so far &mdash; "
-                    f"{n_required - done_counted} to go."
+                    f"{n_required - done_counted} to go. Load the next "
+                    "negotiation and make at least one offer (or accept / "
+                    "reject the AI's offer) so it counts."
                 )
             else:
                 remaining = n_required - done_counted
@@ -1317,13 +1376,27 @@ def save_result(m: SAOMechanism):
             if hasattr(pn.state, "notifications") and pn.state.notifications:
                 # duration=0 keeps it visible until the user dismisses it
                 # or the next notification supersedes it.
-                if is_practice or done_counted >= n_required:
+                if uncounted:
+                    # Red + sticky: the round did not count and the
+                    # participant must clearly see why before loading the next.
+                    pn.state.notifications.error(msg, duration=0)
+                elif is_practice or done_counted >= n_required:
                     pn.state.notifications.success(msg, duration=0)
                 else:
                     pn.state.notifications.info(msg, duration=10000)
         except Exception as _e:
             # Never let UX-only messaging fail save_result().
             print(f"[per-neg toast] failed: {_e}")
+
+    # Round summary for end_session(): in particular whether this round
+    # counted, so it can skip the per-negotiation questionnaire for
+    # zero-action rounds and send the participant straight back to Load.
+    return {
+        "n_human_actions": n_human_actions,
+        "is_practice": is_practice,
+        "uncounted": _round_uncounted,
+        "outcome_phrase": _round_outcome_phrase,
+    }
 
 
 def get_action(state: SAOState) -> SAOResponse:
@@ -1349,7 +1422,8 @@ def end_session():
         _is_prolific_user(user)
         and _count_existing_negotiations(session_state["user_path"]) == 0
     )
-    save_result(mechanism)
+    _round_info = save_result(mechanism) or {}
+    round_uncounted = bool(_round_info.get("uncounted"))
     add_tools(Timing.End)
     for tool in session_state["tools"]:
         tool.negotiation_ended(session_state, mechanism.negotiators[human_index].nmi)
@@ -1357,6 +1431,22 @@ def end_session():
     session_state["human_action"] = None
     session_state["action_panel_displayed"] = False
     session_state["action_panel"].clear()
+
+    # A round that did not count (the participant took no action before it
+    # ended / timed out) must NOT show the per-negotiation questionnaire.
+    # save_result() already raised a red, sticky "did not count" notice;
+    # here we send the participant straight back to the Load/Start form so
+    # they can immediately try again. (Practice and counted rounds fall
+    # through to the normal questionnaire / finish flow below.)
+    if _is_prolific_user(user) and round_uncounted:
+        print(
+            "[per-neg] round did not count (0 human actions) -- skipping "
+            "questionnaire, returning participant to Load/Start"
+        )
+        session_state["action_panel"].append(
+            load_form(session_state["selectable_scenario_type"])
+        )
+        return
 
     # Prolific: gate the next-round Load form behind a short per-
     # negotiation questionnaire. Skips silently when the YAML is
@@ -1576,10 +1666,24 @@ def display_state(state: SAOState) -> pn.Column:
         styles={"font-size": "10pt"},
     )
     # spacer = pn.Spacer(width=session_state["display"]["extra_margin"])
-    icon = (
-        pn.pane.Str("🤖", width=ICON_WIDTH, styles={"font-size": "22pt"})
-        if not from_human
-        else pn.pane.Str("🙍", width=ICON_WIDTH, styles={"font-size": "22pt"})
+    # Offer time as a fraction of the negotiation's time/step budget,
+    # shown small + gray under the proposer icon so participants can see
+    # how late in the round each offer landed.
+    try:
+        _time_pct = f"{state.relative_time:.0%}"
+    except Exception:
+        _time_pct = ""
+    _icon_emoji = "🤖" if not from_human else "🙍"
+    icon = pn.Column(
+        pn.pane.Str(_icon_emoji, width=ICON_WIDTH, styles={"font-size": "22pt"}),
+        pn.pane.HTML(
+            f'<div style="color:#999; font-size:8pt; text-align:center; '
+            f'white-space:nowrap;">⏳&nbsp;{_time_pct}</div>',
+            width=ICON_WIDTH,
+            margin=0,
+        ),
+        margin=0,
+        styles={"align-items": "center", "gap": "0px"},
     )
 
     col.append(
@@ -1624,6 +1728,18 @@ def load_form(selectable_scenario_type):
     session_state["action_panel_displayed"] = False
 
     logout.disabled = not has_user
+
+    # Prolific anti-stall: when this is the between-rounds Load form (no
+    # scenario loaded yet), arm the auto-load timer so a participant who never
+    # presses Load doesn't stall the session. When a scenario is already loaded
+    # (Start enabled), the auto-START timer covers it instead, so cancel any
+    # pending auto-load.
+    if _is_prolific_user(session_state.get("user", "")):
+        if new_scenario_loaded:
+            _cancel_auto_load()
+        else:
+            _schedule_auto_load()
+
     return pn.Column(logout, load_btn, strt_btn)
     # return pn.Column(logout, strt_btn)
 
@@ -3311,6 +3427,18 @@ def _prolific_finish_panel(pid: str):
 # preferences without enabling "load, walk away, time out, repeat".
 PROLIFIC_AUTO_START_SECONDS = int(os.environ.get("PROLIFIC_AUTO_START_SECONDS", "120"))
 
+# Auto-load: if the participant never presses Load between rounds, load (and
+# immediately start) the next negotiation for them so they can't stall the
+# session indefinitely. Counted rounds wait 30s; the practice round is more
+# generous at 60s. A warning banner appears WARN_SECONDS before it fires.
+PROLIFIC_AUTO_LOAD_SECONDS = int(os.environ.get("PROLIFIC_AUTO_LOAD_SECONDS", "30"))
+PROLIFIC_AUTO_LOAD_PRACTICE_SECONDS = int(
+    os.environ.get("PROLIFIC_AUTO_LOAD_PRACTICE_SECONDS", "60")
+)
+PROLIFIC_AUTO_LOAD_WARN_SECONDS = int(
+    os.environ.get("PROLIFIC_AUTO_LOAD_WARN_SECONDS", "15")
+)
+
 
 def _per_neg_questionnaire_spec() -> dict | None:
     """Read scmlweb/resources/questionnaires/per_negotiation.yaml.
@@ -3596,7 +3724,109 @@ def get_scenario() -> Scenario:
     return LOADER_MAP[type_](index)  # type: ignore
 
 
+def _next_round_is_practice() -> bool:
+    """Whether the next round to load would be a practice round (used to pick
+    the auto-load delay)."""
+    user = session_state.get("user", "")
+    if not _is_prolific_user(user):
+        return False
+    try:
+        meta = _prolific_meta(session_state["user_path"], user)
+        if _is_returning_user(session_state["user_path"], meta):
+            return False
+        return not _has_completed_practice_this_session(
+            session_state["user_path"], meta.get("started_at", "")
+        )
+    except Exception:
+        return False
+
+
+def _cancel_auto_load():
+    for key in ("auto_load_timer", "auto_load_warn_timer"):
+        t = session_state.pop(key, None)
+        if t is not None:
+            try:
+                t.cancel()
+            except Exception:
+                pass
+
+
+def _schedule_auto_load():
+    """Prolific anti-stall for the Load step. If the participant leaves the
+    (between-rounds) Load button untouched, auto-load AND immediately start the
+    next negotiation after a delay so they can't sit idle forever. A warning
+    banner appears PROLIFIC_AUTO_LOAD_WARN_SECONDS before it fires. Counted
+    rounds wait PROLIFIC_AUTO_LOAD_SECONDS (30s); the practice round waits the
+    more generous PROLIFIC_AUTO_LOAD_PRACTICE_SECONDS (60s)."""
+    if not _is_prolific_user(session_state.get("user", "")):
+        return
+    _cancel_auto_load()
+    is_practice = _next_round_is_practice()
+    delay = (
+        PROLIFIC_AUTO_LOAD_PRACTICE_SECONDS if is_practice
+        else PROLIFIC_AUTO_LOAD_SECONDS
+    )
+    warn_lead = max(0, min(PROLIFIC_AUTO_LOAD_WARN_SECONDS, delay - 1))
+    doc = pn.state.curdoc
+
+    def _still_waiting():
+        # Only auto-load while the participant hasn't loaded/started themselves.
+        return not (
+            session_state.get("negotiation_started")
+            or session_state.get("new_scenario_loaded")
+        )
+
+    def _warn_impl():
+        if not _still_waiting():
+            return
+        try:
+            if hasattr(pn.state, "notifications") and pn.state.notifications:
+                pn.state.notifications.warning(
+                    f"No activity detected — the next negotiation will load and "
+                    f"start automatically in about {warn_lead} seconds. Press "
+                    f"Load now to start immediately.",
+                    duration=warn_lead * 1000,
+                )
+        except Exception:
+            pass
+
+    def _load_impl():
+        if not _still_waiting():
+            return
+        print(f"[per-neg] auto-loading next negotiation after {delay}s of inactivity")
+        load_scenario()
+        start_negotiation()
+
+    def _fire(impl, doc=doc):
+        # Runs in the threading.Timer thread; marshal Bokeh mutation onto the
+        # session doc's loop (same thread-safe pattern as the auto-start timer).
+        def _runner():
+            try:
+                if doc is not None:
+                    doc.add_next_tick_callback(impl)
+                else:
+                    impl()
+            except Exception as e:
+                import traceback
+                print(f"[per-neg] auto-load dispatch failed: {e}")
+                traceback.print_exc()
+        return _runner
+
+    if warn_lead > 0:
+        tw = threading.Timer(delay - warn_lead, _fire(_warn_impl))
+        tw.daemon = True
+        tw.start()
+        session_state["auto_load_warn_timer"] = tw
+    tl = threading.Timer(delay, _fire(_load_impl))
+    tl.daemon = True
+    tl.start()
+    session_state["auto_load_timer"] = tl
+
+
 def load_scenario(event=None):
+    # A load is happening (manual or auto) -- cancel any pending auto-load
+    # timers so they can't double-fire after the participant has acted.
+    _cancel_auto_load()
     # Stamp the moment the participant pressed Load (for Prolific
     # timing analytics: time spent reading preferences before Start,
     # and total elapsed from session-start before the practice round).
@@ -3657,27 +3887,52 @@ def load_scenario(event=None):
                 except Exception:
                     pass
 
-            def _auto_start():
+            # The actual work, which mutates Bokeh document / widget state
+            # (history, action panel, notifications). This MUST run on the
+            # session's Bokeh IOLoop, never in the Timer thread.
+            _secs = PROLIFIC_AUTO_START_SECONDS
+
+            def _auto_start_impl():
                 try:
                     if session_state.get("negotiation_started"):
                         return  # user beat the timer
                     print(
                         f"[per-neg] auto-starting negotiation after "
-                        f"{PROLIFIC_AUTO_START_SECONDS}s of inactivity"
+                        f"{_secs}s of inactivity"
                     )
                     start_negotiation()
                     if hasattr(pn.state, "notifications") and pn.state.notifications:
                         pn.state.notifications.warning(
                             "Negotiation auto-started after "
-                            f"{PROLIFIC_AUTO_START_SECONDS}s of inactivity. "
+                            f"{_secs}s of inactivity. "
                             "Please act on the offers shown -- silent "
                             "rounds do not count toward your reward.",
                             duration=15000,
                         )
                 except Exception as e:
-                    print(f"[per-neg] auto-start failed: {e}")
+                    import traceback
+                    print(f"[per-neg] auto-start impl failed: {e}")
+                    traceback.print_exc()
 
-            t = threading.Timer(PROLIFIC_AUTO_START_SECONDS, _auto_start)
+            # threading.Timer fires _fire in a worker thread where
+            # pn.state.curdoc is None and direct Bokeh mutation is unsafe
+            # (this is the real cause of the old auto-start crash). Capture
+            # the live session doc here and marshal the work onto its loop
+            # via add_next_tick_callback, which is the thread-safe path.
+            _doc = pn.state.curdoc
+
+            def _fire(_doc=_doc):
+                try:
+                    if _doc is not None:
+                        _doc.add_next_tick_callback(_auto_start_impl)
+                    else:
+                        _auto_start_impl()
+                except Exception as e:
+                    import traceback
+                    print(f"[per-neg] auto-start dispatch failed: {e}")
+                    traceback.print_exc()
+
+            t = threading.Timer(PROLIFIC_AUTO_START_SECONDS, _fire)
             t.daemon = True
             t.start()
             session_state["auto_start_timer"] = t

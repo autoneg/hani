@@ -186,9 +186,26 @@ class AllResultsTool(Tool):
 
     def __init__(self, normalize_by_time, **kwargs):
         super().__init__(**kwargs)
-        self._user_path = DB_PATH / "results.csv"
         self._normalize_by_time = normalize_by_time
-        self.tbl = pd.read_csv(self._user_path, index_col=None)
+        # Aggregate the per-participant results.csv files (read-only) instead
+        # of a single shared db/results.csv. Each session writes ONLY its own
+        # prolific_<PID>/results.csv, so there is no global file for concurrent
+        # participants to race on; we just read them all here for the admin
+        # overview. Reading shared/other files is safe -- only writes race.
+        frames = []
+        try:
+            for d in sorted(DB_PATH.glob("*")):
+                f = d / "results.csv"
+                if f.is_file():
+                    try:
+                        frames.append(pd.read_csv(f, index_col=None))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        self.tbl = (
+            pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        )
         if len(self.tbl) > 0:
             self.param.columns.objects = [_ for _ in self.tbl.columns]
         else:
