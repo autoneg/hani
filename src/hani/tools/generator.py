@@ -301,6 +301,9 @@ class ResponseGeneratorTool(OutcomeSelector):
         )
 
     def __panel__(self):
-        if self.session_state.get("allow_moving_tools", False):
-            return pn.Column(self.panel(), self.common_buttons())
-        return pn.Column(self.panel())
+        def content():
+            if self.session_state.get("allow_moving_tools", False):
+                return pn.Column(self.panel(), self.common_buttons())
+            return pn.Column(self.panel())
+
+        return self._enableable(content)

@@ -481,6 +481,11 @@ class ToolConfig:
     admin_only: bool = False
     added: bool = False
     at_front: bool = False
+    # Default state of the per-tool user-facing on/off switch. Tools with
+    # enabled=False render their tab but start switched off (the user can
+    # turn them on). Used to keep relatively expensive plots out of the
+    # way by default while still making them available.
+    enabled: bool = True
     tab: Any | None = None
 
     def __eq__(self, value: object, /) -> bool:
@@ -501,7 +506,7 @@ class ToolConfig:
 
     def make(self, session_state: dict[str, Any] = session_state) -> Tool:
         print(f"Making {self.name}")
-        params = dict(session_state=session_state)
+        params = dict(session_state=session_state, enabled=self.enabled)
         for k, v in self.params.items():
             try:
                 if isinstance(v, str) and v.startswith(SESSION_PREFIX):
@@ -590,6 +595,11 @@ def default_tools():
             params=dict(scenario="session:scenario", human_id="session:human_id"),
             at_front=True,
         ),
+        # Utility Plot and Outcome Plot are available to everyone but ship
+        # switched OFF by default (enabled=False). Their tabs show, but the
+        # (relatively expensive) Plotly panes aren't built until the user
+        # flips the in-tab "Enabled" switch on -- keeping the default
+        # time-to-interface short while still making the plots one click away.
         ToolConfig(
             "Utility Plot",
             TOOL_MAP["Utility Plot"],
@@ -598,6 +608,7 @@ def default_tools():
                 mechanism="session:mechanism", human_index="session:human_index"
             ),
             bottom=True,
+            enabled=False,
         ),
         ToolConfig(
             "Outcome Plot",
@@ -605,6 +616,7 @@ def default_tools():
             Timing.Start,
             params=dict(mechanism="session:mechanism", human_id="session:human_id"),
             bottom=True,
+            enabled=False,
         ),
         ToolConfig(
             "Value Histogram",
@@ -4253,6 +4265,13 @@ def main():
     session_state["toggles"]["offer_panel_always_visible"] = pn.widgets.Checkbox(
         name="Offer Panel Always Visible", value=False
     )
+    # Admin control: when checked (default), every tool tab shows a
+    # per-tool "Enabled" on/off switch the user can flip. When unchecked,
+    # the switches are hidden and every tool is treated as enabled
+    # regardless of its default state (see Tool._enableable).
+    session_state["toggles"]["allow_tool_enable_switch"] = pn.widgets.Checkbox(
+        name="Allow tool enable/disable switches (Admin)", value=True
+    )
     # Text & Offers settings (separate group)
     session_state["text_offers"] = dict()
     session_state["text_offers"]["allow_text_agent"] = pn.widgets.Checkbox(
@@ -4546,6 +4565,12 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     sidebar = pn.Column(
         image,
         pn.Card(*display_toggles, title="Display Toggles", collapsed=True),
+        pn.Card(
+            session_state["toggles"]["allow_tool_enable_switch"],
+            title="Tool Settings",
+            collapsed=True,
+            visible=is_admin(),
+        ),
         pn.Card(
             *offer_init_toggles,
             title="Offer Initialization",
