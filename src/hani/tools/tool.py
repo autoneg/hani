@@ -12,6 +12,12 @@ class Tool(pn.viewable.Viewable):
     A fully reactive tool that can respond to events in the negotiation
     """
 
+    # User-facing on/off switch. When False the tab still shows (so the
+    # user can turn the tool back on) but the tool's content is replaced
+    # by a short "disabled" placeholder. The default is supplied per-tool
+    # via ToolConfig(enabled=...) and threaded through __init__.
+    enabled = param.Boolean(default=True)
+
     def redraw(self):
         pass
 
@@ -91,9 +97,10 @@ class Tool(pn.viewable.Viewable):
     ):
         """Called after an action from the user is executed."""
 
-    def __init__(self, session_state, **params):
+    def __init__(self, session_state, enabled: bool = True, **params):
         super().__init__(**params)
         self.session_state = session_state
+        self.enabled = enabled
 
         self.upper_button = pn.widgets.ButtonIcon(
             name="Upper Pane", on_click=self.move_up, icon="fold-up"
@@ -128,10 +135,74 @@ class Tool(pn.viewable.Viewable):
     def close(self, event=None):
         print("Closing")
 
+    def _enable_switch(self) -> Any:
+        """The on/off switch shown at the top of every tool tab."""
+        switch = pn.widgets.Switch.from_param(self.param.enabled, name="")
+        return pn.Row(
+            switch,
+            pn.pane.Markdown("**Enabled**", margin=(0, 0, 0, 4)),
+            sizing_mode="stretch_width",
+        )
+
+    def _disabled_placeholder(self) -> Any:
+        """Shown in place of the tool content when the tool is switched off."""
+        return pn.pane.Alert(
+            "🔒 This tool is currently **disabled**. "
+            "Use the *Enabled* switch above to turn it on.",
+            alert_type="secondary",
+            sizing_mode="stretch_width",
+        )
+
+    def _switch_allowed(self) -> bool:
+        """Whether the per-tool enable/disable switch is offered at all.
+
+        Governed by the admin "Allow tool enable/disable switches" toggle.
+        When disallowed, no switch is shown and the tool is always treated
+        as enabled (its content is shown regardless of ``self.enabled``).
+        Defaults to True if the toggle hasn't been created yet.
+        """
+        try:
+            toggle = self.session_state.get("toggles", {}).get(
+                "allow_tool_enable_switch"
+            )
+        except Exception:
+            return True
+        if toggle is None:
+            return True
+        return bool(toggle.value)
+
+    def _enableable(self, content_factory) -> Any:
+        """Wrap a tool's content with the enable/disable switch.
+
+        ``content_factory`` is a zero-arg callable returning the tool's
+        normal panel. It is only invoked while the tool is enabled, so a
+        disabled-by-default tool never pays the cost of building its
+        (potentially expensive) content until the user turns it on.
+
+        When the admin has disallowed the switch, the content is shown
+        directly with no switch and the tool is treated as enabled.
+        """
+        if not self._switch_allowed():
+            return content_factory()
+
+        def _body(enabled):
+            if not enabled:
+                return self._disabled_placeholder()
+            return content_factory()
+
+        return pn.Column(
+            self._enable_switch(),
+            pn.bind(_body, self.param.enabled),
+            sizing_mode="stretch_width",
+        )
+
     def __panel__(self) -> Any:
-        if self.session_state["allow_moving_tools"]:
-            return pn.Column(self.panel(), self.common_buttons)
-        return pn.Column(self.panel())
+        def content():
+            if self.session_state["allow_moving_tools"]:
+                return pn.Column(self.panel(), self.common_buttons)
+            return pn.Column(self.panel())
+
+        return self._enableable(content)
 
 
 def set_widget(widget, issue: Issue, value):
@@ -192,6 +263,9 @@ class OutcomeSelector(Tool):
         return self.scenario.outcome_space.random_outcome()  # type: ignore
 
     def __panel__(self):
-        if self.session_state["allow_moving_tools"]:
-            return pn.Column(self.panel(), self.btn, self.common_buttons)
-        return pn.Column(self.panel(), self.btn)
+        def content():
+            if self.session_state["allow_moving_tools"]:
+                return pn.Column(self.panel(), self.btn, self.common_buttons)
+            return pn.Column(self.panel(), self.btn)
+
+        return self._enableable(content)

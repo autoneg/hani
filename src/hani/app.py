@@ -481,6 +481,11 @@ class ToolConfig:
     admin_only: bool = False
     added: bool = False
     at_front: bool = False
+    # Default state of the per-tool user-facing on/off switch. Tools with
+    # enabled=False render their tab but start switched off (the user can
+    # turn them on). Used to keep relatively expensive plots out of the
+    # way by default while still making them available.
+    enabled: bool = True
     tab: Any | None = None
 
     def __eq__(self, value: object, /) -> bool:
@@ -501,7 +506,7 @@ class ToolConfig:
 
     def make(self, session_state: dict[str, Any] = session_state) -> Tool:
         print(f"Making {self.name}")
-        params = dict(session_state=session_state)
+        params = dict(session_state=session_state, enabled=self.enabled)
         for k, v in self.params.items():
             try:
                 if isinstance(v, str) and v.startswith(SESSION_PREFIX):
@@ -590,6 +595,11 @@ def default_tools():
             params=dict(scenario="session:scenario", human_id="session:human_id"),
             at_front=True,
         ),
+        # Utility Plot and Outcome Plot are available to everyone but ship
+        # switched OFF by default (enabled=False). Their tabs show, but the
+        # (relatively expensive) Plotly panes aren't built until the user
+        # flips the in-tab "Enabled" switch on -- keeping the default
+        # time-to-interface short while still making the plots one click away.
         ToolConfig(
             "Utility Plot",
             TOOL_MAP["Utility Plot"],
@@ -598,12 +608,32 @@ def default_tools():
                 mechanism="session:mechanism", human_index="session:human_index"
             ),
             bottom=True,
+            enabled=False,
         ),
-        # Outcome Plot and Trace are admin-only (added in the is_admin()
-        # block below). They're relatively expensive Plotly/table panes
-        # built eagerly at negotiation start, so keeping them out of the
-        # participant view shortens the time-to-interface for Prolific
-        # sessions. Admins still get both.
+        ToolConfig(
+            "Outcome Plot",
+            TOOL_MAP["Outcome Plot"],
+            Timing.Start,
+            params=dict(mechanism="session:mechanism", human_id="session:human_id"),
+            bottom=True,
+            enabled=False,
+        ),
+        # Utility Plot, Outcome Plot and Trace are available to everyone
+        # but ship switched OFF by default (enabled=False). The per-tool
+        # enable/disable switch replaces the old admin-only gating: these
+        # relatively expensive panes aren't built until the user turns
+        # them on, so the default time-to-interface stays short while the
+        # tools remain one click away for any participant who wants them.
+        ToolConfig(
+            "Trace",
+            TOOL_MAP["Trace"],
+            Timing.Start,
+            params=dict(
+                mechanism="session:mechanism", human_index="session:human_index"
+            ),
+            bottom=True,
+            enabled=False,
+        ),
         ToolConfig(
             "Value Histogram",
             TOOL_MAP["Value Histogram"],
@@ -646,24 +676,12 @@ def default_tools():
     ]
     if is_admin():
         tools += [
-            ToolConfig(
-                "Outcome Plot",
-                TOOL_MAP["Outcome Plot"],
-                Timing.Start,
-                params=dict(
-                    mechanism="session:mechanism", human_id="session:human_id"
-                ),
-                bottom=True,
-            ),
-            ToolConfig(
-                "Trace",
-                TOOL_MAP["Trace"],
-                Timing.Start,
-                params=dict(
-                    mechanism="session:mechanism", human_index="session:human_index"
-                ),
-                bottom=True,
-            ),
+            # Utility Plot, Outcome Plot and Trace are now in the all-user
+            # list above (disabled by default). The tools below stay
+            # admin-only because they expose the AI's private utility,
+            # other users' data, or let an operator inject outcomes -- and
+            # since any participant can flip an enable switch on, they must
+            # not appear in the all-user list even disabled.
             ToolConfig(
                 "LLM",
                 TOOL_MAP["Response Generator"],
@@ -4508,6 +4526,13 @@ def main():
     session_state["toggles"]["offer_panel_always_visible"] = pn.widgets.Checkbox(
         name="Offer Panel Always Visible", value=False
     )
+    # Admin control: when checked (default), every tool tab shows a
+    # per-tool "Enabled" on/off switch the user can flip. When unchecked,
+    # the switches are hidden and every tool is treated as enabled
+    # regardless of its default state (see Tool._enableable).
+    session_state["toggles"]["allow_tool_enable_switch"] = pn.widgets.Checkbox(
+        name="Allow tool enable/disable switches (Admin)", value=True
+    )
     # Text & Offers settings (separate group)
     session_state["text_offers"] = dict()
     session_state["text_offers"]["allow_text_agent"] = pn.widgets.Checkbox(
@@ -4801,6 +4826,12 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     sidebar = pn.Column(
         image,
         pn.Card(*display_toggles, title="Display Toggles", collapsed=True),
+        pn.Card(
+            session_state["toggles"]["allow_tool_enable_switch"],
+            title="Tool Settings",
+            collapsed=True,
+            visible=is_admin(),
+        ),
         pn.Card(
             *offer_init_toggles,
             title="Offer Initialization",
