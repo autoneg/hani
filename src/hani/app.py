@@ -1007,6 +1007,25 @@ def read_scenario(path: Path | None = None) -> Scenario:  # type: ignore
     return s
 
 
+def _is_llm_negotiator_class(klass) -> bool:
+    """True if ``klass`` is an LLM-backed negotiator (a subclass of
+    negmas-llm's ``LLMNegotiator``, which includes ``OllamaNegotiator``
+    and the Prolific practice partners defined in ``pan.py``).
+
+    Used so make_mechanism injects the configured model into LLM
+    partners whose *type string* does not start with the ``"LLM"``
+    prefix the settings UI uses -- e.g. ``pan.PAHSHP0Negotiator``. Those
+    otherwise fall back to negmas-llm's hard-coded default model
+    (``smollm2:135m``), which is far too small to emit valid offers and
+    breaks the negotiation on its first step.
+    """
+    try:
+        from negmas_llm import LLMNegotiator  # type: ignore
+    except Exception:
+        return False
+    return isinstance(klass, type) and issubclass(klass, LLMNegotiator)
+
+
 def make_mechanism(
     scenario: Scenario,
     human_index: int = CONFIG.human_index,
@@ -1057,11 +1076,29 @@ def make_mechanism(
     agent_params["name"] = scenario.ufuns[1 - human_index].name + " (AI)"
     agent_params["id"] = agent_params["name"]
 
-    # Add LLM provider/model for LLM negotiators
-    if isinstance(agent_type, str) and agent_type.startswith("LLM"):
+    # Resolve the agent class up front so we can detect LLM-backed
+    # partners (e.g. the pan.py PersonalityAdjustedNegotiator used for
+    # Prolific practice rounds, an OllamaNegotiator/LLMNegotiator
+    # subclass whose type string does NOT start with "LLM").
+    agent_class = get_agent_type(agent_type)  # type: ignore
+
+    # Add LLM provider/model for LLM negotiators. Two ways an agent is
+    # LLM-backed: the settings UI uses a "LLM..." type string, OR the
+    # resolved class subclasses negmas-llm's LLMNegotiator (pan.py
+    # practice partners). Without injecting the model here the latter
+    # falls back to negmas-llm's hard-coded default (smollm2:135m),
+    # which is too small to emit valid offers and breaks the round on
+    # its first step.
+    is_llm_string = isinstance(agent_type, str) and agent_type.startswith("LLM")
+    if is_llm_string or _is_llm_negotiator_class(agent_class):
         llm_settings = load_llm_settings()
-        agent_params["provider"] = llm_settings.get("provider", "ollama")
-        agent_params["model"] = llm_settings.get("model", "qwen3:1.7b")
+        agent_params["model"] = llm_settings.get("model", "qwen3:4b-instruct")
+        # Only the generic, provider-switchable LLMNegotiator accepts a
+        # `provider`; OllamaNegotiator-derived partners (pan.py) are
+        # Ollama-only, so pass provider only for the explicit "LLM*"
+        # type strings the settings UI configures.
+        if is_llm_string:
+            agent_params["provider"] = llm_settings.get("provider", "ollama")
 
     # Add verbose flag if enabled and supported by negotiator
     verbose_enabled = os.getenv("_HANI_VERBOSE") == "1"
@@ -1072,7 +1109,6 @@ def make_mechanism(
         if i == human_index:
             negotiators.append(get_class(human_type)(**human_params))
         else:
-            agent_class = get_agent_type(agent_type)  # type: ignore
             # Try to pass verbose=True if enabled and supported
             if verbose_enabled:
                 try:

@@ -150,7 +150,6 @@ class GroceryOutcomeDisplay(DefaultOutcomeDisplay):
         is_done: bool,
         from_human: bool,
     ) -> str:
-        print(outcome, from_human)
         if outcome is None:
             return super().str(outcome, scenario, is_done, from_human)
         issues = scenario.outcome_space.issues
