@@ -9,6 +9,7 @@ __all__ = ["ScenarioInfoTool"]
 
 
 class ScenarioInfoTool(Tool):
+    permanent = True
     scenario = param.ClassSelector(  # type: ignore
         class_=Scenario, doc="The scenario currently being negotiated"
     )

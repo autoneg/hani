@@ -18,6 +18,11 @@ class Tool(pn.viewable.Viewable):
     # via ToolConfig(enabled=...) and threaded through __init__.
     enabled = param.Boolean(default=True)
 
+    # Permanent tools (e.g. Scenario Info, Preferences, User Results) are
+    # always on: they show no enable/disable switch and their content is
+    # shown unconditionally regardless of the admin switch toggle.
+    permanent = False
+
     def redraw(self):
         pass
 
@@ -136,19 +141,18 @@ class Tool(pn.viewable.Viewable):
         print("Closing")
 
     def _enable_switch(self) -> Any:
-        """The on/off switch shown at the top of every tool tab."""
-        switch = pn.widgets.Switch.from_param(self.param.enabled, name="")
-        return pn.Row(
-            switch,
-            pn.pane.Markdown("**Enabled**", margin=(0, 0, 0, 4)),
-            sizing_mode="stretch_width",
-        )
+        """The on/off switch shown at the top of every (non-permanent) tool tab.
+
+        Just the bare switch: no "Enabled" label, and it takes no extra
+        vertical space when the tool is on.
+        """
+        return pn.widgets.Switch.from_param(self.param.enabled, name="")
 
     def _disabled_placeholder(self) -> Any:
         """Shown in place of the tool content when the tool is switched off."""
         return pn.pane.Alert(
             "🔒 This tool is currently **disabled**. "
-            "Use the *Enabled* switch above to turn it on.",
+            "Use the switch above to turn it on.",
             alert_type="secondary",
             sizing_mode="stretch_width",
         )
@@ -181,8 +185,10 @@ class Tool(pn.viewable.Viewable):
 
         When the admin has disallowed the switch, the content is shown
         directly with no switch and the tool is treated as enabled.
+
+        Permanent tools never show a switch and are always enabled.
         """
-        if not self._switch_allowed():
+        if self.permanent or not self._switch_allowed():
             return content_factory()
 
         def _body(enabled):
