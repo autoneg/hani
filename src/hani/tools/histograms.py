@@ -199,12 +199,17 @@ class OutcomeHistogramPlot(Tool):
             rows.append(pn.Row(*plots[i : i + per_row], sizing_mode="stretch_width"))
         return pn.Column(*rows, sizing_mode="stretch_width")
 
-    def panel(self):
+    def _controls(self):
+        """The control widgets: issue picker, human-offers checkbox and the
+        one/two-per-row switch, stacked in a single narrow column."""
         checkbox = pn.widgets.Checkbox.from_param(
-            self.param.show_human_histogram, name="Show Human Offers"
+            self.param.show_human_histogram, name="Your Offers"
         )
         issue_select = pn.widgets.MultiSelect.from_param(
-            self.param.selected_issues, name="Issues", size=min(6, len(self.xcols) or 1)
+            self.param.selected_issues,
+            name="Issues",
+            size=min(6, len(self.xcols) or 1),
+            width=180,
         )
         two_per_row_switch = pn.widgets.Switch.from_param(
             self.param.two_per_row, name=""
@@ -213,7 +218,20 @@ class OutcomeHistogramPlot(Tool):
             two_per_row_switch,
             pn.pane.Markdown("Two histograms per row", margin=(0, 0, 0, 4)),
         )
-        widgets = pn.Column(issue_select, checkbox, layout_row)
-        return pn.Column(
-            widgets, self.plot_all, sizing_mode="stretch_width", scroll=True
-        )
+        return pn.Column(issue_select, checkbox, layout_row, width=200)
+
+    def _layout(self, two_per_row):
+        # Fresh widgets every render (bound to the same params) so the
+        # switch that triggers this rebuild is never re-parented.
+        controls = self._controls()
+        figures = pn.Column(self.plot_all, sizing_mode="stretch_width", scroll=True)
+        if two_per_row:
+            # Two columns of figures already fill the width, so keep the
+            # controls stacked above them.
+            return pn.Column(controls, figures, sizing_mode="stretch_width")
+        # Single column of figures: controls in a narrow left column, the
+        # figures alone in a wider right column.
+        return pn.Row(controls, figures, sizing_mode="stretch_width")
+
+    def panel(self):
+        return pn.bind(self._layout, self.param.two_per_row)
