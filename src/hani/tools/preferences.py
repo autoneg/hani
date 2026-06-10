@@ -83,6 +83,7 @@ ISSUE_LAYOUT_OPTIONS = dict(
 
 
 class PreferencesTool(Tool):
+    permanent = True
     issue_index = param.Selector(objects=dict())
     ufun = param.ClassSelector(class_=BaseUtilityFunction, doc="Utility Function")  # type: ignore
 

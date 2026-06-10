@@ -76,6 +76,7 @@ class SessionResultsTool(Tool):
 
 
 class UserResultsTool(Tool):
+    permanent = True
     tbl = param.DataFrame()
     columns = param.Selector(default=DEFAULT)
 
