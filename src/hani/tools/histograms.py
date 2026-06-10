@@ -212,11 +212,11 @@ class OutcomeHistogramPlot(Tool):
             width=180,
         )
         two_per_row_switch = pn.widgets.Switch.from_param(
-            self.param.two_per_row, name=""
+            self.param.two_per_row, name="", width=40
         )
         layout_row = pn.Row(
             two_per_row_switch,
-            pn.pane.Markdown("Two histograms per row", margin=(0, 0, 0, 4)),
+            pn.pane.Markdown("2 Cols", margin=(0, 0, 0, 0)),
         )
         return pn.Column(issue_select, checkbox, layout_row, width=200)
 
