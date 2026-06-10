@@ -152,7 +152,7 @@ class Tool(pn.viewable.Viewable):
         """Shown in place of the tool content when the tool is switched off."""
         return pn.pane.Alert(
             "🔒 This tool is currently **disabled**. "
-            "Use the *Enabled* switch above to turn it on.",
+            "Use the switch above to turn it on.",
             alert_type="secondary",
             sizing_mode="stretch_width",
         )
