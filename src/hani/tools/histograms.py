@@ -211,14 +211,10 @@ class OutcomeHistogramPlot(Tool):
             size=min(6, len(self.xcols) or 1),
             width=180,
         )
-        two_per_row_switch = pn.widgets.Switch.from_param(
-            self.param.two_per_row, name="", width=40
+        two_per_row_checkbox = pn.widgets.Checkbox.from_param(
+            self.param.two_per_row, name="2 Cols"
         )
-        layout_row = pn.Row(
-            two_per_row_switch,
-            pn.pane.Markdown("2 Cols", margin=(0, 0, 0, 0)),
-        )
-        return pn.Column(issue_select, checkbox, layout_row, width=200)
+        return pn.Column(issue_select, checkbox, two_per_row_checkbox, width=200)
 
     def _layout(self, two_per_row):
         # Fresh widgets every render (bound to the same params) so the
