@@ -12,6 +12,8 @@ from types import NoneType
 from attrs import define, field, asdict
 import traceback
 import time
+import asyncio
+import functools
 import threading
 import panel as pn
 from pathlib import Path
@@ -1890,39 +1892,82 @@ def _set_action_buttons_disabled(disabled: bool):
     # the user clicked it last, and visible otherwise — fine either way.
 
 
-def advance():
-    mechanism = session_state["mechanism"]
-    mechanism.step()
+def _step_lock() -> threading.Lock:
+    """Per-session backstop guarding against concurrent mechanism stepping.
 
-    human_index = session_state["human_index"]
-    for tool in session_state["tools"]:
-        tool.action_executed(
-            session_state,
-            mechanism.negotiators[human_index].nmi,
-            session_state["human_action"],
-        )
-    if session_state["toggles"]["show_human_offers"].value:
-        add_to_history()
-    if negoiation_completed():
+    ``advance()`` can be entered from two threads: the Bokeh IOLoop (the
+    accept/reject/end button handlers) and the ``CountdownTimer``'s own
+    worker thread (a negotiation-timeout REJECT). Both now marshal the work
+    onto the session doc, so the document lock already serializes them — a
+    re-entrant call simply runs *after* the in-flight one finishes. This
+    non-reentrant lock is the backstop for the paths that bypass doc
+    routing (the no-doc fallback in ``advance``): if two ``_advance_impl``
+    bodies ever overlap, the second bails instead of double-stepping the
+    mechanism. A plain ``threading.Lock`` (not ``RLock``) is used
+    deliberately: it may be released on a different thread than acquired
+    it, which a plain Lock permits."""
+    lock = session_state.get("step_lock")
+    if lock is None:
+        lock = session_state["step_lock"] = threading.Lock()
+    return lock
+
+
+async def _advance_impl():
+    """Apply the queued human action, then step to the human's next turn.
+
+    Runs as a Bokeh next-tick coroutine, so it executes on the session's
+    IOLoop under the document lock — Bokeh widget mutation here is safe.
+    The blocking partner step inside ``step_to_human`` is offloaded to a
+    worker thread (via ``run_in_executor``) so the IOLoop stays free to
+    service websocket heartbeats while a slow agent thinks."""
+    lock = _step_lock()
+    if not lock.acquire(blocking=False):
+        # Only reachable if doc routing was bypassed and another step is
+        # already running on a different thread (on the normal doc-routed
+        # path the document lock serializes entries instead, so this call
+        # would run *after* the in-flight one). Bail rather than step the
+        # mechanism concurrently.
+        print("advance(): a step is already in progress; ignoring re-entry")
         return
-    # Show "Partner is thinking…" and defer the partner step(s) to the
-    # next Bokeh tick so the indicator paints before the (possibly slow)
-    # agent call runs.
-    _show_typing_indicator()
-    _set_action_buttons_disabled(True)
+    try:
+        mechanism = session_state["mechanism"]
+        mechanism.step()  # apply the human's action (fast; no agent call)
 
-    def _continue():
+        human_index = session_state["human_index"]
+        for tool in session_state["tools"]:
+            tool.action_executed(
+                session_state,
+                mechanism.negotiators[human_index].nmi,
+                session_state["human_action"],
+            )
+        if session_state["toggles"]["show_human_offers"].value:
+            add_to_history()
+        if negoiation_completed():
+            return
+        # Show "Partner is thinking…" before the (possibly slow) agent
+        # call. step_to_human offloads the blocking step off the IOLoop.
+        _show_typing_indicator()
+        _set_action_buttons_disabled(True)
         try:
-            step_to_human()
+            await step_to_human()
         finally:
             _hide_typing_indicator()
             _set_action_buttons_disabled(False)
+    finally:
+        lock.release()
 
-    doc = pn.state.curdoc
+
+def advance():
+    # Marshal onto the live session doc so the work runs on the IOLoop
+    # under the document lock. The stored doc is used (not just
+    # pn.state.curdoc) because advance() is also called from the
+    # CountdownTimer thread, where pn.state.curdoc is None.
+    doc = session_state.get("doc") or pn.state.curdoc
     if doc is not None:
-        doc.add_next_tick_callback(_continue)
+        doc.add_next_tick_callback(_advance_impl)
     else:
-        _continue()
+        # No live Bokeh session (tests / standalone): run inline.
+        asyncio.run(_advance_impl())
 
 
 def _render_offer_on_table_html(current_offer: Outcome | None) -> str:
@@ -2784,7 +2829,7 @@ def add_to_history(state: SAOState | None = None):
         hist.append(display_state(state))
 
 
-def step_to_human(event=None):
+async def step_to_human(event=None):
     print("Stepping to human")
     mechanism: SAOMechanism = session_state["mechanism"]
     assert mechanism.nmi.one_offer_per_step
@@ -2793,8 +2838,13 @@ def step_to_human(event=None):
     if not session_state["toggles"]["show_history"].value:
         session_state["history"].clear()
 
+    loop = asyncio.get_running_loop()
     while next_neg_ids[0] != human_id:
-        mechanism.step()
+        # The partner step can call a slow LLM agent (seconds to minutes).
+        # Run it in a worker thread so the IOLoop stays free; control
+        # returns here on the IOLoop after it completes, so the Bokeh
+        # mutations below are still on-thread.
+        await loop.run_in_executor(None, mechanism.step)
 
         add_to_history()
         next_neg_ids = mechanism.next_negotitor_ids()
@@ -3032,11 +3082,20 @@ def start_negotiation(event=None):
     _show_typing_indicator(_FIRST_OFFER_INDICATOR_HTML)
     _set_action_buttons_disabled(True)
 
-    def _prepare_and_step():
+    async def _prepare_and_step():
         try:
+            # Capture the live session doc so the timeout timer and the
+            # button handlers (which call advance()) can marshal mechanism
+            # stepping back onto this IOLoop later.
+            session_state["doc"] = pn.state.curdoc
             scenario = session_state["scenario"]
             human_index = session_state["human_index"]
-            mechanism = session_state["mechanism"] = make_mechanism(
+            # Read all widget values here (on the IOLoop) and bind them
+            # into a partial; constructing the mechanism builds the LLM
+            # partner, which can block, so run it off-loop. Only pure
+            # negmas work goes to the executor — no Bokeh access.
+            make = functools.partial(
+                make_mechanism,
                 scenario=scenario,
                 one_offer_per_step=True,
                 sync_calls=True,
@@ -3055,6 +3114,10 @@ def start_negotiation(event=None):
                 negotiator_time_limit=session_state["timing"]["negotiator_time_limit"].value,
                 agent_type=partner_type,
             )
+            loop = asyncio.get_running_loop()
+            mechanism = session_state["mechanism"] = await loop.run_in_executor(
+                None, make
+            )
             session_state["timer"].set_duration(mechanism.time_limit)
             session_state["timer"].start()
             session_state["human_action"] = None
@@ -3068,7 +3131,7 @@ def start_negotiation(event=None):
                     _vt_row.visible = False
                 except Exception:
                     pass
-            step_to_human()
+            await step_to_human()
             add_tools(Timing.Start)
             send_event_to_tools("negotiation_started")
             # Surface the participant's own preferences now that the
@@ -3082,7 +3145,7 @@ def start_negotiation(event=None):
     if doc is not None:
         doc.add_next_tick_callback(_prepare_and_step)
     else:
-        _prepare_and_step()
+        asyncio.run(_prepare_and_step())
 
     # Log negotiation started event
     try:
