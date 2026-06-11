@@ -1769,11 +1769,23 @@ def load_form(selectable_scenario_type):
         name="Load", icon="loader-3", button_type="primary"
     )
     load_btn.on_click(show_announcements)
-    load_btn.js_on_click(code="""window.location.reload();""")
+    # Disable Load client-side the instant it's clicked so an impatient
+    # participant can't fire it again during the (potentially long) page
+    # reload. The server-side handler can't do this: it runs as a blocking
+    # callback, so any disabled-state change only flushes to the browser
+    # after the handler returns -- too late.
+    load_btn.js_on_click(
+        args={"btn": load_btn},
+        code="""btn.disabled = true; window.location.reload();""",
+    )
     # pn.bind(load_scenario, load_btn)
     strt_btn = create_tracked_button(
         name="Start", icon="player-play", button_type="primary"
     )
+    # Same here: disable Start on click so it can't be pressed twice while the
+    # scenario loads. start_negotiation never re-enables it (the form is
+    # re-rendered fresh afterwards), so this client-side disable is safe.
+    strt_btn.js_on_click(args={"btn": strt_btn}, code="""btn.disabled = true;""")
     load_btn.disabled = new_scenario_loaded
     strt_btn.disabled = not new_scenario_loaded
     strt_btn.on_click(start_negotiation)
