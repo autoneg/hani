@@ -26,6 +26,13 @@ GUEST_PORT = 5008
 console = Console()
 app = typer.Typer(add_completion=False, invoke_without_command=True)
 
+# `hani generate` -- self-contained scenario-pool generator with optional
+# cached utility inverses (hani.make_scenarios). Registered here so it shows up
+# as a subcommand of the main `hani` CLI.
+from hani.make_scenarios import generate as _generate_scenarios
+
+app.command(name="generate")(_generate_scenarios)
+
 
 def wait_for_server(
     url: str, timeout: float = 30.0, poll_interval: float = 0.5
