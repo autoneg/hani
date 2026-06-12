@@ -758,6 +758,11 @@ class AppConfig:
     hani_helpers: bool = False
     allow_moving_tools: bool = False
     allow_text_only_offers: bool = True
+    # When True the mechanism ends the negotiation if a negotiator makes no
+    # offer (a None / empty proposal). HAN wants None offers to be allowed and
+    # the negotiation to keep going, so this defaults to False. An admin can
+    # flip it from the "Negotiation Rules" settings card.
+    end_on_no_response: bool = False
 
     @property
     def has_one_tool_pane(self):
@@ -1028,6 +1033,47 @@ def _is_llm_negotiator_class(klass) -> bool:
     return isinstance(klass, type) and issubclass(klass, LLMNegotiator)
 
 
+# Cache of "no-accept-None" subclasses keyed by the original agent class, so we
+# build one wrapper per base type rather than one per negotiator instance.
+_NO_ACCEPT_NONE_CLASSES: dict[type, type] = {}
+
+
+def no_accept_none_class(base: type) -> type:
+    """Return a subclass of ``base`` that forbids accepting a *None* offer.
+
+    Any agent (not just pan.py's) can decide to ACCEPT on a turn where there is
+    no offer on the table (e.g. its opening move, or after the partner sent a
+    text-only / None offer). negmas' SAOMechanism treats an ACCEPT of a None
+    offer as a hard break (agreement=None), which kills the negotiation. We do
+    NOT want to forbid accepting real offers -- only the meaningless accept of
+    a None offer. So we wrap the agent's ``__call__``: if it returns
+    ACCEPT_OFFER while ``state.current_offer is None``, downgrade it to a
+    REJECT_OFFER with no counter (preserving any text/data), which -- with the
+    mechanism's ``end_on_no_response=False`` -- simply passes the (empty) turn
+    to the human and lets the agent act normally next step.
+    """
+    wrapped = _NO_ACCEPT_NONE_CLASSES.get(base)
+    if wrapped is not None:
+        return wrapped
+
+    def __call__(self, state: SAOState, dest: str | None = None) -> SAOResponse:
+        response = base.__call__(self, state, dest)
+        if (
+            response.response == ResponseType.ACCEPT_OFFER
+            and state.current_offer is None
+        ):
+            return SAOResponse(ResponseType.REJECT_OFFER, None, response.data)
+        return response
+
+    # Construct via the base's metaclass so any custom metaclass stays happy.
+    meta = type(base)
+    wrapped = meta(
+        f"NoAcceptNone_{base.__name__}", (base,), {"__call__": __call__}
+    )
+    _NO_ACCEPT_NONE_CLASSES[base] = wrapped
+    return wrapped
+
+
 def make_mechanism(
     scenario: Scenario,
     human_index: int = CONFIG.human_index,
@@ -1073,6 +1119,17 @@ def make_mechanism(
     # Add allow_none_with_data if text-only offers are allowed
     if session_state["toggles"]["allow_text_only_offers"].value:
         scenario.mechanism_params["allow_none_with_data"] = True
+    # Whether a None / empty offer ends the negotiation. HAN allows None offers
+    # (the negotiation must keep going), so this defaults to False; an admin can
+    # flip it via the "Negotiation Rules" settings card. An explicit
+    # mechanism_params argument still wins over the admin toggle.
+    if not (mechanism_params and "end_on_no_response" in mechanism_params):
+        end_toggle = session_state["toggles"].get("end_on_no_response")
+        scenario.mechanism_params["end_on_no_response"] = (
+            bool(end_toggle.value)
+            if end_toggle is not None
+            else CONFIG.end_on_no_response
+        )
     human_params["name"] = scenario.ufuns[human_index].name + " (You)"
     human_params["id"] = human_params["name"]
     agent_params["name"] = scenario.ufuns[1 - human_index].name + " (AI)"
@@ -1101,6 +1158,12 @@ def make_mechanism(
         # type strings the settings UI configures.
         if is_llm_string:
             agent_params["provider"] = llm_settings.get("provider", "ollama")
+
+    # Forbid the agent from ACCEPTING a None offer (it would break the
+    # mechanism). Applies to every agent type, not just pan.py's. Accepting a
+    # real offer is still allowed; only the meaningless accept-of-None is
+    # downgraded to a rejection-with-no-counter. See no_accept_none_class.
+    agent_class = no_accept_none_class(agent_class)
 
     # Add verbose flag if enabled and supported by negotiator
     verbose_enabled = os.getenv("_HANI_VERBOSE") == "1"
@@ -2002,9 +2065,13 @@ def _refresh_offer_on_table(current_offer: Outcome | None) -> None:
     if accept_btn is not None:
         if current_offer is None:
             accept_btn.name = "Accept"
+            # No offer on the table -> nothing to accept; disable the button so
+            # the human cannot "accept" a None offer.
+            accept_btn.disabled = True
         else:
             util = session_state["human_ufun"](current_offer)
             accept_btn.name = f"Accept ({util:0.1%})"
+            accept_btn.disabled = False
     # Keep the latest offer where on_accept/do_accept can find it.
     session_state["current_partner_offer"] = current_offer
 
@@ -2116,6 +2183,11 @@ def action_panel(
 
     def do_accept():
         live_offer = session_state.get("current_partner_offer", current_offer)
+        # Defensive: never accept a None offer (the Accept button is disabled in
+        # this case, but guard the action path too). Accepting None would break
+        # the mechanism.
+        if live_offer is None:
+            return
         session_state["human_action"] = SAOResponse(
             ResponseType.ACCEPT_OFFER, live_offer
         )
@@ -2378,6 +2450,8 @@ def action_panel(
         sizing_mode="stretch_width",
         margin=(0, 2),
         stylesheets=[":host { font-size: 11px; }"],
+        # Disabled when there is no offer on the table (nothing to accept).
+        disabled=current_offer is None,
     )
     accept_btn.on_click(on_accept)
     end_btn = create_tracked_button(
@@ -4644,6 +4718,13 @@ def main():
     session_state["toggles"]["allow_tool_enable_switch"] = pn.widgets.Checkbox(
         name="Allow tool enable/disable switches (Admin)", value=True
     )
+    # When checked, a negotiator that makes no offer (a None / empty proposal)
+    # ends the negotiation. HAN keeps it unchecked so None offers are allowed
+    # and the negotiation continues. Admin-only.
+    session_state["toggles"]["end_on_no_response"] = pn.widgets.Checkbox(
+        name="End on no-offer / None proposal (Admin)",
+        value=CONFIG.end_on_no_response,
+    )
     # Text & Offers settings (separate group)
     session_state["text_offers"] = dict()
     session_state["text_offers"]["allow_text_agent"] = pn.widgets.Checkbox(
@@ -4940,6 +5021,12 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         pn.Card(
             session_state["toggles"]["allow_tool_enable_switch"],
             title="Tool Settings",
+            collapsed=True,
+            visible=is_admin(),
+        ),
+        pn.Card(
+            session_state["toggles"]["end_on_no_response"],
+            title="Negotiation Rules",
             collapsed=True,
             visible=is_admin(),
         ),
