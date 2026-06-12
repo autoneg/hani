@@ -1473,8 +1473,9 @@ def save_result(m: SAOMechanism):
                 # that last questionnaire is submitted (see end_session).
                 msg = (
                     f"All {n_required} counted negotiations are done. "
-                    f"Complete the final step shown below to finish and "
-                    f"submit on Prolific."
+                    f"Complete the per-negotiation questionnaire to the left "
+                    f"and you will then be redirected to finish the process "
+                    f"and submit to Prolific."
                 )
             elif uncounted:
                 msg = (
