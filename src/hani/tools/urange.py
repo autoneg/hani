@@ -36,19 +36,21 @@ class UtilityInverterTool(OutcomeSelector):
     def negotiation_started(self, session_state: dict[str, Any], nmi: SAONMI):
         self.human_index = session_state["human_index"]
         scenario = session_state["scenario"]
-        self._inverter = self._load_cached_inverter(session_state)
+        ufun = scenario.ufuns[self.human_index]
+        self._inverter = self._load_cached_inverter(session_state, ufun)
         if self._inverter is None:
-            self._inverter = scenario.ufuns[self.human_index].invert()
+            self._inverter = ufun.invert()
             print(f"Inverter recalculated for {scenario.outcome_space.name}")
         else:
             print(f"Inverter loaded from cache for {scenario.outcome_space.name}")
         super().negotiation_started(session_state, nmi)
         self.redraw()
 
-    def _load_cached_inverter(self, session_state: dict[str, Any]):
+    def _load_cached_inverter(self, session_state: dict[str, Any], ufun):
         """Return the inverse pickled next to a disk-loaded scenario
         (inverter_h<idx>.pkl), or None to fall back to recomputing. Computing
-        the inverse is cheap, so any cache miss / error just recomputes."""
+        the inverse is cheap, so any cache miss / error / staleness just
+        recomputes -- the pickle is an optimisation, never a dependency."""
         sdir = session_state.get("scenario_dir")
         if not sdir:
             return None
@@ -60,10 +62,42 @@ class UtilityInverterTool(OutcomeSelector):
             if not path.is_file():
                 return None
             with path.open("rb") as fh:
-                return pickle.load(fh)
+                inverter = pickle.load(fh)
         except Exception as e:  # pragma: no cover - defensive
             print(f"[urange] cached inverter load failed ({e!r}); recomputing")
             return None
+        # The pickle lives next to a scenario yml that may have been generated
+        # from a differently-ordered or rescaled ufun than the one we now serve
+        # (e.g. Scenario.load reorders Trade's ufuns to [Buyer, Seller]). A stale
+        # inverse holds outcomes sorted by the WRONG ufun, so some()/one_in()
+        # return outcomes outside the requested utility range. Verify it against
+        # the live ufun on a few outcomes and recompute on any mismatch.
+        if not self._inverter_matches_ufun(inverter, ufun):
+            print(
+                "[urange] cached inverter does not match the served ufun "
+                "(stale pickle); recomputing"
+            )
+            return None
+        return inverter
+
+    @staticmethod
+    def _inverter_matches_ufun(inverter, ufun, tol: float = 1e-6) -> bool:
+        """True if `inverter`'s utility function agrees with the live `ufun` on a
+        sample of outcomes. Class-agnostic: relies only on the public `.ufun`
+        attribute and the outcome space, not on either inverter's internals."""
+        cached_ufun = getattr(inverter, "ufun", None)
+        os_ = getattr(ufun, "outcome_space", None)
+        if cached_ufun is None or os_ is None:
+            return False
+        try:
+            sample = list(os_.enumerate_or_sample(max_cardinality=16))
+            if not sample:
+                return False
+            return all(
+                abs(float(ufun(o)) - float(cached_ufun(o))) <= tol for o in sample
+            )
+        except Exception:  # pragma: no cover - defensive
+            return False
 
     @param.depends("rng", "min_util")
     def outcomes_tbl(self):
