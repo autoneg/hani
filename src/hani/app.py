@@ -149,6 +149,7 @@ from hani.common import (
     save_llm_settings,
     AGENT_TYPES,
 )
+from hani.support_agent.settings import support_agent_enabled
 from hani.llm_service import (
     extract_outcome_from_text,
     generate_text_from_outcome,
@@ -676,6 +677,19 @@ def default_tools():
             side=True,
         ),
     ]
+    # Optional Negotiation Support Agent (available to all users when enabled by
+    # an admin). Imported lazily so nothing is pulled in when it's disabled.
+    if support_agent_enabled():
+        from hani.tools.support_agent_tool import SupportAgentTool
+
+        tools.append(
+            ToolConfig(
+                "Assistant",
+                SupportAgentTool,
+                Timing.Start,
+                side=True,
+            )
+        )
     if is_admin():
         tools += [
             # Utility Plot, Outcome Plot and Trace are now in the all-user
@@ -2816,6 +2830,148 @@ def action_panel(
     if has_current_offer and not always_visible:
         counter_offer_section.visible = False
 
+    # --- Shared action API -------------------------------------------------
+    # Expose the same operations the human buttons trigger as plain callables
+    # in session_state["actions"]. The Negotiation Support Agent invokes these
+    # (marshalled onto the document) so that "pressing a button" means invoking
+    # the identical operation -- never synthesising fake click events, never
+    # duplicating the confirm-dialog / history / event-logging logic. The human
+    # path above is unchanged.
+    _issue_list = list(issues)
+    _HILITE = (
+        ":host { outline: 3px solid #ffc107; outline-offset: 2px; "
+        "border-radius: 6px; }"
+    )
+
+    def _issue_widget(issue):
+        return session_state.get(f"issue_{issue.name}")
+
+    def _coerce(issue, value):
+        if hasattr(issue, "min_value"):
+            try:
+                return int(float(value)) if isinstance(issue.min_value, int) else float(value)
+            except (TypeError, ValueError):
+                return value
+        return value
+
+    def _resolve_issue(key: str):
+        for issue in _issue_list:
+            if issue.name == key:
+                return issue
+        for issue in _issue_list:
+            if issue.name.lower() == str(key).lower():
+                return issue
+        for issue in _issue_list:
+            if str(key).lower() in issue.name.lower() or issue.name.lower() in str(key).lower():
+                return issue
+        return None
+
+    def _set_offer(outcome: dict):
+        applied, missing = {}, []
+        for key, value in (outcome or {}).items():
+            issue = _resolve_issue(key)
+            widget = _issue_widget(issue) if issue is not None else None
+            if widget is None:
+                missing.append(key)
+                continue
+            try:
+                widget.value = _coerce(issue, value)
+                applied[issue.name] = widget.value
+            except Exception as e:  # noqa: BLE001
+                missing.append(f"{key} ({e})")
+        return {"ok": not missing, "applied": applied, "unrecognised": missing}
+
+    def _set_text(text: str):
+        widget = session_state.get("text_input_widget")
+        if widget is None:
+            return {"ok": False, "error": "no message field (text is disabled)"}
+        widget.value = text or ""
+        return {"ok": True}
+
+    def _draft_offer():
+        out = {}
+        for issue in _issue_list:
+            w = _issue_widget(issue)
+            if w is not None:
+                out[issue.name] = w.value
+        return out
+
+    def _can_act():
+        mech = session_state.get("mechanism")
+        if mech is None or getattr(mech.state, "done", False):
+            return False
+        try:
+            return mech.next_negotitor_ids()[0] == session_state.get("human_id")
+        except Exception:
+            return False
+
+    def _highlight(key: str):
+        if key == "reject":
+            on_reject_counter()
+        btn = {"accept": accept_btn, "reject": reject_btn, "end": end_btn}.get(key)
+        if btn is not None:
+            try:
+                btn.stylesheets = list(getattr(btn, "stylesheets", []) or []) + [_HILITE]
+            except Exception:
+                pass
+        return {"ok": True, "highlighted": key}
+
+    def _issue_info(issue):
+        info = {"name": issue.name}
+        if hasattr(issue, "min_value") and hasattr(issue, "max_value"):
+            info["min"], info["max"] = issue.min_value, issue.max_value
+        else:
+            try:
+                info["values"] = list(issue.all)
+            except Exception:
+                pass
+        return info
+
+    def _utility(outcome):
+        try:
+            return float(human_ufun(outcome)) if outcome is not None else None
+        except Exception:
+            return None
+
+    def _context():
+        partner = session_state.get("current_partner_offer")
+        partner_dict = (
+            dict(zip((i.name for i in _issue_list), partner)) if partner else None
+        )
+        draft = _draft_offer()
+        draft_tuple = tuple(draft.get(i.name) for i in _issue_list)
+        text_widget = session_state.get("text_input_widget")
+        mech = session_state.get("mechanism")
+        state = getattr(mech, "state", None)
+        return {
+            "issues": [_issue_info(i) for i in _issue_list],
+            "partner_offer": partner_dict,
+            "partner_offer_utility": _utility(partner),
+            "draft_offer": draft,
+            "draft_offer_utility": _utility(draft_tuple)
+            if any(v is not None for v in draft_tuple)
+            else None,
+            "draft_message": (text_widget.value if text_widget else None),
+            "reserved_value": float(getattr(human_ufun, "reserved_value", 0.0) or 0.0),
+            "is_my_turn": _can_act(),
+            "step": getattr(state, "step", None),
+            "n_steps": getattr(getattr(mech, "nmi", None), "n_steps", None),
+            "relative_time": getattr(state, "relative_time", None),
+        }
+
+    session_state["actions"] = {
+        "set_offer": _set_offer,
+        "set_text": _set_text,
+        "get_offer": _draft_offer,
+        "get_partner_offer": lambda: session_state.get("current_partner_offer"),
+        "can_act": _can_act,
+        "context": _context,
+        "highlight": _highlight,
+        "accept": lambda confirm=True: (on_accept() if confirm else do_accept()),
+        "end": lambda confirm=True: (on_end() if confirm else do_end()),
+        "reject_counter": lambda: on_reject(),
+    }
+
     session_state["action_panel"].append(col)
     return col
 
@@ -2965,7 +3121,7 @@ def add_tools(timing: Timing):
     side_config = [_ for _ in CONFIG.side_tools(timing) if not _.added]
     side_tools = [_.make() for _ in side_config]
     side_tabs = list(zip((_.name for _ in side_config), side_tools))
-    at_front = [_.at_front for _ in lower_config]
+    at_front = [_.at_front for _ in side_config]
     for tab, at_front in zip(side_tabs, at_front):
         if at_front:
             session_state["side_tabs"].insert(0, tab)
@@ -5016,6 +5172,10 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     offer_init_keys = ["init_with_last", "init_with_best"]
     offer_init_toggles = [session_state["toggles"][k] for k in offer_init_keys]
 
+    from hani.support_agent.admin_ui import build_admin_card
+
+    support_agent_card = build_admin_card(session_state, is_admin())
+
     sidebar = pn.Column(
         image,
         pn.Card(*display_toggles, title="Display Toggles", collapsed=True),
@@ -5065,6 +5225,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             visible=is_admin(),
         ),
         llm_card,
+        support_agent_card,
         # Add modals at end of sidebar (they're overlays, won't affect width)
         extraction_modal,
         generation_modal,
@@ -5194,6 +5355,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
     session_state["side_tabs"] = side_tabs = pn.Tabs()
     session_state["tools"] = []
+    # Controls tool enable/visibility/order for the human move/close buttons and
+    # for the Support Agent. Cheap and harmless even when the agent is disabled.
+    from hani.support_agent.tool_controller import ToolController
+
+    session_state["tool_controller"] = ToolController(session_state)
     # The tabs widget that actually displays Preferences / Scenario Info,
     # so _focus_preferences_tab can switch to Preferences regardless of
     # view. Full view shows upper_tabs directly; simple view replaces this

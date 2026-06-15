@@ -77,6 +77,7 @@ nav:
   - Setting up Ollama: ollama.md
   - Tools: tools.md
   - Offer Generators: offer-generators.md
+  - Support Agent: support-agent.md
   - Defining Scenarios: scenarios.md
   - Prolific Integration: prolific.md
   - Changelog: changelog.md

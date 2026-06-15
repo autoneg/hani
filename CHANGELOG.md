@@ -5,6 +5,28 @@ All notable changes to the HANI (Human-Agent Negotiation Interface) project will
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Optional Negotiation Support Agent** (`hani.support_agent`): an LLM-driven
+  assistant, disabled by default and admin-gated, that can:
+  - chat with the user (and post messages unprompted) via a new **Assistant**
+    side tool built on `pn.chat.ChatInterface`;
+  - send toast notifications;
+  - control any tool's enable/disable, visibility, and order (new
+    `ToolController`, which also activates the previously-stubbed tool
+    move/close buttons);
+  - drive the action panel (fill the offer, write the message, send a
+    counter-offer, accept, or end) through a shared action API extracted from
+    `action_panel` and exposed in `session_state["actions"]`.
+  - Multi-turn tool-calling via `litellm` (any provider; own key/host/port in
+    `support_agent_settings.json`), run off the IOLoop with all UI effects
+    marshalled through the session document.
+  - **Capability + autonomy model**: an admin grants a ceiling
+    (`suggest`/`semi`/`full` autonomy + per-capability switches); the human
+    negotiator can only narrow it, never widen. Agent-initiated actions are
+    logged distinctly (`component="SupportAgent"`, `actor="agent"`).
+
 ## [0.3.2] - 2026-05-22
 
 ### Added
