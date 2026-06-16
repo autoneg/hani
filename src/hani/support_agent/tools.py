@@ -179,11 +179,12 @@ class ToolDispatcher:
     def _schema_show_on_board(self) -> dict:
         return _fn(
             "show_on_board",
-            "Write to the always-visible status board (a full-width panel below the "
-            "other panels). Use it for anything the human should see persistently: your "
-            "current recommendation, a summary, or a warning. Supports markdown.",
+            "Write to the always-visible status board: a full-width strip below the "
+            "other panels that you write into directly. Use it for anything the human "
+            "should see persistently: your current recommendation, a summary, a table, "
+            "or a warning. Content may be markdown OR raw HTML.",
             {
-                "content": {"type": "string", "description": "Markdown to display."},
+                "content": {"type": "string", "description": "Markdown or HTML to display."},
                 "append": {
                     "type": "boolean",
                     "description": "Append below existing content instead of replacing.",

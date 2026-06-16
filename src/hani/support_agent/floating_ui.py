@@ -310,28 +310,27 @@ def build_floating_agent(
 
 
 def _build_status_board(session_state: dict[str, Any]) -> None:
-    """A full-width, always-visible panel the agent writes to via show_on_board.
+    """A full-width, always-visible strip the agent writes to via show_on_board.
 
-    Stores the Markdown pane at ``support_board`` (the runtime updates it) and the
-    wrapping Card at ``support_board_panel`` (main() places it in the grid).
+    No card / title / collapse -- the agent writes directly into the space. The
+    pane renders markdown *and* raw HTML, so the agent can emit either. Stored at
+    ``support_board`` (the runtime updates ``.object``) and ``support_board_panel``
+    (main() places it in the grid bottom row).
     """
     board = pn.pane.Markdown(
-        "*The assistant will show notes and recommendations here.*",
-        sizing_mode="stretch_width",
-        styles={"color": "#1a1a1a"},
-        margin=(0, 8),
+        "",  # empty until the agent writes; no wasted header space
+        sizing_mode="stretch_both",
+        styles={
+            "color": "#1a1a1a",
+            "background": "#ffffff",
+            "border-top": "2px solid #e2e6ec",
+            "padding": "6px 12px",
+            "overflow": "auto",
+        },
+        margin=(0, 0),
     )
     session_state["support_board"] = board
-    session_state["support_board_panel"] = pn.Card(
-        board,
-        title="🤝 Assistant",
-        collapsed=False,
-        header_background="#eef1f5",
-        header_color="#1a1a1a",
-        styles={"background": "#ffffff", "border": "1px solid #e2e6ec"},
-        sizing_mode="stretch_width",
-        margin=(4, 0),
-    )
+    session_state["support_board_panel"] = board
 
 
 def _make_callback(runtime):
