@@ -147,6 +147,24 @@ class SupportAgent:
 
         self._post_async(_do)
 
+    def show_on_board(self, text: str, append: bool = False) -> bool:
+        """Write to the always-visible, full-width status board (if mounted).
+
+        Uses the non-blocking marshalling path, so it is safe from both a worker
+        thread and the IOLoop.
+        """
+        board = self.session_state.get("support_board")
+        if board is None:
+            return False
+
+        def _do():
+            board.object = (
+                f"{board.object}\n\n{text}" if append and board.object else text
+            )
+
+        self._post_async(_do)
+        return True
+
     def toast(self, message: str, level: str = "info") -> bool:
         level = level if level in _VALID_TOAST_LEVELS else "info"
 
@@ -168,7 +186,72 @@ class SupportAgent:
         if not self.user_enabled:
             self.post("(The assistant is turned off. Switch it on to chat.)")
             return
-        self._run_turn(user_text=text)
+        self._run_turn(user_text=text, context_note=self._context_snapshot())
+
+    def _context_snapshot(self) -> str | None:
+        """A fresh JSON snapshot of the live negotiation, injected every turn so the
+        agent always has the issues, the offer on the table, the human's draft, the
+        utilities, and recent history -- and never has to ask for them."""
+        actions = self.session_state.get("actions")
+        if not actions:
+            return None
+        try:
+            ctx = self.run_on_doc(actions["context"])
+        except Exception:
+            return None
+        return "[Current negotiation state]\n" + json.dumps(ctx, default=str, indent=2)
+
+    def warn_if_draft_below_reserved(self) -> None:
+        """Deterministic proactive check (runs ON the IOLoop, from a widget watcher):
+        if the human's current draft offer is worth less than their reserved value,
+        show a warning toast with a link to discuss, and post a chat message.
+
+        Because this is called on the IOLoop, it touches the UI directly (no
+        marshalling) -- using run_on_doc here would deadlock.
+        """
+        if not self.user_enabled:
+            return
+        actions = self.session_state.get("actions")
+        if not actions:
+            return
+        try:
+            ctx = actions["context"]()  # direct read; we're on the IOLoop
+        except Exception:
+            return
+        util, reserved = ctx.get("draft_offer_utility"), ctx.get("reserved_value")
+        if util is None or reserved is None:
+            return
+        if util >= reserved:
+            self._below_reserved_warned = False  # reset so it can warn again later
+            return
+        if getattr(self, "_below_reserved_warned", False):
+            return  # debounce: one warning until they fix it
+        self._below_reserved_warned = True
+
+        notif = getattr(pn.state, "notifications", None)
+        if notif:
+            notif.warning(
+                "⚠️ Your current offer is worth <b>less than your reserved value</b> — "
+                "accepting it would be worse than ending. "
+                "<a href='#' onclick=\"document.querySelector('.sa-bubble-btn button')"
+                "?.click();return false;\" style='color:#fff;text-decoration:underline;'>"
+                "Discuss with the assistant →</a>",
+                duration=0,
+            )
+        self.show_on_board(
+            f"⚠️ **Recommendation:** your current draft offer ({util:.0%}) is below "
+            f"your reserved value ({reserved:.0%}). Consider a stronger offer or ending."
+        )
+        chat = self.session_state.get("support_chat")
+        if chat is not None:
+            chat.send(
+                f"⚠️ Heads up: your current draft offer is worth **less than your "
+                f"reserved value** ({util:.0%} vs {reserved:.0%}). If your partner "
+                f"accepts it, you'd do worse than simply ending the negotiation. "
+                f"Want me to propose a stronger counter-offer?",
+                user="Support Agent",
+                respond=False,
+            )
 
     def on_event(self, event_name: str, nmi=None) -> None:
         """Proactive trigger from a negotiation lifecycle event (if enabled)."""
@@ -181,7 +264,7 @@ class SupportAgent:
             return  # don't pile up on an in-flight turn
         note = self.proactive_note(event_name)
         if note:
-            self._run_turn(system_note=note)
+            self._run_turn(system_note=note, context_note=self._context_snapshot())
 
     def proactive_note(self, event_name: str) -> str | None:
         """Return the system note that seeds a proactive turn (or None to stay
@@ -201,13 +284,23 @@ class SupportAgent:
     # ------------------------------------------------------------------ #
     # The tool-calling loop.                                              #
     # ------------------------------------------------------------------ #
-    def _run_turn(self, user_text: str | None = None, system_note: str | None = None) -> None:
+    def _run_turn(
+        self,
+        user_text: str | None = None,
+        system_note: str | None = None,
+        context_note: str | None = None,
+    ) -> None:
         if not self._busy.acquire(blocking=False):
             self.post("(I'm still working on the previous request — one moment.)")
             return
         try:
             if user_text is not None:
-                self.messages.append({"role": "user", "content": user_text})
+                # Prepend the live negotiation snapshot to the user's message so the
+                # model literally receives the state in-context every turn.
+                content = (
+                    f"{context_note}\n\n---\n{user_text}" if context_note else user_text
+                )
+                self.messages.append({"role": "user", "content": content})
             if system_note is not None:
                 self.messages.append({"role": "user", "content": system_note})
 

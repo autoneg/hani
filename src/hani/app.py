@@ -2488,6 +2488,22 @@ def action_panel(
     my_util = pn.bind(offer_util, *widgets)
     session_state["offer_widgets"] = widgets
 
+    # Support Agent (test rule): warn via toast/board/chat when the human's draft
+    # offer drops below their reserved value. The watcher fires on the IOLoop; the
+    # agent (looked up lazily) does its own direct, deadlock-free UI calls.
+    if support_agent_enabled():
+
+        def _sa_offer_watch(event=None):
+            agent = session_state.get("support_agent")
+            if agent is not None:
+                try:
+                    agent.warn_if_draft_below_reserved()
+                except Exception as e:  # noqa: BLE001
+                    print(f"support agent draft watch: {e}")
+
+        for _w in widgets:
+            _w.param.watch(_sa_offer_watch, "value")
+
     # --- Current Offer Section (at the top) ---
     # Display the current offer from partner with utility (color coded)
     has_current_offer = current_offer is not None
@@ -2923,6 +2939,26 @@ def action_panel(
         except Exception:
             return None
 
+    def _history(mech):
+        """Recent offer/message exchange, the same information the human sees."""
+        out = []
+        state = getattr(mech, "state", None)
+        trace = getattr(state, "trace", None) or []
+        human_id = session_state.get("human_id")
+        names = [i.name for i in _issue_list]
+        for item in trace[-14:]:
+            offer = getattr(item, "offer", None)
+            neg = getattr(item, "negotiator", None)
+            data = getattr(item, "data", None) or {}
+            out.append(
+                {
+                    "by": "you" if neg == human_id else "partner",
+                    "offer": dict(zip(names, offer)) if offer else None,
+                    "message": data.get("text") if isinstance(data, dict) else None,
+                }
+            )
+        return out
+
     def _context():
         partner = session_state.get("current_partner_offer")
         partner_dict = (
@@ -2947,6 +2983,7 @@ def action_panel(
             "step": getattr(state, "step", None),
             "n_steps": getattr(getattr(mech, "nmi", None), "n_steps", None),
             "relative_time": getattr(state, "relative_time", None),
+            "history": _history(mech) if mech is not None else [],
         }
 
     session_state["actions"] = {
@@ -5468,8 +5505,9 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     session_state["template"] = template
 
     # Optional Negotiation Support Agent: a floating chat bubble at the bottom
-    # right of the page (not a tool tab). Mounted into the always-present header
-    # so its position:fixed children float over either layout. Imported lazily so
+    # right of the page (not a tool tab). Mounted into the always-present, light
+    # history wrapper (NOT the dark header) so its position:fixed children float
+    # over either layout while inheriting the light theme. Imported lazily so
     # nothing is pulled in when the agent is disabled.
     if support_agent_enabled():
         try:
@@ -5479,7 +5517,14 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             floating = build_floating_agent(
                 session_state, load_support_agent_settings(), is_admin()
             )
+            # Mount into the header: it is NOT transformed, so position:fixed children
+            # anchor to the viewport (grid cells use CSS transform, which would trap a
+            # fixed element inside the cell). The panel forces its own light theme.
             template.header.append(floating)
+            # Full-width, always-visible status board below all the panels.
+            board_panel = session_state.get("support_board_panel")
+            if board_panel is not None:
+                template.main[5:6, 0:12] = board_panel  # type: ignore
         except Exception as e:  # noqa: BLE001 - never let the agent break the app
             print(f"Support agent: could not mount floating UI: {e}")
 

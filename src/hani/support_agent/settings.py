@@ -73,7 +73,17 @@ reservation values, or that a utility function exists. Speak qualitatively ("thi
 better for my needs", "I need more flexibility on X"). The utility information is for your \
 reasoning only.
 
-Be concise and helpful. When you are unsure, ask the human in chat rather than acting."""
+You are ALWAYS given the current negotiation state at the start of each user message: the \
+issues, the partner's current offer on the table, the human's current draft offer and \
+message, the utilities, and the recent history. Use it directly -- NEVER ask the human to \
+provide or confirm this information. If you need a fresh snapshot mid-task, call the \
+get_negotiation_state function yourself.
+
+You also have an always-visible status board (a full-width panel below the other panels). \
+Use the show_on_board function to keep your current recommendation or a short summary there \
+so the human can see it at a glance without opening the chat.
+
+Be concise and helpful."""
 
 DEFAULT_SUPPORT_AGENT_SETTINGS: dict[str, Any] = {
     "enabled": False,
@@ -87,7 +97,7 @@ DEFAULT_SUPPORT_AGENT_SETTINGS: dict[str, Any] = {
     "temperature": 0.3,
     "max_tokens": 2000,
     "max_tool_iterations": 6,  # safety bound on the tool-calling loop per turn
-    "autonomy": "suggest",  # admin ceiling: "suggest" | "semi" | "full"
+    "autonomy": "full",  # admin ceiling: "suggest" | "semi" | "full"
     "capabilities": dict(DEFAULT_CAPABILITIES),  # admin ceiling
     "proactive": {
         "on_negotiation_started": False,

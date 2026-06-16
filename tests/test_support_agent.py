@@ -384,6 +384,62 @@ def test_floating_agent_builds_with_bubble_and_hidden_panel():
     assert len(list(widget)) == 3       # chat_panel, bubble, click overlay
 
 
+def test_show_on_board_tool_and_update():
+    import panel as pn
+
+    board = pn.pane.Markdown("")
+    settings = dict(DEFAULT_SUPPORT_AGENT_SETTINGS, capabilities={"chat": True})
+    agent = SupportAgent({"doc": None, "support_board": board}, settings)
+    # show_on_board is always advertised (capability None).
+    assert "show_on_board" in {s["function"]["name"] for s in agent.dispatcher.schemas()}
+    agent.dispatcher.execute("show_on_board", {"content": "Recommend: hold firm."})
+    assert "hold firm" in board.object
+    agent.dispatcher.execute("show_on_board", {"content": "More.", "append": True})
+    assert "hold firm" in board.object and "More." in board.object
+
+
+def test_context_is_injected_into_each_user_turn(monkeypatch):
+    import litellm
+
+    actions = {
+        "context": lambda: {"partner_offer": {"price": 9}, "reserved_value": 0.5},
+    }
+    settings = dict(DEFAULT_SUPPORT_AGENT_SETTINGS, capabilities={"chat": True})
+    agent = SupportAgent({"doc": None, "actions": actions}, settings)
+    agent.post = lambda text, user="Support Agent": None
+    monkeypatch.setattr(litellm, "completion", lambda **kw: _fake_response(content="ok"))
+    agent.handle_user_message("should I accept?")
+    # The user message that reached the model carries the live state snapshot.
+    user_msgs = [m for m in agent.messages if m["role"] == "user"]
+    assert "Current negotiation state" in user_msgs[-1]["content"]
+    assert "partner_offer" in user_msgs[-1]["content"]
+    assert "should I accept?" in user_msgs[-1]["content"]
+
+
+def test_warn_if_draft_below_reserved(monkeypatch):
+    import panel as pn
+
+    board = pn.pane.Markdown("")
+    sent = []
+
+    class _Chat:
+        def send(self, text, user=None, respond=True):
+            sent.append(text)
+
+    # Draft utility below reserved -> warn (board + chat); debounced thereafter.
+    actions = {"context": lambda: {"draft_offer_utility": 0.2, "reserved_value": 0.5}}
+    ss = {"doc": None, "actions": actions, "support_board": board, "support_chat": _Chat()}
+    agent = SupportAgent(ss, dict(DEFAULT_SUPPORT_AGENT_SETTINGS, capabilities={"chat": True}))
+    agent.warn_if_draft_below_reserved()
+    assert "reserved value" in board.object and len(sent) == 1
+    agent.warn_if_draft_below_reserved()  # debounced
+    assert len(sent) == 1
+    # Once the draft improves, the warning resets (no new message).
+    actions["context"] = lambda: {"draft_offer_utility": 0.8, "reserved_value": 0.5}
+    agent.warn_if_draft_below_reserved()
+    assert len(sent) == 1
+
+
 def test_loop_stops_at_iteration_cap(monkeypatch):
     import litellm
 

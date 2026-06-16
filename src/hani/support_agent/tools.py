@@ -52,6 +52,7 @@ class ToolDispatcher:
         # name -> (required Capability or None, handler, schema dict)
         self._registry: dict[str, tuple[Capability | None, Callable, Callable]] = {
             "send_toast": (Capability.TOAST, self._send_toast, self._schema_send_toast),
+            "show_on_board": (None, self._show_on_board, self._schema_show_on_board),
             "list_tools": (None, self._list_tools, self._schema_list_tools),
             "set_tool_enabled": (
                 Capability.TOOL_ENABLE,
@@ -165,6 +166,30 @@ class ToolDispatcher:
                 },
             },
             ["message"],
+        )
+
+    def _show_on_board(self, args: dict) -> dict:
+        text = str(args.get("content", "")).strip()
+        if not text:
+            return {"ok": False, "error": "content is required"}
+        ok = self.runtime.show_on_board(text, append=bool(args.get("append", False)))
+        _log_agent_action(self.ss, "show_on_board", text[:80])
+        return {"ok": ok}
+
+    def _schema_show_on_board(self) -> dict:
+        return _fn(
+            "show_on_board",
+            "Write to the always-visible status board (a full-width panel below the "
+            "other panels). Use it for anything the human should see persistently: your "
+            "current recommendation, a summary, or a warning. Supports markdown.",
+            {
+                "content": {"type": "string", "description": "Markdown to display."},
+                "append": {
+                    "type": "boolean",
+                    "description": "Append below existing content instead of replacing.",
+                },
+            },
+            ["content"],
         )
 
     # ------------------------------------------------------------------ #
