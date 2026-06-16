@@ -4,6 +4,11 @@ The **Negotiation Support Agent** is an optional, LLM-driven assistant that help
 human negotiator during a live negotiation. It is **disabled by default** and
 admin-gated; when off, it has zero effect on the app and on existing experiments.
 
+It appears as a small **chat-bubble icon at the bottom-right of the page**. Clicking
+the bubble opens a chat panel; from there the participant can turn the agent on/off
+(the bubble changes colour to reflect the state) and narrow down or re-expand its
+capabilities — up to the admin-granted ceiling.
+
 When enabled it can:
 
 1. **Chat** with the user in a full chat interface — and post messages *unprompted*
@@ -83,9 +88,10 @@ restricts the irreversible negotiation moves.
 There are two layers:
 
 * **Admin grant** — the *ceiling* set in settings (`capabilities` + `autonomy`).
-* **User preferences** — from the **“⚙️ Agent controls”** panel inside the chat tool,
-  the human negotiator can switch **off** any granted capability and **lower** the
-  autonomy level.
+* **User preferences** — from the **“⚙️ Capabilities”** panel inside the floating chat,
+  the human negotiator can switch **off** any granted capability (and turn granted
+  ones back **on**) and **lower** the autonomy level, plus a master on/off switch for
+  the whole agent.
 
 The **effective** permission is the intersection: a participant can always make the
 agent *less* powerful, but never *more* powerful than the admin allowed.
@@ -108,12 +114,12 @@ separate agent-initiated actions from the human's own clicks.
 | Capabilities | `hani.support_agent.capabilities` | `Capability`, `Autonomy`, `CapabilityState` (the admin∩user lattice). |
 | Tools | `hani.support_agent.tools.ToolDispatcher` | The functions exposed to the LLM, capability-gated, dispatched to the action API / tool controller. |
 | Tool controller | `hani.support_agent.tool_controller.ToolController` | Enable/disable, show/hide, reorder tabs (also powers the human move/close buttons). |
-| Chat view | `hani.tools.support_agent_tool.SupportAgentTool` | The “Assistant” tab: a `pn.chat.ChatInterface`, the user controls panel, and lifecycle → proactive forwarding. |
+| Floating UI | `hani.support_agent.floating_ui.build_floating_agent` | The bottom-right chat bubble + popup: a `pn.chat.ChatInterface`, the master on/off switch, and the capability/autonomy controls. Mounted into the template header. |
 | Settings | `hani.support_agent.settings` | Load/save the JSON config. |
 | Admin UI | `hani.support_agent.admin_ui` | The sidebar card. |
 
 The view never owns the runtime — the agent must be able to act (toasts, tool control,
-proactive comments) even when its tab isn't focused. All UI mutations are funnelled
+proactive comments) regardless of which tool tab is focused. All UI mutations are funnelled
 through `runtime.run_on_doc(...)` / `runtime.post(...)`, which marshal onto the Bokeh
 session document so nothing mutates widgets from a worker thread.
 

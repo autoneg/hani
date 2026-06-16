@@ -10,8 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Optional Negotiation Support Agent** (`hani.support_agent`): an LLM-driven
   assistant, disabled by default and admin-gated, that can:
-  - chat with the user (and post messages unprompted) via a new **Assistant**
-    side tool built on `pn.chat.ChatInterface`;
+  - chat with the user (and post messages unprompted) via a floating **chat
+    bubble** (bottom-right) that opens a `pn.chat.ChatInterface`, with a master
+    on/off switch and capability/autonomy controls the user can narrow within
+    the admin ceiling;
   - send toast notifications;
   - control any tool's enable/disable, visibility, and order (new
     `ToolController`, which also activates the previously-stubbed tool

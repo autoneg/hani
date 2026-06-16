@@ -347,6 +347,43 @@ def test_custom_dispatcher_registers_extra_tool():
     assert agent.dispatcher.execute("say_hi", {"name": "Yasser"}) == {"ok": True, "hi": "Yasser"}
 
 
+def test_user_master_switch_gates_turns(monkeypatch):
+    import litellm
+
+    settings = dict(DEFAULT_SUPPORT_AGENT_SETTINGS, capabilities={"chat": True})
+    posted = []
+    agent = SupportAgent({"doc": None}, settings)
+    agent.post = lambda text, user="Support Agent": posted.append(text)
+    agent.user_enabled = False
+
+    def _boom(**kw):
+        raise AssertionError("litellm must not be called while the agent is off")
+
+    monkeypatch.setattr(litellm, "completion", _boom)
+    agent.handle_user_message("hello?")
+    assert posted and "turned off" in posted[0]
+    # Proactive events are also suppressed while off.
+    agent.on_event("negotiation_started")  # must not raise / call litellm
+
+
+def test_floating_agent_builds_with_bubble_and_hidden_panel():
+    from hani.support_agent.floating_ui import build_floating_agent
+
+    ss = {}
+    settings = dict(
+        DEFAULT_SUPPORT_AGENT_SETTINGS,
+        enabled=True,
+        capabilities={"chat": True, "toast": True, "accept": False},
+        autonomy="semi",
+    )
+    widget = build_floating_agent(ss, settings, is_admin=True)
+    # chat + runtime were registered in session_state.
+    assert "support_chat" in ss and "support_agent" in ss
+    # The container has the (initially hidden) chat panel and the bubble.
+    assert widget[0].visible is False  # chat panel starts closed
+    assert len(list(widget)) == 3       # chat_panel, bubble, click overlay
+
+
 def test_loop_stops_at_iteration_cap(monkeypatch):
     import litellm
 

@@ -76,6 +76,9 @@ class SupportAgent:
         ]
         self._busy = threading.Lock()
         self.dispatcher = self.make_dispatcher()
+        # User-facing master switch (the participant can turn the agent off
+        # entirely from the floating UI). Never widens admin permissions.
+        self.user_enabled = True
 
     # -- extension points ---------------------------------------------------
     def build_system_prompt(self) -> str:
@@ -162,10 +165,15 @@ class SupportAgent:
     # ------------------------------------------------------------------ #
     def handle_user_message(self, text: str) -> None:
         """Called (from the worker thread) when the human sends a chat message."""
+        if not self.user_enabled:
+            self.post("(The assistant is turned off. Switch it on to chat.)")
+            return
         self._run_turn(user_text=text)
 
     def on_event(self, event_name: str, nmi=None) -> None:
-        """Proactive trigger from a Tool lifecycle hook (if enabled in settings)."""
+        """Proactive trigger from a negotiation lifecycle event (if enabled)."""
+        if not self.user_enabled:
+            return
         proactive = self.settings.get("proactive", {}) or {}
         if not proactive.get(f"on_{event_name}", False):
             return

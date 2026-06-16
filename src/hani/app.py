@@ -677,19 +677,9 @@ def default_tools():
             side=True,
         ),
     ]
-    # Optional Negotiation Support Agent (available to all users when enabled by
-    # an admin). Imported lazily so nothing is pulled in when it's disabled.
-    if support_agent_enabled():
-        from hani.tools.support_agent_tool import SupportAgentTool
-
-        tools.append(
-            ToolConfig(
-                "Assistant",
-                SupportAgentTool,
-                Timing.Start,
-                side=True,
-            )
-        )
+    # NOTE: the optional Negotiation Support Agent is no longer a tool tab. It is
+    # mounted as a floating chat bubble (bottom-right) in main() when enabled --
+    # see hani.support_agent.floating_ui.
     if is_admin():
         tools += [
             # Utility Plot, Outcome Plot and Trace are now in the all-user
@@ -3090,6 +3080,9 @@ async def step_to_human(event=None):
     human_index = session_state["human_index"]
     for tool in session_state["tools"]:
         tool.action_requested(session_state, mechanism.negotiators[human_index].nmi)
+    _notify_support_agent(
+        "action_requested", mechanism.negotiators[human_index].nmi
+    )
     if not negoiation_completed():
         action_panel(mechanism.state.current_offer, mechanism.state.current_data)
     # session_state["template"].main[3:5, 3:10] = offer
@@ -3132,6 +3125,21 @@ def add_tools(timing: Timing):
     session_state["tools"] = (
         session_state["tools"] + upper_tools + lower_tools + side_tools
     )
+
+
+def _notify_support_agent(event_name, nmi=None):
+    """Fire a proactive lifecycle event at the Support Agent, if one is running.
+
+    The agent is no longer a Tool, so it doesn't receive the tool lifecycle
+    dispatch; we notify it explicitly. Runs off the IOLoop (the agent may call a
+    slow LLM); the runtime guards re-entrancy and marshals UI effects back.
+    """
+    agent = session_state.get("support_agent")
+    if agent is None:
+        return
+    import threading
+
+    threading.Thread(target=agent.on_event, args=(event_name, nmi), daemon=True).start()
 
 
 def send_event_to_tools(event):
@@ -3365,6 +3373,12 @@ def start_negotiation(event=None):
             await step_to_human()
             add_tools(Timing.Start)
             send_event_to_tools("negotiation_started")
+            _notify_support_agent(
+                "negotiation_started",
+                session_state["mechanism"].negotiators[
+                    session_state["human_index"]
+                ].nmi,
+            )
             # Surface the participant's own preferences now that the
             # round is live (instead of leaving Scenario Info focused).
             _focus_preferences_tab()
@@ -5452,6 +5466,23 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         # template.main[0:5, 10:12] = tools_pane
 
     session_state["template"] = template
+
+    # Optional Negotiation Support Agent: a floating chat bubble at the bottom
+    # right of the page (not a tool tab). Mounted into the always-present header
+    # so its position:fixed children float over either layout. Imported lazily so
+    # nothing is pulled in when the agent is disabled.
+    if support_agent_enabled():
+        try:
+            from hani.support_agent.settings import load_support_agent_settings
+            from hani.support_agent.floating_ui import build_floating_agent
+
+            floating = build_floating_agent(
+                session_state, load_support_agent_settings(), is_admin()
+            )
+            template.header.append(floating)
+        except Exception as e:  # noqa: BLE001 - never let the agent break the app
+            print(f"Support agent: could not mount floating UI: {e}")
+
     template.servable(title="Human Agent Negotiation Interface")
 
 
