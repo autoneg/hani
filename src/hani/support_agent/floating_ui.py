@@ -194,11 +194,11 @@ def build_floating_agent(
     )
 
     # --- pin position (Floating / Left / Right) -----------------------------
-    # Float = bubble; Left = beside the tools; Right = share the generators pane;
-    # Full = take the whole right column (generators move left so the action panel
-    # keeps its size).
+    # Float = bubble; Left = beside the tools (upper pane); Right = the generators
+    # (side) pane. (A true full-height dedicated column would require re-laying the
+    # FastGridTemplate grid at runtime, which react-grid-layout does not support.)
     position = pn.widgets.RadioButtonGroup(
-        options=["Float", "Left", "Right", "Full"], value="Float",
+        options=["Float", "Left", "Right"], value="Float",
         button_style="outline", button_type="primary",
         styles={"font-size": "11px"}, margin=(0, 0),
     )
@@ -281,20 +281,6 @@ def build_floating_agent(
                     return t
         return upper  # Left -> the main tool pane (beside Value Histogram etc.)
 
-    def _evict_generators_left():
-        """Move every tab in the right (side) pane to the left (upper) pane, so the
-        agent can own the whole right column without shrinking the action panel."""
-        ss = session_state
-        side, upper = ss.get("side_tabs"), ss.get("upper_tabs")
-        if side is None or upper is None or side is upper:
-            return
-        while len(side.objects) > 0:
-            names = list(getattr(side, "_names", []) or [])
-            nm = names[0] if names else "Tool"
-            obj = side.objects[0]
-            side.pop(0)
-            upper.append((nm, obj))
-
     def _apply_position(event=None):
         pos = position.value
         _detach_body()
@@ -303,17 +289,7 @@ def build_floating_agent(
             chat_panel.visible = True
             bubble.visible = bubble_btn.visible = True
             return
-        if pos == "Full":
-            ss = session_state
-            display, upper = ss.get("display_tabs"), ss.get("upper_tabs")
-            if display is not None and display is not upper:
-                tabs = display  # simple view: one combined Tabs
-            else:
-                _evict_generators_left()
-                side = ss.get("side_tabs")
-                tabs = side if side is not None else upper
-        else:
-            tabs = _target_tabs(pos)
+        tabs = _target_tabs(pos)
         if tabs is None:  # no pane available -> stay floating
             position.value = "Float"
             return
