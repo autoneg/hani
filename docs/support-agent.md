@@ -43,7 +43,7 @@ from the **“Support Agent (Admin)”** card in the sidebar.
   "temperature": 0.3,
   "max_tokens": 2000,
   "max_tool_iterations": 6,
-  "autonomy": "suggest",
+  "autonomy": "full",
   "capabilities": {
     "chat": true, "toast": true,
     "tool_enable": true, "tool_visibility": true, "tool_order": true,
@@ -65,9 +65,12 @@ from the **“Support Agent (Admin)”** card in the sidebar.
 | `provider` / `model` | Any litellm provider and model. |
 | `api_key_env` | Name of the **environment variable** holding the API key (not needed for Ollama). The key itself is never stored in the settings file. |
 | `api_base` | Base URL for the host/port, e.g. `http://localhost:11434` for a local server. |
-| `autonomy` | The **admin ceiling**: `suggest`, `semi`, or `full` (see below). |
-| `capabilities` | The admin-granted ceiling per capability. |
-| `proactive` | Lifecycle events on which the agent may act unprompted. |
+| `temperature` | Sampling temperature passed to the LLM. |
+| `max_tokens` | Max output tokens per completion (mapped to the provider-specific alias). |
+| `max_tool_iterations` | Safety bound on the tool-calling loop per turn (default 6). |
+| `autonomy` | The **admin ceiling**: `suggest`, `semi`, or `full` (see below). Default `full`. |
+| `capabilities` | The admin-granted ceiling per capability (keys = `Capability` values). |
+| `proactive` | Per-event flags (`on_negotiation_started`, `on_action_requested`) enabling unprompted turns. |
 | `system_prompt` | The agent's persona/instructions. |
 
 ### Autonomy levels
@@ -127,105 +130,181 @@ session document so nothing mutates widgets from a worker thread.
 
 ## Building a custom Support Agent
 
-You can fully replace the built-in agent. **Developing a new one is just subclassing
-`SupportAgent` and overriding a few methods**, then pointing the settings at your class.
-
-### 1. Subclass `SupportAgent`
+You can fully replace the built-in agent. **Developing a new one is subclassing
+`SupportAgent` (and optionally `ToolDispatcher`) and overriding the knobs below**, then
+pointing the settings at your class.
 
 ```python
 # my_pkg/my_agent.py
 from hani.support_agent.runtime import SupportAgent
 
-
 class MyAgent(SupportAgent):
-    # --- override any of these (all optional) ---
-
     def build_system_prompt(self) -> str:
-        """Customise the agent's persona/instructions."""
-        return "You are a terse, no-nonsense negotiation coach. " + super().build_system_prompt()
-
-    def proactive_note(self, event_name: str) -> str | None:
-        """What (if anything) seeds an unprompted turn on a lifecycle event.
-        Return None to stay silent. Requires the matching `proactive` flag in settings.
-        """
-        if event_name == "action_requested":
-            return "(system) The partner just moved. Give one short tactical tip."
-        return None
-
-    def handle_user_message(self, text: str) -> None:
-        """Full control of a chat turn. Default runs the litellm tool-calling loop."""
-        return super().handle_user_message(text)
+        return "You are a terse negotiation coach. " + super().build_system_prompt()
 ```
 
-Helpers available on `self`:
+```json
+// support_agent_settings.json (or the admin card)
+{ "enabled": true, "agent_class": "my_pkg.my_agent:MyAgent" }
+```
 
-- `self.post(text)` — post a chat message to the user (unprompted-safe).
-- `self.toast(message, level)` — `level` ∈ `info|success|warning|error`.
-- `self.run_on_doc(fn)` — run a UI mutation on the session document and get its result.
-- `self.session_state`, `self.settings`, `self.capabilities`, `self.dispatcher`.
-- `self.session_state["actions"]` — the shared action API the human buttons also use:
-  `set_offer(dict)`, `set_text(str)`, `get_offer()`, `get_partner_offer()`,
-  `can_act()`, `context()`, `accept(confirm=...)`, `reject_counter()`, `end(confirm=...)`.
+HANI resolves the dotted path (`module:Class` or `module.Class`) via
+`resolve_agent_class`, verifies it is a `SupportAgent` subclass, and instantiates it for
+the session. **If it can't be loaded or isn't a `SupportAgent`, HANI logs a warning and
+falls back to the built-in agent** — a bad override can never take the feature down.
 
-### 2. (Optional) Add custom LLM tools
+!!! note "Capability and autonomy always apply"
+    Custom agents still go through the same `CapabilityState`, action API, and marshalling
+    layer. Your overrides change *behaviour*, never *permissions* — the admin ceiling and
+    the participant's narrowing are always enforced.
 
-Subclass the dispatcher to expose extra functions to the model. They are advertised and
-executed exactly like the built-ins (and you can capability-gate them):
+---
+
+## Override reference — every knob
+
+This is the complete surface an overrider can touch. Everything is optional; override only
+what you need and call `super()` where it makes sense.
+
+### A. `SupportAgent` — overridable methods
+
+| Method | Signature | Default behaviour | Override to… | Returns |
+|--------|-----------|-------------------|--------------|---------|
+| `build_system_prompt` | `() -> str` | Returns the `system_prompt` setting. | Change the agent's persona/instructions. | The system prompt string. |
+| `make_dispatcher` | `() -> ToolDispatcher` | `self.dispatcher_class(self)`. | Build a custom dispatcher (alternative to setting `dispatcher_class`). | A `ToolDispatcher`. |
+| `handle_user_message` | `(text: str) -> None` | Gated on `user_enabled`; injects the state snapshot and runs the tool-calling loop. | Take full control of a chat turn. | — (post replies via `self.post`). |
+| `on_event` | `(event_name: str, nmi=None) -> None` | If `user_enabled` and `proactive["on_<event>"]` is set and not busy, runs `proactive_note`. | Change which lifecycle events trigger proactive turns / what they do. | — |
+| `proactive_note` | `(event_name: str) -> str \| None` | Canned notes for `negotiation_started` / `action_requested`. | Change the seed text for proactive turns (return `None` to stay silent). | A system note, or `None`. |
+| `warn_if_draft_below_reserved` | `() -> None` | Reserved-value warning rule (toast + board + chat), debounced. Runs **on the IOLoop**. | Change/disable the deterministic draft-vs-reserved check. | — |
+| `_complete` | `(tools: list[dict]) -> dict` | One `litellm.completion` using the settings. | Swap the LLM backend entirely. | `{"role":"assistant","content":str,"tool_calls":[...]}`. |
+| `_context_snapshot` | `() -> str \| None` | JSON snapshot of `actions["context"]()`, injected each turn. | Change what live state is fed to the model. | A string note, or `None`. |
+| `_run_turn` | `(user_text=None, system_note=None, context_note=None)` | The busy-locked tool-calling loop itself. | Rarely — to re-shape the whole loop. | — |
+| `_execute_tool_call` | `(tc: dict) -> None` | Runs one tool call via the dispatcher, appends the tool result. | Intercept/transform tool calls. | — |
+
+### B. `SupportAgent` — class attribute
+
+| Attribute | Type | Default | Purpose |
+|-----------|------|---------|---------|
+| `dispatcher_class` | `type[ToolDispatcher]` | `ToolDispatcher` | Set to your `ToolDispatcher` subclass to add/replace LLM tools. |
+
+### C. Helpers available on `self` (call these from your overrides)
+
+| Helper | Signature | Use |
+|--------|-----------|-----|
+| `self.post` | `(text, user="Support Agent") -> None` | Post a chat message (unprompted-safe; never re-triggers the callback). |
+| `self.toast` | `(message, level="info") -> bool` | Toast the user; `level` ∈ `info\|success\|warning\|error`. |
+| `self.show_on_board` | `(text, append=False) -> bool` | Write markdown/HTML to the always-visible bottom board. |
+| `self.run_on_doc` | `(fn, timeout=30.0)` | Run a UI mutation on the session document and get its result (safe from a worker thread; **don't** call from the IOLoop). |
+| `self._post_async` | `(fn) -> None` | Fire-and-forget UI mutation (safe from either thread). |
+
+### D. Instance state you can read/use
+
+| Attribute | Type | Notes |
+|-----------|------|-------|
+| `self.session_state` | `dict` | The whole session (see the keys table below). |
+| `self.settings` | `dict` | The merged settings dict. |
+| `self.capabilities` | `CapabilityState` | Effective capability/autonomy resolver. |
+| `self.dispatcher` | `ToolDispatcher` | The tool dispatcher. |
+| `self.messages` | `list[dict]` | The running conversation (OpenAI message format). |
+| `self.user_enabled` | `bool` | The participant's master on/off (don't widen permissions through it). |
+
+### E. `ToolDispatcher` — add or change LLM tools
+
+Subclass it (and set `dispatcher_class`) to expose extra functions to the model. Built-in
+tools are unaffected.
+
+| Member | Signature | Purpose |
+|--------|-----------|---------|
+| `register_extra_tools` | `() -> None` | **Override** this hook to register your tools (called at construction). |
+| `register` | `(name, handler, schema, capability=None)` | Register one tool. `handler(args: dict) -> dict`; `schema` is a zero-arg callable returning a function schema; `capability` is a `Capability` to gate it (or `None` = always available). |
+| `make_function_schema` | `(name, description, properties, required) -> dict` | Module-level helper to build an OpenAI/litellm function schema. |
+| `schemas` | `() -> list[dict]` | The schemas advertised to the LLM (only *effective* capabilities). |
+| `execute` | `(name, args) -> dict` | Dispatch a tool call (re-checks the capability). |
+
+Inside handlers: `self.runtime` (the agent), `self.ss` (session_state), `self.caps`
+(the `CapabilityState`). Marshal UI effects with `self.runtime.run_on_doc(...)`.
 
 ```python
 from hani.support_agent.tools import ToolDispatcher, make_function_schema
 
-
 class MyDispatcher(ToolDispatcher):
     def register_extra_tools(self):
         self.register(
-            "summarise_history",
-            self._summarise_history,                       # handler(args) -> dict
-            lambda: make_function_schema(
-                "summarise_history",
-                "Summarise the negotiation so far for the user.",
-                {}, [],
-            ),
-            capability=None,                               # None = always available
+            "summarise_history", self._summarise,
+            lambda: make_function_schema("summarise_history",
+                "Summarise the negotiation so far.", {}, []),
+            capability=None,
         )
-
-    def _summarise_history(self, args: dict) -> dict:
-        ctx = self.ss["actions"]["context"]()              # read negotiation state
-        return {"ok": True, "history": ctx.get("partner_offer")}
-
+    def _summarise(self, args: dict) -> dict:
+        return {"ok": True, "state": self.ss["actions"]["context"]()}
 
 class MyAgent(SupportAgent):
     dispatcher_class = MyDispatcher
 ```
 
-### 3. (Optional) Replace the LLM backend entirely
+### F. Built-in LLM tools (what the model can already call)
 
-Override `_complete(self, tools)` to call any backend you like. Return a dict shaped
-like an assistant message:
+Each is advertised only when its capability is *effective*.
 
-```python
-class MyAgent(SupportAgent):
-    def _complete(self, tools: list[dict]) -> dict:
-        # self.messages is the running conversation (OpenAI message format).
-        ...
-        return {"role": "assistant", "content": "…", "tool_calls": []}
-```
+| Tool | Capability gate | Effect |
+|------|-----------------|--------|
+| `send_toast(message, level)` | `TOAST` | Toast the user. |
+| `show_on_board(content, append?)` | none (always) | Write markdown/HTML to the bottom board. |
+| `get_negotiation_state()` | none (always) | Read the full live state (same as the injected snapshot). |
+| `list_tools()` | any tool-control cap | List tool tabs + state. |
+| `set_tool_enabled(name, enabled)` | `TOOL_ENABLE` | Enable/disable a tool. |
+| `set_tool_visible(name, visible)` | `TOOL_VISIBILITY` | Show/hide a tool tab. |
+| `move_tool(name, position?, pane?)` | `TOOL_ORDER` | Reorder / move a tool between panes. |
+| `set_offer(outcome)` | `FILL_OFFER` | Fill the offer widgets (no submit). |
+| `set_message_text(text)` | `FILL_TEXT` | Fill the message to the partner (no submit). |
+| `submit_counter_offer(outcome?, message?)` | `SUBMIT_COUNTER` | Counter-offer (submit vs recommend per autonomy). |
+| `accept_offer()` | `ACCEPT` | Accept (execute / confirm / recommend per autonomy). |
+| `end_negotiation()` | `END` | End (execute / confirm / recommend per autonomy). |
 
-### 4. Point HANI at your class
+### G. The action API — `session_state["actions"]`
 
-Install your package in the same environment, then set in
-`support_agent_settings.json` (or via the admin card):
+The shared operations the **human buttons and the agent both call** (so behaviour can't
+drift). Available once a negotiation panel exists.
 
-```json
-{ "enabled": true, "agent_class": "my_pkg.my_agent:MyAgent" }
-```
+| Key | Signature | Use |
+|-----|-----------|-----|
+| `set_offer` | `(outcome: dict) -> dict` | Fill the per-issue widgets from `{issue_name: value}`. |
+| `set_text` | `(text: str) -> dict` | Fill the message field sent to the partner. |
+| `get_offer` | `() -> dict` | The current draft outcome. |
+| `get_partner_offer` | `() -> Outcome \| None` | The partner's current offer. |
+| `can_act` | `() -> bool` | Whether it's the human's turn. |
+| `context` | `() -> dict` | Full negotiation state (see snapshot keys below). |
+| `highlight` | `(key) -> dict` | Highlight a button (`"accept"`/`"reject"`/`"end"`). |
+| `accept` | `(confirm=True) -> …` | Accept (confirm pops the dialog; `False` executes). |
+| `reject_counter` | `() -> …` | Submit the counter-offer (reads widgets + text). |
+| `end` | `(confirm=True) -> …` | End the negotiation. |
 
-HANI resolves the dotted path (`module:Class` or `module.Class`), verifies it is a
-`SupportAgent` subclass, and uses it. **If the class can't be loaded or isn't a
-`SupportAgent`, HANI logs a warning and falls back to the built-in agent** — a bad
-override can never take the feature down.
+### H. `context()` snapshot keys (injected each turn, and via `get_negotiation_state`)
 
-!!! note "Capability and autonomy still apply"
-    Custom agents go through the same `CapabilityState` and action API, so the admin
-    ceiling and the participant's narrowing are always enforced — your overrides change
-    *behaviour*, not *permissions*.
+`issues`, `partner_offer`, `partner_offer_utility`, `draft_offer`, `draft_offer_utility`,
+`draft_message`, `reserved_value`, `is_my_turn`, `step`, `n_steps`, `relative_time`,
+`history` (recent offers/messages, each `{by, offer, message}`).
+
+### I. `session_state` keys the agent uses
+
+| Key | Set by | Meaning |
+|-----|--------|---------|
+| `support_agent` | runtime | The live `SupportAgent` instance. |
+| `support_chat` | floating UI | The `ChatInterface` (the agent posts here). |
+| `support_board` | floating UI | The bottom board `Markdown` pane. |
+| `support_session_id` | floating UI | Session id used for attribution logging. |
+| `actions` | the app's `action_panel` | The shared action API (table G). |
+| `tool_controller` | the app | The `ToolController` (tool show/hide/order). |
+| `doc` | the app | The Bokeh document used for marshalling. |
+
+### J. Capabilities & autonomy (read-only enforcement)
+
+| Symbol | Values / methods | Notes |
+|--------|------------------|-------|
+| `Capability` | `CHAT, TOAST, TOOL_ENABLE, TOOL_VISIBILITY, TOOL_ORDER, FILL_OFFER, FILL_TEXT, SUBMIT_COUNTER, ACCEPT, END` | `.value` matches the settings `capabilities` keys. |
+| `Autonomy` | `SUGGEST, SEMI, FULL` | Effective level = the lower of admin & user. |
+| `CapabilityState.has` | `(cap) -> bool` | Effective = admin-granted **and** not user-disabled. |
+| `CapabilityState.autonomy_allows_execute` | `(cap) -> bool` | Whether to execute vs only recommend. |
+| `CapabilityState.autonomy_allows_confirm` | `(cap) -> bool` | Whether accept/end may pop the confirm dialog. |
+
+Proactive event names passed to `on_event` / `proactive_note`: `"negotiation_started"`,
+`"action_requested"` (gated by the matching `proactive` setting).
