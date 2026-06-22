@@ -190,6 +190,195 @@ AGENT_GROUPS = {
     ":genius": GENIUS_NEGOTITORS,
 }
 
+# Boulware/Linear/Conceder/Hybrid with NO text component. Bare names
+# resolve via negmas.sao in get_agent_type().
+NOTEXT_NEGOTIATORS = [
+    "BoulwareTBNegotiator",
+    "ConcederTBNegotiator",
+    "LinearTBNegotiator",
+    "HybridNegotiator",
+]
+
+
+# --- Selectable agent groups -------------------------------------------------
+# Used by the launch env var (_HANI_CMDLINE_AGENTS), and per browser session
+# via the ?agents= / ?group= query args (so the HAN "playground" link and an
+# admin launcher can pick the opponent pool without restarting the server).
+#
+# HANI stays a STANDALONE tool: it resolves its own built-in group tokens
+# (:llm/:template/:negmas/:hani/:genius/:pan/:notext/:custom) itself, and for
+# "participant" groups it only ever READS a JSON list file that an external
+# tool may drop into DB_PATH/groups/<key>.json. It never calls another service
+# or reads a competition database.
+
+def _code_base(env_name: str, server_default: str) -> Path:
+    """Resolve a per-machine code-base directory from an env var, falling
+    back to the SERVER default (deliberately not the local dev layout, so an
+    unset var on the server just works). Set HANI_CODE_BASE / SCMLWEB_CODE_BASE
+    per machine (e.g. ~/code/projects/hani, ~/code/sites/scmlweb locally)."""
+    raw = os.environ.get(env_name, "").strip()
+    return Path(raw).expanduser() if raw else Path(server_default).expanduser()
+
+
+def _pan_search_paths() -> list:
+    """Directories where pan.py might live. pan.py is a scmlweb artifact whose
+    location differs per machine, so it's derived from HANI_CODE_BASE /
+    SCMLWEB_CODE_BASE (server defaults: ~/hani and ~/scmlweb). cwd is kept as a
+    last-resort convenience."""
+    hani_base = _code_base("HANI_CODE_BASE", "~/hani")
+    scml_base = _code_base("SCMLWEB_CODE_BASE", "~/scmlweb")
+    return [hani_base, scml_base / "python", Path.cwd(), Path.cwd() / "python"]
+
+
+def _import_pan():
+    """Import pan.py (the personality-adjusted PAN pool) from the per-machine
+    code bases, or return None when it isn't present — HANI stays usable
+    standalone without it."""
+    import sys as _sys
+
+    for p in _pan_search_paths():
+        sp = str(p)
+        if (p / "pan.py").exists() and sp not in _sys.path:
+            _sys.path.insert(0, sp)
+            break
+    try:
+        import pan as _pan  # type: ignore
+
+        return _pan
+    except Exception as e:
+        print(f"⚠️ pan.py not importable for the :pan group ({e}).")
+        return None
+
+
+def _pan_group_specs() -> list:
+    """The PAN pool (HSHP/HSLP/LSHP/LSLP) as importable 'pan.<ClassName>'
+    strings, or [] when pan.py is unavailable. The classes are exposed as
+    pan-module globals, so 'pan.<name>' is the reliable import path (their
+    __module__ can be 'abc' from the dynamic type() creation)."""
+    pan = _import_pan()
+    if pan is None:
+        return []
+    out = []
+    for bucket in ("HSHP", "HSLP", "LSHP", "LSLP"):
+        for cls in getattr(pan, bucket, None) or []:
+            name = getattr(cls, "__name__", "") or ""
+            if name:
+                out.append(f"pan.{name}")
+    return out
+
+
+def _read_group_file(key: str) -> "list[str] | None":
+    """Read DB_PATH/groups/<key>.json (a JSON list of agent specs) if it
+    exists. These files are written by an external tool for participant
+    groups; HANI only ever reads them, never writes or fetches them."""
+    try:
+        f = DB_PATH / "groups" / f"{key}.json"
+        if not f.exists():
+            return None
+        data = json.loads(f.read_text())
+        if isinstance(data, list):
+            return [str(x) for x in data if str(x).strip()]
+    except Exception as e:
+        print(f"⚠️ Could not read agent group file for '{key}': {e}")
+    return None
+
+
+def _resolve_agent_token(item) -> list:
+    """Resolve ONE agent-list item to a list of agent specs:
+      - ':pan'/':notext'/':custom'/':llm'/':template'/... -> built-in group
+      - a bare key with a DB_PATH/groups/<key>.json file  -> that list
+      - anything else                                     -> a single literal
+        agent spec (class name / dotted path), returned unchanged.
+    """
+    if not isinstance(item, str):
+        return [item]
+    t = item.strip()
+    if not t:
+        return []
+    low = t.lower()
+    if low == ":pan":
+        return _pan_group_specs()
+    if low == ":notext":
+        return list(NOTEXT_NEGOTIATORS)
+    if low == ":custom":
+        raw = os.environ.get("HANI_CUSTOM_AGENTS", "")
+        return _expand_agent_items([s for s in raw.split(",") if s.strip()])
+    if low.startswith(":"):
+        grp = AGENT_GROUPS.get(low)
+        if grp:
+            return list(grp)
+        avail = ", ".join(list(AGENT_GROUPS) + [":pan", ":notext", ":custom"])
+        print(f"⚠️ Unknown agent group '{t}'. Available: {avail}")
+        return []
+    # Bare token: a materialised participant group file takes priority,
+    # otherwise treat it as a literal agent class / dotted path.
+    fromfile = _read_group_file(t)
+    if fromfile is not None:
+        return _expand_agent_items(fromfile)
+    return [t]
+
+
+def _expand_agent_items(items) -> list:
+    """Expand a list of agent-list items (group tokens + literals) into a
+    flat, de-duplicated, order-preserving list of agent specs."""
+    out = []
+    seen = set()
+    for item in items:
+        for spec in _resolve_agent_token(item):
+            key = spec if isinstance(spec, str) else getattr(spec, "__name__", repr(spec))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(spec)
+    return out
+
+
+def resolve_agent_group(key: str) -> list:
+    """Resolve a GROUP key (from ?group=...) to agent specs. Accepts a
+    built-in token (':template', ':pan', …) or a participant group-file
+    key ('official', 'winners', …). Returns [] for an unknown/empty group."""
+    if not key:
+        return []
+    k = key.strip()
+    fromfile = _read_group_file(k)
+    if fromfile is not None:
+        return _expand_agent_items(fromfile)
+    token = k if k.startswith(":") else ":" + k.lower()
+    return _expand_agent_items([token])
+
+
+def _session_agent_override() -> "list | None":
+    """Per browser-session opponent-pool override read from the page query
+    string: ?agents=<csv of specs/tokens> takes precedence over
+    ?group=<key>. Returns None when neither is present or the group
+    resolves empty (caller then falls back to env / UI selection)."""
+    try:
+        args = getattr(pn.state, "session_args", None) or {}
+    except Exception:
+        return None
+
+    def _val(name):
+        v = args.get(name)
+        if v is None:
+            return None
+        v = v[0] if isinstance(v, (list, tuple)) else v
+        if isinstance(v, (bytes, bytearray)):
+            v = v.decode()
+        return str(v).strip()
+
+    agents = _val("agents")
+    if agents:
+        specs = _expand_agent_items([s for s in agents.split(",") if s.strip()])
+        if specs:
+            return specs
+    group = _val("group")
+    if group:
+        specs = resolve_agent_group(group)
+        if specs:
+            return specs
+        print(f"⚠️ Agent group '{group}' resolved to no agents; ignoring override.")
+    return None
+
 
 LAYOUT_OPTIONS = dict(
     showlegend=False,
@@ -452,6 +641,34 @@ def is_admin(session_state=session_state):
             return True
 
     return False
+
+
+def _admin_mode(session_state=session_state) -> bool:
+    """Admin UI mode: true for real admins (is_admin) OR when the page is
+    opened with ?admin=1. The query flag lets an admin launcher turn on the
+    opponent name/class top-bar + opponent picker for a guest session
+    without an admin login. Cached per session."""
+    if "admin_mode" in session_state:
+        return session_state["admin_mode"]
+    result = False
+    try:
+        if is_admin(session_state):
+            result = True
+    except Exception:
+        pass
+    if not result:
+        try:
+            args = getattr(pn.state, "session_args", None) or {}
+            raw = args.get("admin")
+            if raw is not None:
+                v = raw[0] if isinstance(raw, (list, tuple)) else raw
+                if isinstance(v, (bytes, bytearray)):
+                    v = v.decode()
+                result = str(v).strip().lower() in ("1", "true", "yes", "on")
+        except Exception:
+            pass
+    session_state["admin_mode"] = result
+    return result
 
 
 class Timing(Enum):
@@ -806,18 +1023,9 @@ def _load_cmdline_agents():
     cmdline_agents = os.environ.get("_HANI_CMDLINE_AGENTS", "").strip()
     if cmdline_agents:
         raw_list = [a.strip() for a in cmdline_agents.split(",") if a.strip()]
-        # Expand group names (items starting with ':')
-        agent_list = []
-        for item in raw_list:
-            if item.startswith(":"):
-                group = AGENT_GROUPS.get(item.lower())
-                if group:
-                    agent_list.extend(group)
-                else:
-                    available = ", ".join(AGENT_GROUPS.keys())
-                    print(f"⚠️ Unknown agent group '{item}'. Available: {available}")
-            else:
-                agent_list.append(item)
+        # Expand group tokens (':pan'/':notext'/':custom'/':llm'/...) and
+        # pass literal class names / dotted paths through unchanged.
+        agent_list = _expand_agent_items(raw_list)
         if agent_list:
             print(f"📋 Command-line agents override: {agent_list}")
             CONFIG.agent_types = agent_list
@@ -3136,6 +3344,17 @@ def start_negotiation(event=None):
                     if partner_type is None:
                         print(f"[yellow]Prolific schedule: finalist '{wanted}' not "
                               f"in configured partner_types; falling back to random[/yellow]")
+    # Admin opponent picker (top bar) overrides the planned/random pick.
+    if _admin_mode():
+        _sel = session_state.get("admin_opponent")
+        _chosen = _sel.value if _sel is not None else None
+        if _chosen:
+            partner_type = next(
+                (t for t in types
+                 if str(t) == str(_chosen)
+                 or str(t).split(".")[-1] == str(_chosen).split(".")[-1]),
+                _chosen,
+            )
     if partner_type is None:
         partner_type = choice(types)
     # Stash the resolved partner so end_session / the per-negotiation
@@ -3143,6 +3362,18 @@ def start_negotiation(event=None):
     # actually faced (the schedule entry's planned name + the actual
     # string passed to make_mechanism).
     session_state["last_partner_type"] = str(partner_type)
+    # Admin mode: surface the opponent's name + class as a pill in the top
+    # bar (beside the "Human Agent Negotiation" title), like the phase badge.
+    if _admin_mode() and session_state.get("admin_opp_info") is not None:
+        _short = str(partner_type).split(".")[-1]
+        _full = str(partner_type)
+        _label = _short if _short == _full else f"{_short} ({_full})"
+        session_state["admin_opp_info"].object = (
+            '<span style="display:inline-block;padding:3px 12px;margin:0 12px;'
+            "background:#2f9e44;color:#fff;border-radius:12px;font-size:11pt;"
+            'font-weight:600;vertical-align:middle;white-space:nowrap;">'
+            f"Opponent: {_label}</span>"
+        )
     # Wall-clock timestamp for the moment Start was pressed (or auto-
     # fired). Diffed against load_at_dt and the eventual end time to
     # populate load_to_start_seconds + duration_seconds in results.csv.
@@ -4569,7 +4800,7 @@ def main():
         name="Allow LLM Negotiators", value=False
     )
     session_state["partners"]["template_negotiators"] = pn.widgets.Checkbox(
-        name="Allow Template-Based Negotiators", value=not has_cmdline_agents
+        name="Allow Template-Based Negotiators", value=False
     )
     session_state["partners"]["negmas_negotiators"] = pn.widgets.Checkbox(
         name="Allow NegMAS Negotiators", value=False
@@ -4584,6 +4815,15 @@ def main():
     )
 
     def make_agent_types():
+        # Per browser-session override from the page query string
+        # (?agents=… / ?group=…) wins over everything else, so the HAN
+        # "playground" link and the admin launcher can pick the opponent
+        # pool without restarting the server.
+        session_override = _session_agent_override()
+        if session_override:
+            print(f"Using per-session agent override: {session_override}")
+            return session_override
+
         # If command line negotiators checkbox is enabled and agent_types are configured, use them
         if (
             session_state["partners"]["cmdline_negotiators"].value
@@ -4611,6 +4851,18 @@ def main():
         if PROLIFIC_FINALIST_TYPES:
             all_agent_types += PROLIFIC_FINALIST_TYPES
         all_agent_types = list(set(all_agent_types))
+        # Centralised default fallback when nothing else selected the pool:
+        #   - prolific participants -> PAN (the study's default opponents)
+        #   - public playground / guests -> Non-LLM template ("with text")
+        #     agents, so a casual visit never incurs LLM/Ollama cost.
+        if not all_agent_types:
+            if _is_prolific_user(session_state.get("user", "")):
+                pan = resolve_agent_group(":pan")
+                if pan:
+                    print("No agent group selected; defaulting to PAN (prolific).")
+                    return pan
+            print("No agent group selected; defaulting to Non-LLM template agents.")
+            return list(TEMPLATE_BASED_NEGOTIATORS)
         print(f"Will use {all_agent_types} as agent types")
         return all_agent_types
 
@@ -4627,6 +4879,22 @@ def main():
         name="Partner Types",
         options=made_types,
         value=made_types,  # Select all available types by default
+    )
+
+    # Admin-only opponent picker, shown in the top bar in admin mode.
+    # "(next planned)" keeps the normal schedule/random pick; choosing a
+    # specific type pins the opponent for the next loaded negotiation.
+    _opp_options = {"(next planned)": ""}
+    for _t in made_types:
+        _lbl = str(_t).split(".")[-1]
+        if _lbl in _opp_options:
+            _lbl = str(_t)
+        _opp_options[_lbl] = str(_t)
+    # Kept OUTSIDE session_state["partners"] on purpose: the Partner card
+    # mounts every partners.values() widget, and a Bokeh widget can't be
+    # parented in two layouts (we also append this to the header below).
+    session_state["admin_opponent"] = pn.widgets.Select(
+        name="Opponent (admin)", options=_opp_options, value="",
     )
 
     def update_agent_types(event):
@@ -5156,6 +5424,28 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         template.header.append(phase_badge)
     except Exception:
         pass
+
+    # Admin mode: an (ADMIN) badge, a live "Agent / Class" opponent label
+    # (filled in by start_negotiation), and an opponent picker — all in the
+    # top bar so the operator always knows and can choose the opponent.
+    if _admin_mode():
+        admin_badge = pn.pane.HTML(
+            '<span style="display:inline-block;padding:2px 8px;margin:0 8px;'
+            'background:#c0392b;color:#fff;border-radius:4px;font-size:10pt;'
+            'font-weight:bold;">ADMIN</span>',
+            margin=0,
+        )
+        session_state["admin_badge"] = admin_badge
+        admin_opp_info = pn.pane.HTML("", margin=0)
+        session_state["admin_opp_info"] = admin_opp_info
+        opp_sel = session_state.get("admin_opponent")
+        try:
+            template.header.append(admin_badge)
+            template.header.append(admin_opp_info)
+            if opp_sel is not None:
+                template.header.append(opp_sel)
+        except Exception:
+            pass
 
     # Header switch: toggles between full and simplified views by
     # reloading with the corresponding ?view= query string. No cookie
