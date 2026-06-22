@@ -10,6 +10,7 @@ from hani.support_agent.settings import (
     load_support_agent_settings,
     save_support_agent_settings,
     support_agent_enabled,
+    support_agent_mode,
 )
 from hani.support_agent.capabilities import Autonomy, Capability, CapabilityState
 
@@ -18,6 +19,7 @@ __all__ = [
     "load_support_agent_settings",
     "save_support_agent_settings",
     "support_agent_enabled",
+    "support_agent_mode",
     "Autonomy",
     "Capability",
     "CapabilityState",

@@ -16,18 +16,26 @@ completely unaffected.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from hani.common import SETTINGS_DIR, DEFAULT_SETTINGS_DIR
 
 __all__ = [
     "SUPPORT_AGENT_SETTINGS_FILE",
+    "SUPPORT_AGENT_ENV_VAR",
     "DEFAULT_SUPPORT_AGENT_SETTINGS",
     "DEFAULT_CAPABILITIES",
     "load_support_agent_settings",
     "save_support_agent_settings",
+    "support_agent_mode",
     "support_agent_enabled",
 ]
+
+# Command line / environment override. Set by the `--support-agent` CLI flag on
+# `hani-app` / `hani-guest`, or directly in the environment. Highest precedence.
+# Accepted values: on/1/true/yes, off/0/false/no, auto/admin (admins only).
+SUPPORT_AGENT_ENV_VAR = "HANI_SUPPORT_AGENT"
 
 SUPPORT_AGENT_SETTINGS_FILE = SETTINGS_DIR / "support_agent_settings.json"
 
@@ -86,7 +94,11 @@ so the human can see it at a glance without opening the chat.
 Be concise and helpful."""
 
 DEFAULT_SUPPORT_AGENT_SETTINGS: dict[str, Any] = {
-    "enabled": False,
+    # Who gets the assistant: "off" (nobody), "on" (everybody), or "auto" (admins
+    # only). None here means "unset" -> resolves to "auto" unless a legacy
+    # `enabled` bool is present in the user's file. The HANI_SUPPORT_AGENT env var
+    # / `--support-agent` CLI flag override this.
+    "mode": None,
     # Optional override: dotted path to a SupportAgent subclass,
     # e.g. "my_pkg.my_module:MyAgent". Empty/None -> the built-in agent.
     "agent_class": None,
@@ -145,8 +157,46 @@ def save_support_agent_settings(settings: dict) -> None:
         json.dump(settings, f, indent=2)
 
 
-def support_agent_enabled(settings: dict | None = None) -> bool:
-    """Cheap gate used everywhere before importing/instantiating the runtime."""
+def support_agent_mode(settings: dict | None = None) -> str:
+    """Resolve the assistant mode: "on", "off", or "auto" (admins only).
+
+    Precedence: ``HANI_SUPPORT_AGENT`` env var (CLI flag) > settings ``mode`` >
+    legacy settings ``enabled`` bool > "auto".
+    """
+    env = os.getenv(SUPPORT_AGENT_ENV_VAR)
+    if env is not None:
+        v = env.strip().lower()
+        if v in ("on", "1", "true", "yes", "enabled"):
+            return "on"
+        if v in ("off", "0", "false", "no", "disabled"):
+            return "off"
+        if v in ("auto", "admin", "admins"):
+            return "auto"
+
     if settings is None:
         settings = load_support_agent_settings()
-    return bool(settings.get("enabled", False))
+
+    mode = settings.get("mode")
+    if isinstance(mode, str) and mode.strip().lower() in ("on", "off", "auto"):
+        return mode.strip().lower()
+
+    # Backwards compatibility: an explicit legacy `enabled` bool.
+    if "enabled" in settings and settings.get("enabled") is not None:
+        return "on" if settings.get("enabled") else "off"
+
+    return "auto"  # default: assistant for admins, not for normal users
+
+
+def support_agent_enabled(settings: dict | None = None, is_admin: bool = False) -> bool:
+    """Whether the assistant is enabled for THIS session.
+
+    Cheap gate used everywhere before importing/instantiating the runtime. With
+    the default ("auto") mode the assistant is on for admins and off for everyone
+    else -- so a normal user's session is byte-for-byte the current app.
+    """
+    mode = support_agent_mode(settings)
+    if mode == "on":
+        return True
+    if mode == "off":
+        return False
+    return bool(is_admin)  # "auto"

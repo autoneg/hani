@@ -24,6 +24,13 @@ def main(
     verbose: bool = typer.Option(
         False, "--verbose", help="Enable verbose output for negotiators (if supported)"
     ),
+    support_agent: Optional[str] = typer.Option(
+        None,
+        "--support-agent",
+        help="Negotiation Support Agent: 'on' (everyone), 'off' (nobody), or 'auto' "
+        "(admins only). Guests are not admins, so 'auto'/default means off here; use "
+        "'on' to enable it in the playground. Also settable via HANI_SUPPORT_AGENT.",
+    ),
     port: int = typer.Option(
         HANI_GUEST_PORT,
         "--port",
@@ -38,6 +45,12 @@ def main(
         # Set environment variable to disable event tracking in guest mode
         env = os.environ.copy()
         env["HANI_GUEST_MODE"] = "true"
+
+        # Support Agent enablement override (read by the app at runtime).
+        if support_agent:
+            env["HANI_SUPPORT_AGENT"] = support_agent
+        if env.get("HANI_SUPPORT_AGENT"):
+            typer.echo(f"🤝 Support Agent: {env['HANI_SUPPORT_AGENT']}")
 
         # If --agents is provided, set it as environment variable
         if agents and not env.get("_HANI_CMDLINE_AGENTS"):

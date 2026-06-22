@@ -26,15 +26,43 @@ separate from the single-shot LLM used by the [Offer Generators](offer-generator
 
 ---
 
-## Enabling and configuring the agent
+## Enabling the agent
+
+Who sees the assistant is resolved from three sources, **highest precedence first**:
+
+1. **Command line** — `--support-agent on|off|auto` on `hani`, `hani-app`, or
+   `hani-guest`.
+2. **Environment variable** — `HANI_SUPPORT_AGENT=on|off|auto` (what the CLI flag sets).
+3. **Settings file** — the `mode` field in `support_agent_settings.json`
+   (`on` / `off` / `auto`), or the legacy `enabled` bool.
+
+The three values mean:
+
+| Value | Who gets the assistant |
+|-------|------------------------|
+| `on` | Everyone. |
+| `off` | Nobody. |
+| `auto` | **Admins only** — this is the default. |
+
+So **out of the box the assistant is on for admins and off for normal users**, which
+means a normal participant's session is byte-for-byte the current app. Examples:
+
+```bash
+hani --support-agent on      # everyone gets it
+hani-app --support-agent off # force off for this deployment
+HANI_SUPPORT_AGENT=on hani-guest   # enable it in the playground (guests aren't admins)
+```
+
+## Configuring the agent
 
 Configuration lives in `~/negmas/hani/settings/support_agent_settings.json` (falls back
-to the bundled default, which has the agent **disabled**). Admins can also edit it live
-from the **“Support Agent (Admin)”** card in the sidebar.
+to the bundled default, `mode: "auto"`). Admins can also edit it live from the
+**“Support Agent (Admin)”** card in the sidebar (the **“Assistant for”** selector maps
+to `mode`).
 
 ```json
 {
-  "enabled": true,
+  "mode": "auto",
   "agent_class": null,
   "provider": "openai",
   "model": "gpt-4o-mini",
@@ -60,7 +88,7 @@ from the **“Support Agent (Admin)”** card in the sidebar.
 
 | Field | Meaning |
 |-------|---------|
-| `enabled` | Master switch. When `false`, nothing is loaded. |
+| `mode` | `on` / `off` / `auto` (admins only, default). Overridden by `--support-agent` / `HANI_SUPPORT_AGENT`. (Legacy `enabled: true/false` is still honoured.) |
 | `agent_class` | Optional dotted path to a custom agent class (see [below](#building-a-custom-support-agent)). Empty/`null` → the built-in agent. |
 | `provider` / `model` | Any litellm provider and model. |
 | `api_key_env` | Name of the **environment variable** holding the API key (not needed for Ollama). The key itself is never stored in the settings file. |

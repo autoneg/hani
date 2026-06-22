@@ -18,6 +18,7 @@ from hani.support_agent.settings import (
     load_support_agent_settings,
     save_support_agent_settings,
     support_agent_enabled,
+    support_agent_mode,
 )
 from hani.support_agent.tool_controller import ToolController
 from hani.support_agent.tools import ToolDispatcher
@@ -67,10 +68,33 @@ def test_autonomy_execute_gates():
 # --------------------------------------------------------------------------- #
 # Settings
 # --------------------------------------------------------------------------- #
-def test_settings_disabled_by_default():
-    assert DEFAULT_SUPPORT_AGENT_SETTINGS["enabled"] is False
-    assert support_agent_enabled({"enabled": False}) is False
-    assert support_agent_enabled({"enabled": True}) is True
+def test_default_mode_is_admin_only(monkeypatch):
+    monkeypatch.delenv("HANI_SUPPORT_AGENT", raising=False)
+    # Default mode is unset -> resolves to "auto" (admins only).
+    assert DEFAULT_SUPPORT_AGENT_SETTINGS["mode"] is None
+    assert support_agent_mode({}) == "auto"
+    assert support_agent_enabled({}, is_admin=True) is True   # admin gets it
+    assert support_agent_enabled({}, is_admin=False) is False  # normal user: off (= main)
+
+
+def test_explicit_modes_and_legacy_enabled(monkeypatch):
+    monkeypatch.delenv("HANI_SUPPORT_AGENT", raising=False)
+    assert support_agent_enabled({"mode": "on"}, is_admin=False) is True
+    assert support_agent_enabled({"mode": "off"}, is_admin=True) is False
+    assert support_agent_enabled({"mode": "auto"}, is_admin=True) is True
+    # Legacy `enabled` bool is still honoured when `mode` is absent.
+    assert support_agent_enabled({"enabled": True}, is_admin=False) is True
+    assert support_agent_enabled({"enabled": False}, is_admin=True) is False
+
+
+def test_env_var_overrides_settings(monkeypatch):
+    monkeypatch.setenv("HANI_SUPPORT_AGENT", "off")
+    assert support_agent_enabled({"mode": "on"}, is_admin=True) is False
+    monkeypatch.setenv("HANI_SUPPORT_AGENT", "on")
+    assert support_agent_enabled({"mode": "off"}, is_admin=False) is True
+    monkeypatch.setenv("HANI_SUPPORT_AGENT", "auto")
+    assert support_agent_enabled({"mode": "on"}, is_admin=False) is False
+    assert support_agent_enabled({"mode": "on"}, is_admin=True) is True
 
 
 def test_settings_round_trip(tmp_path, monkeypatch):

@@ -2491,7 +2491,8 @@ def action_panel(
     # Support Agent (test rule): warn via toast/board/chat when the human's draft
     # offer drops below their reserved value. The watcher fires on the IOLoop; the
     # agent (looked up lazily) does its own direct, deadlock-free UI calls.
-    if support_agent_enabled():
+    # Gated exactly like the agent itself so a disabled session attaches nothing.
+    if support_agent_enabled(is_admin=is_admin()):
 
         def _sa_offer_watch(event=None):
             agent = session_state.get("support_agent")
@@ -5508,8 +5509,9 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # right of the page (not a tool tab). Mounted into the always-present, light
     # history wrapper (NOT the dark header) so its position:fixed children float
     # over either layout while inheriting the light theme. Imported lazily so
-    # nothing is pulled in when the agent is disabled.
-    if support_agent_enabled():
+    # nothing is pulled in when the agent is disabled. Default ("auto") = admins
+    # only, so a normal user's session is byte-for-byte the current app.
+    if support_agent_enabled(is_admin=is_admin()):
         try:
             from hani.support_agent.settings import load_support_agent_settings
             from hani.support_agent.floating_ui import build_floating_agent

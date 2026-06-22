@@ -164,6 +164,13 @@ def main(
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Do not open browser automatically"
     ),
+    support_agent: Optional[str] = typer.Option(
+        None,
+        "--support-agent",
+        help="Negotiation Support Agent: 'on' (everyone), 'off' (nobody), or 'auto' "
+        "(admins only, the default). Overrides the settings file; also settable via "
+        "the HANI_SUPPORT_AGENT env var. Applies to both the main app and playground.",
+    ),
     main_port: int = typer.Option(
         MAIN_PORT,
         "--main-port",
@@ -190,6 +197,11 @@ def main(
     HANI_GUEST_PORT env vars). Use --no-main or --no-guest to disable
     specific services. Use 'hani setup' to initialize configuration files.
     """
+    # Support Agent override propagates to both subprocesses via the environment
+    # (run_subprocess copies os.environ).
+    if support_agent:
+        os.environ["HANI_SUPPORT_AGENT"] = support_agent
+
     # Only run services if no subcommand was invoked
     if ctx.invoked_subcommand is None:
         _start_services(

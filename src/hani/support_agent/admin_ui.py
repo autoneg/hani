@@ -27,7 +27,12 @@ def build_admin_card(session_state: dict[str, Any], is_admin: bool) -> pn.Card:
     s = load_support_agent_settings()
     w: dict[str, Any] = {}
 
-    w["enabled"] = pn.widgets.Checkbox(name="Enable Support Agent", value=s["enabled"])
+    _mode = s.get("mode") or ("on" if s.get("enabled") else "auto")
+    w["mode"] = pn.widgets.Select(
+        name="Assistant for",
+        options={"Admins only (auto)": "auto", "Everyone (on)": "on", "Nobody (off)": "off"},
+        value=_mode if _mode in ("auto", "on", "off") else "auto",
+    )
     w["agent_class"] = pn.widgets.TextInput(
         name="Custom agent class (optional, e.g. pkg.mod:MyAgent)",
         value=s.get("agent_class") or "",
@@ -62,7 +67,7 @@ def build_admin_card(session_state: dict[str, Any], is_admin: bool) -> pn.Card:
 
     def _save(event=None):
         new = {
-            "enabled": w["enabled"].value,
+            "mode": w["mode"].value,
             "agent_class": (w["agent_class"].value.strip() or None),
             "provider": w["provider"].value.strip(),
             "model": w["model"].value.strip(),
@@ -84,7 +89,7 @@ def build_admin_card(session_state: dict[str, Any], is_admin: bool) -> pn.Card:
         if agent is not None:
             agent.settings.update(new)
             agent.capabilities = CapabilityState(new["capabilities"], new["autonomy"])
-        status.object = "✅ Saved. (Tool appears on the next negotiation start.)"
+        status.object = "✅ Saved. (Mode / enablement changes take effect on the next page load.)"
 
     save_btn = pn.widgets.Button(name="Save Support Agent Settings", button_type="primary")
     save_btn.on_click(_save)
@@ -96,7 +101,7 @@ def build_admin_card(session_state: dict[str, Any], is_admin: bool) -> pn.Card:
 
     return pn.Card(
         status,
-        w["enabled"],
+        w["mode"],
         w["agent_class"],
         w["provider"],
         w["model"],

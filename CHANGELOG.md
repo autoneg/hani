@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`suggest`/`semi`/`full` autonomy + per-capability switches); the human
     negotiator can only narrow it, never widen. Agent-initiated actions are
     logged distinctly (`component="SupportAgent"`, `actor="agent"`).
+  - **Enablement**: resolved from the `--support-agent on|off|auto` CLI flag
+    (`hani` / `hani-app` / `hani-guest`) → `HANI_SUPPORT_AGENT` env var →
+    settings `mode` (legacy `enabled` bool still honoured). Default `auto` =
+    **on for admins, off for normal users**, so a normal participant's session
+    is byte-for-byte the current app.
 
 ## [0.3.2] - 2026-05-22
 
