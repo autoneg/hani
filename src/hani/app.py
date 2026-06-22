@@ -2828,6 +2828,16 @@ def action_panel(
     )
     session_state["confirm_dialog"] = confirm_dialog
 
+    # Prolific only: warn that ending a round with no action doesn't count.
+    repeat_note = None
+    if _is_prolific_user(session_state.get("user", "")):
+        repeat_note = pn.pane.HTML(
+            '<div style="font-size:9pt;color:#c0392b;margin:2px 0;">'
+            "Ending now without making or accepting any offer will not count — "
+            "this negotiation (practice or counted) will be repeated.</div>",
+            margin=0,
+        )
+
     if has_current_offer:
         # All three buttons in one row: Reject and counter, Accept, End
         buttons_row = pn.Row(
@@ -2845,6 +2855,7 @@ def action_panel(
         partner_offer_section = pn.Column(
             current_offer_display,
             buttons_row,
+            *( [repeat_note] if repeat_note is not None else [] ),
             confirm_dialog,
             pn.layout.Divider(),
             sizing_mode="stretch_width",
@@ -2855,6 +2866,7 @@ def action_panel(
         partner_offer_section = pn.Column(
             current_offer_display,
             pn.Row(end_btn, sizing_mode="stretch_width"),
+            *( [repeat_note] if repeat_note is not None else [] ),
             confirm_dialog,
             pn.layout.Divider(),
             sizing_mode="stretch_width",
