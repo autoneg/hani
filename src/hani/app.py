@@ -268,16 +268,31 @@ def _pan_group_specs() -> list:
 
 
 def _read_group_file(key: str) -> "list[str] | None":
-    """Read DB_PATH/groups/<key>.json (a JSON list of agent specs) if it
-    exists. These files are written by an external tool for participant
-    groups; HANI only ever reads them, never writes or fetches them."""
+    """Read DB_PATH/groups/<key>.json (written by an external tool for
+    participant groups; HANI only ever reads it). Two accepted shapes:
+
+      ["spec", ...]
+      {"syspath": ["/abs/dir", ...], "agents": ["spec", ...]}
+
+    The object form lets the writer point HANI at the directory holding the
+    unzipped agent packages: those dirs are added to sys.path here so the
+    dotted specs (``<pkg>.<module>.<Class>``) import. HANI stays standalone —
+    it just adds paths it was told about and imports."""
     try:
         f = DB_PATH / "groups" / f"{key}.json"
         if not f.exists():
             return None
         data = json.loads(f.read_text())
-        if isinstance(data, list):
-            return [str(x) for x in data if str(x).strip()]
+        agents = data
+        if isinstance(data, dict):
+            import sys as _sys
+            for d in data.get("syspath", []) or []:
+                d = str(d)
+                if d and d not in _sys.path:
+                    _sys.path.append(d)
+            agents = data.get("agents", [])
+        if isinstance(agents, list):
+            return [str(x) for x in agents if str(x).strip()]
     except Exception as e:
         print(f"⚠️ Could not read agent group file for '{key}': {e}")
     return None
