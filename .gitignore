@@ -28,3 +28,7 @@ wheels/
 
 # Documentation build output
 site/
+
+# Server run logs
+runguest.log
+*.log

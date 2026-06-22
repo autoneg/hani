@@ -1313,6 +1313,41 @@ def no_accept_none_class(base: type) -> type:
     return wrapped
 
 
+# Cache of "no-end" subclasses keyed by the original agent class (one wrapper
+# per base type), parallel to _NO_ACCEPT_NONE_CLASSES.
+_NO_END_CLASSES: dict[type, type] = {}
+
+
+def no_end_class(base: type) -> type:
+    """Return a subclass of ``base`` that never ends the negotiation itself.
+
+    Any agent (e.g. the LLM-backed pan.py practice partners) can return
+    END_NEGOTIATION -- for an LLM that simply means it emitted
+    ``"response_type": "end"`` (see negmas_llm's response map). negmas' mechanism
+    then stops with ``agreement=None``. We want the agent to be able to walk away
+    in a *real* negotiation, but NOT in a Prolific *practice* round, where the
+    participant is still learning the interface and an agent that quits leaves
+    them with a confusing no-deal outcome. So we wrap the agent's ``__call__``:
+    an END_NEGOTIATION is downgraded to a plain REJECT_OFFER (no counter,
+    preserving any text/data), which keeps the round going. Apply this ONLY to
+    practice rounds; counted/normal negotiations keep the unwrapped class.
+    """
+    wrapped = _NO_END_CLASSES.get(base)
+    if wrapped is not None:
+        return wrapped
+
+    def __call__(self, state: SAOState, dest: str | None = None) -> SAOResponse:
+        response = base.__call__(self, state, dest)
+        if response.response == ResponseType.END_NEGOTIATION:
+            return SAOResponse(ResponseType.REJECT_OFFER, None, response.data)
+        return response
+
+    meta = type(base)
+    wrapped = meta(f"NoEnd_{base.__name__}", (base,), {"__call__": __call__})
+    _NO_END_CLASSES[base] = wrapped
+    return wrapped
+
+
 def make_mechanism(
     scenario: Scenario,
     human_index: int = CONFIG.human_index,
@@ -1403,6 +1438,14 @@ def make_mechanism(
     # real offer is still allowed; only the meaningless accept-of-None is
     # downgraded to a rejection-with-no-counter. See no_accept_none_class.
     agent_class = no_accept_none_class(agent_class)
+
+    # In a Prolific *practice* round the agent must never end the negotiation
+    # (a real/counted negotiation may still end normally). Downgrade any
+    # agent-initiated END_NEGOTIATION to a plain rejection so the practice round
+    # keeps going. See no_end_class. is_practice_round is set by the start
+    # handler before make_mechanism runs; default False (admins / normal rounds).
+    if session_state.get("is_practice_round", False):
+        agent_class = no_end_class(agent_class)
 
     # Add verbose flag if enabled and supported by negotiator
     verbose_enabled = os.getenv("_HANI_VERBOSE") == "1"
@@ -3165,6 +3208,26 @@ def negoiation_completed(event=None) -> bool:
     print(
         f"Negotiation done with agreement {session_state['outcome_display'].str(state.agreement, session_state['scenario'], True, False)}"
     )
+    # When the agreement is None the round ended WITHOUT a deal. "agreement
+    # None" is never "the agent accepted None" (an accept always yields a real
+    # agreement) -- it means the negotiation timed out, broke/erred, or a party
+    # ended it. Surface which, so a bare "agreement ❓" is diagnosable instead of
+    # a mystery. (In practice rounds the agent can no longer end -- see
+    # no_end_class -- so a None there should now only be a timeout/error.)
+    if state.agreement is None:
+        if state.timedout:
+            cause = "timed out (no agreement)"
+        elif state.has_error:
+            cause = f"error: {state.error_details}"
+        elif state.broken:
+            cause = "ended/broken by a party (END_NEGOTIATION)"
+        else:
+            cause = "no agreement (unknown cause)"
+        print(
+            f"  -> no agreement: {cause} "
+            f"[step={state.step} timedout={state.timedout} "
+            f"broken={state.broken} has_error={state.has_error}]"
+        )
     end_session()
     # Round over — show the view toggle again.
     _vt_row = session_state.get("view_toggle_row")
@@ -3377,6 +3440,10 @@ def start_negotiation(event=None):
     # put). Practice rounds (until the participant successfully
     # completes one) use a random pan.py opponent, reserving the
     # finalist x slot cells for counted rounds only.
+    # Default: not a practice round (admins / non-Prolific / counted rounds).
+    # make_mechanism reads this to decide whether to forbid agent-initiated
+    # END_NEGOTIATION (blocked in practice only). See no_end_class.
+    session_state["is_practice_round"] = False
     if _is_prolific_user(session_state.get("user", "")):
         meta = _prolific_meta(session_state["user_path"], session_state["user"])
         is_returning = _is_returning_user(session_state["user_path"], meta)
@@ -3386,6 +3453,7 @@ def start_negotiation(event=None):
                 session_state["user_path"], meta.get("started_at", "")
             )
         )
+        session_state["is_practice_round"] = is_practice_round
         # Once a Prolific participant enters a counted round, freeze
         # the sidebar so they cannot change appearance / behavior
         # settings mid-session. Admins are exempt.
