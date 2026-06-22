@@ -671,6 +671,22 @@ def _admin_mode(session_state=session_state) -> bool:
     return result
 
 
+def _admin_opp_file():
+    """File holding the admin's chosen next opponent. Persisted to the
+    per-user dir so the choice survives the full page reload that the Load
+    button triggers."""
+    return session_state["user_path"] / "admin_next_opponent.txt"
+
+
+def _admin_chosen_opponent() -> str:
+    """The opponent the admin picked for the next load ('' = auto)."""
+    try:
+        p = _admin_opp_file()
+        return p.read_text().strip() if p.exists() else ""
+    except Exception:
+        return ""
+
+
 class Timing(Enum):
     Always = 0
     Load = 1
@@ -2080,7 +2096,41 @@ def load_form(selectable_scenario_type):
         else:
             _schedule_auto_load()
 
-    return pn.Column(logout, load_btn, strt_btn)
+    col_items = [logout, load_btn, strt_btn]
+    # Admin mode: opponent picker shown ABOVE Load, used on the next load.
+    # A fresh widget each render (so it's never double-parented); its value
+    # is persisted to disk so it survives the page reload Load triggers.
+    if _admin_mode():
+        pt = session_state.get("partners", {}).get("partner_types")
+        pool = []
+        if pt is not None:
+            pool = list(pt.options) if pt.options else list(pt.value or [])
+        opp_opts = {"(auto)": ""}
+        for _t in pool:
+            _lbl = str(_t).split(".")[-1]
+            if _lbl in opp_opts:
+                _lbl = str(_t)
+            opp_opts[_lbl] = str(_t)
+        _saved = _admin_chosen_opponent()
+        admin_opp = pn.widgets.Select(
+            name="Opponent (admin) — used on next Load",
+            options=opp_opts,
+            value=_saved if _saved in opp_opts.values() else "",
+        )
+
+        def _persist_opp(event):
+            try:
+                p = _admin_opp_file()
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(event.new or "")
+            except Exception:
+                pass
+
+        admin_opp.param.watch(_persist_opp, "value")
+        session_state["admin_opponent"] = admin_opp
+        col_items = [logout, admin_opp, load_btn, strt_btn]
+
+    return pn.Column(*col_items)
     # return pn.Column(logout, strt_btn)
 
 
@@ -3344,10 +3394,10 @@ def start_negotiation(event=None):
                     if partner_type is None:
                         print(f"[yellow]Prolific schedule: finalist '{wanted}' not "
                               f"in configured partner_types; falling back to random[/yellow]")
-    # Admin opponent picker (top bar) overrides the planned/random pick.
+    # Admin opponent picker (above Load) overrides the planned/random pick.
+    # Read from disk so it survives the page reload the Load button triggers.
     if _admin_mode():
-        _sel = session_state.get("admin_opponent")
-        _chosen = _sel.value if _sel is not None else None
+        _chosen = _admin_chosen_opponent()
         if _chosen:
             partner_type = next(
                 (t for t in types
@@ -3356,7 +3406,10 @@ def start_negotiation(event=None):
                 _chosen,
             )
     if partner_type is None:
-        partner_type = choice(types)
+        # Independent RNG: the global one may be seeded by scenario / ufun
+        # generation, which would otherwise pin the same opponent every load.
+        from random import SystemRandom
+        partner_type = SystemRandom().choice(list(types)) if types else choice(types)
     # Stash the resolved partner so end_session / the per-negotiation
     # questionnaire row can record which opponent the participant
     # actually faced (the schedule entry's planned name + the actual
@@ -4880,22 +4933,8 @@ def main():
         options=made_types,
         value=made_types,  # Select all available types by default
     )
-
-    # Admin-only opponent picker, shown in the top bar in admin mode.
-    # "(next planned)" keeps the normal schedule/random pick; choosing a
-    # specific type pins the opponent for the next loaded negotiation.
-    _opp_options = {"(next planned)": ""}
-    for _t in made_types:
-        _lbl = str(_t).split(".")[-1]
-        if _lbl in _opp_options:
-            _lbl = str(_t)
-        _opp_options[_lbl] = str(_t)
-    # Kept OUTSIDE session_state["partners"] on purpose: the Partner card
-    # mounts every partners.values() widget, and a Bokeh widget can't be
-    # parented in two layouts (we also append this to the header below).
-    session_state["admin_opponent"] = pn.widgets.Select(
-        name="Opponent (admin)", options=_opp_options, value="",
-    )
+    # (The admin opponent picker is built in load_form(), above the Load
+    # button, so it binds correctly and survives the Load page reload.)
 
     def update_agent_types(event):
         session_state["partners"]["partner_types"].options = make_agent_types()
@@ -5438,12 +5477,11 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         session_state["admin_badge"] = admin_badge
         admin_opp_info = pn.pane.HTML("", margin=0)
         session_state["admin_opp_info"] = admin_opp_info
-        opp_sel = session_state.get("admin_opponent")
+        # Only the badge + the live opponent pill go in the top bar; the
+        # opponent PICKER lives above the Load button (see load_form).
         try:
             template.header.append(admin_badge)
             template.header.append(admin_opp_info)
-            if opp_sel is not None:
-                template.header.append(opp_sel)
         except Exception:
             pass
 
