@@ -362,6 +362,40 @@ def resolve_agent_group(key: str) -> list:
     return _expand_agent_items([token])
 
 
+def _prime_group_syspaths() -> None:
+    """Add the ``syspath`` dirs of EVERY participant group file to sys.path
+    at process startup.
+
+    ``_read_group_file`` only appends a group's code dir to sys.path as a
+    SIDE EFFECT of resolving ``?group=<key>``. A dotted agent spec
+    (``a<id>.<module>.<Class>``) can reach ``get_class()`` in a process that
+    never materialised that group — e.g. an admin-picked / persisted
+    opponent used after the Load reload, or the playground opened without
+    ``?group=`` — and then the top-level package import fails with
+    ``No module named 'a<id>'`` even though the package exists on disk. By
+    priming every group file's syspath once at import, specs resolve no
+    matter how the session reached them. Idempotent and silent on error."""
+    try:
+        import sys as _sys
+
+        gdir = DB_PATH / "groups"
+        if not gdir.is_dir():
+            return
+        for f in sorted(gdir.glob("*.json")):
+            try:
+                data = json.loads(f.read_text())
+            except Exception:
+                continue
+            if not isinstance(data, dict):
+                continue
+            for d in data.get("syspath", []) or []:
+                d = str(d)
+                if d and d not in _sys.path:
+                    _sys.path.append(d)
+    except Exception:
+        pass
+
+
 def _session_agent_override() -> "list | None":
     """Per browser-session opponent-pool override read from the page query
     string: ?agents=<csv of specs/tokens> takes precedence over
@@ -1066,6 +1100,11 @@ def _load_cmdline_agents():
 
 # Try to load command-line agents (will be called again in main() if not available yet)
 _load_cmdline_agents()
+
+# Make every exported participant group's agent code importable process-wide,
+# not only when a ?group=<key> session materialises it. No-op (and harmless)
+# when no groups have been exported.
+_prime_group_syspaths()
 
 
 # TOOLS = ["Offer Utilities", "Outcome View", "Inverse Utility"]
