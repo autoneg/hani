@@ -1522,6 +1522,45 @@ def make_mechanism(
     return m
 
 
+def negotiation_advantage(ufun, utility: float) -> float:
+    """Normalized utility gain for one negotiator, identical to the metric
+    negmas uses for tournament scoring (the HAN ``advantage`` measure):
+
+        advantage = (utility - reserved) / (max - reserved)
+
+    with the same edge-case handling as
+    ``negmas.tournaments.neg.simple.cartesian``:
+
+      * reserved value of -inf or NaN -> ``utility - min`` (0 if min is NaN);
+      * ``max == reserved`` (flat ufun) -> 0;
+      * disagreement (``utility == reserved``) -> 0.
+
+    The value is in roughly ``[0, 1]`` and goes negative when the participant
+    settles below their reservation value. It is what the Prolific bonus is
+    based on, so it is computed here and written to results.csv next to
+    ``human_utility`` for every negotiation.
+    """
+    try:
+        r = float(ufun.reserved_value)
+    except Exception:
+        r = float("nan")
+    try:
+        mn, mx = ufun.minmax()
+        mn, mx = float(mn), float(mx)
+    except Exception:
+        try:
+            mx = float(ufun.max())
+            mn = float(ufun.min())
+        except Exception:
+            return 0.0
+    u = float(utility)
+    if (np.isinf(r) and r < 0) or np.isnan(r):
+        return u - mn if not np.isnan(mn) else 0.0
+    if mx != r:
+        return (u - r) / (mx - r)
+    return 0.0
+
+
 def save_result(m: SAOMechanism):
     ufuns = session_state["scenario"].ufuns
     human_index = session_state["human_index"]
@@ -1529,7 +1568,33 @@ def save_result(m: SAOMechanism):
     stats = calc_scenario_stats(ufuns)
     max_dist = estimate_max_dist(ufuns)
     human_utility = float(session_state["human_ufun"](m.agreement))
+    # The bonus-relevant score: the participant's normalized advantage this
+    # round (see negotiation_advantage). Persisted alongside human_utility so
+    # the scmlweb monitor / payment logic never has to recompute it.
+    human_advantage = negotiation_advantage(session_state["human_ufun"], human_utility)
     agent_utility = sum(u(m.agreement) for i, u in enumerate(ufuns) if i != human_index)
+
+    # Opponent class faced this round. Set in start_negotiation() before the
+    # round (last_partner_type). It must NEVER be empty for a real negotiation:
+    # an empty agent_type breaks per-agent scoring, the per-negotiation
+    # questionnaire recovery, and the Prolific monitor (which flags any empty
+    # agent_type as an incomplete session). If we ever reach here without it,
+    # fall back to the actual negotiator classes on the mechanism and log
+    # loudly so the gap is caught instead of silently shipping an empty cell.
+    agent_type = str(session_state.get("last_partner_type", "")).strip()
+    if not agent_type:
+        try:
+            agent_type = "+".join(
+                type(neg).__name__
+                for i, neg in enumerate(getattr(m, "negotiators", []) or [])
+                if i != human_index
+            ).strip()
+        except Exception:
+            agent_type = ""
+        print(
+            "[hani] WARNING: last_partner_type was empty in save_result for "
+            f"mechanism {m.id}; recovered agent_type={agent_type!r}"
+        )
 
     def get_status(state: SAOState):
         if state.agreement is not None:
@@ -1669,9 +1734,10 @@ def save_result(m: SAOMechanism):
             # column so scores can be averaged per agent_type, and so a
             # skipped per-negotiation questionnaire can be rebuilt with the
             # right opponent. Set in start_negotiation() before the round.
-            agent_type=str(session_state.get("last_partner_type", "")),
+            agent_type=agent_type,
             agreement=m.agreement,
             human_utility=human_utility,
+            human_advantage=human_advantage,
             agent_utility=agent_utility,
             welfare=human_utility + agent_utility,
             ended_at=str(datetime.now()),
@@ -3536,7 +3602,16 @@ def start_negotiation(event=None):
     # questionnaire row can record which opponent the participant
     # actually faced (the schedule entry's planned name + the actual
     # string passed to make_mechanism).
-    session_state["last_partner_type"] = str(partner_type)
+    session_state["last_partner_type"] = str(partner_type).strip()
+    # An empty opponent here would propagate to an empty agent_type in
+    # results.csv (see save_result), which the Prolific monitor treats as an
+    # incomplete session. partner_type is always resolved above, so this is a
+    # belt-and-braces guard that should never fire in practice.
+    if not session_state["last_partner_type"]:
+        print(
+            "[hani] WARNING: resolved an empty opponent type in "
+            "start_negotiation; agent_type will be recovered in save_result"
+        )
     # Log the selected opponent + scenario to the terminal on every start.
     try:
         _scen_name = session_state["scenario"].outcome_space.name
