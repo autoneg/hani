@@ -4419,9 +4419,21 @@ def _schedule_auto_load():
         def _runner():
             try:
                 if doc is not None:
+                    # The timer can fire after the participant closed/refreshed
+                    # the tab, by which point Bokeh has destroyed the session
+                    # document (DocumentCallbackManager.destroy() deletes
+                    # _change_callbacks). Calling add_next_tick_callback on a
+                    # destroyed doc raises AttributeError; just skip quietly --
+                    # there is no live UI left to update.
+                    if getattr(doc.callbacks, "_change_callbacks", None) is None:
+                        return
                     doc.add_next_tick_callback(impl)
                 else:
                     impl()
+            except AttributeError:
+                # Doc destroyed in the narrow window after the guard above
+                # (same dead-session race) -- nothing to update, stay quiet.
+                pass
             except Exception as e:
                 import traceback
                 print(f"[per-neg] auto-load dispatch failed: {e}")
