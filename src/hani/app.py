@@ -3537,6 +3537,12 @@ def start_negotiation(event=None):
     # actually faced (the schedule entry's planned name + the actual
     # string passed to make_mechanism).
     session_state["last_partner_type"] = str(partner_type)
+    # Log the selected opponent + scenario to the terminal on every start.
+    try:
+        _scen_name = session_state["scenario"].outcome_space.name
+    except Exception:
+        _scen_name = "?"
+    print(f"[hani] Scenario: {_scen_name} | Opponent: {partner_type}")
     # Admin mode: surface the opponent's name + class as a pill in the top
     # bar (beside the "Human Agent Negotiation" title), like the phase badge.
     if _admin_mode() and session_state.get("admin_opp_info") is not None:
