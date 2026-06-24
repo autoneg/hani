@@ -4294,6 +4294,11 @@ def _per_neg_questionnaire_spec() -> dict | None:
     env_path = os.environ.get("PROLIFIC_PER_NEG_YAML")
     if env_path:
         candidates.append(Path(env_path))
+    # When an experiment is active, prefer its own questionnaire spec.
+    from hani.common import EXPERIMENT_DIR
+
+    if EXPERIMENT_DIR is not None:
+        candidates.append(EXPERIMENT_DIR / "questionnaires" / "per_negotiation.yaml")
     candidates += [
         Path.home() / "scmlweb" / "resources" / "questionnaires" / "per_negotiation.yaml",
         Path.home() / "code" / "sites" / "scmlweb" / "resources" / "questionnaires" / "per_negotiation.yaml",

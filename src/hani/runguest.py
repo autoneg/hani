@@ -31,6 +31,14 @@ def main(
         "Can also be set via the HANI_GUEST_PORT env var.",
         envvar="HANI_GUEST_PORT",
     ),
+    experiment: Optional[str] = typer.Option(
+        None,
+        "--experiment",
+        help="Run under a named experiment (consent/questionnaires/results "
+        "resolve to ~/hani/experiments/<name>/). Omit for default behaviour. "
+        "Can also be set via the HANI_EXPERIMENT env var.",
+        envvar="HANI_EXPERIMENT",
+    ),
 ):
     """Run HANI guest/playground application (no authentication required)."""
 
@@ -38,6 +46,11 @@ def main(
         # Set environment variable to disable event tracking in guest mode
         env = os.environ.copy()
         env["HANI_GUEST_MODE"] = "true"
+
+        # Select the experiment for the served app (read by hani.common at import).
+        if experiment:
+            typer.echo(f"🧪 Experiment: {experiment}")
+            env["HANI_EXPERIMENT"] = experiment
 
         # If --agents is provided, set it as environment variable
         if agents and not env.get("_HANI_CMDLINE_AGENTS"):
@@ -63,9 +76,10 @@ def main(
             a
             for i, a in enumerate(extra_args)
             if not (
-                a == "--port"
+                a in ("--port", "--experiment")
                 or a.startswith("--port=")
-                or (i > 0 and extra_args[i - 1] == "--port")
+                or a.startswith("--experiment=")
+                or (i > 0 and extra_args[i - 1] in ("--port", "--experiment"))
             )
         ]
         subprocess.run(
