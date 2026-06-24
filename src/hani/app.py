@@ -141,6 +141,7 @@ from hani.tools.generator import ResponseGeneratorTool
 from hani.common import (
     DB_PATH,
     ENV_FILE,
+    EXPERIMENT_DIR,
     SAMPLE_SCENRIOS,
     DefaultOutcomeDisplay,
     OutcomeDisplay,
@@ -1007,9 +1008,16 @@ def default_tools():
 # the bundled SAMPLE_SCENRIOS dir. Reading it here finally wires up the
 # HANI_PROLIFIC_SCENARIOS_BASE env documented in scmlweb/exports.sh.
 _PROLIFIC_SCEN_BASE = os.environ.get("HANI_PROLIFIC_SCENARIOS_BASE", "").strip()
-SCENARIOS_BASE_DEFAULT = (
-    Path(_PROLIFIC_SCEN_BASE) if _PROLIFIC_SCEN_BASE else SAMPLE_SCENRIOS
-)
+if EXPERIMENT_DIR is not None:
+    # An active experiment owns its scenarios (~/hani/experiments/<name>/
+    # scenarios); this wins over the global HANI_PROLIFIC_SCENARIOS_BASE so an
+    # experiment is fully self-contained. With no experiment active the
+    # original env-override / SAMPLE_SCENRIOS logic is unchanged.
+    SCENARIOS_BASE_DEFAULT: Path | str = EXPERIMENT_DIR / "scenarios"
+elif _PROLIFIC_SCEN_BASE:
+    SCENARIOS_BASE_DEFAULT = Path(_PROLIFIC_SCEN_BASE)
+else:
+    SCENARIOS_BASE_DEFAULT = SAMPLE_SCENRIOS
 
 
 @define

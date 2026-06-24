@@ -103,6 +103,32 @@ def experiment_create(
                 f"{exp_dir / 'questionnaires'} if this experiment uses per-negotiation questionnaires"
             )
 
+    # Scenarios are experiment-scoped: seed this experiment with the bundled
+    # default scenario categories (the admin can then curate / regenerate them
+    # under the experiment, or point elsewhere). Mirrors `hani setup`.
+    scen_dir = exp_dir / "scenarios"
+    scen_dir.mkdir(parents=True, exist_ok=True)
+    sample_scenarios_dir = BASE / "sample_scenarios"
+    if sample_scenarios_dir.exists():
+        for category_dir in sample_scenarios_dir.iterdir():
+            if not category_dir.is_dir():
+                continue
+            dst_category = scen_dir / category_dir.name
+            if dst_category.exists() and not force:
+                console.print(
+                    f"[yellow]•[/yellow] scenarios/{category_dir.name} already exists (use --force)"
+                )
+                continue
+            if dst_category.exists():
+                shutil.rmtree(dst_category)
+            shutil.copytree(category_dir, dst_category)
+            console.print(f"[green]✓[/green] scenarios/{category_dir.name}")
+    else:
+        console.print(
+            "[yellow]•[/yellow] no bundled sample scenarios found — populate "
+            f"{scen_dir} for this experiment"
+        )
+
     console.print(
         Panel.fit(
             f"[bold green]Experiment ready[/bold green]\n\n"
