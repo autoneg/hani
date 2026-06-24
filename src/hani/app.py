@@ -1311,6 +1311,37 @@ def _is_llm_negotiator_class(klass) -> bool:
     return isinstance(klass, type) and issubclass(klass, LLMNegotiator)
 
 
+def _is_llm_meta_negotiator_class(klass) -> bool:
+    """True if ``klass`` subclasses negmas-llm's ``LLMMetaNegotiator`` -- the
+    base most HAN LLM submissions use to wrap a numeric core with an LLM
+    message layer. These are NOT ``LLMNegotiator`` subclasses, so make_mechanism
+    handles their model injection separately (see the elif there)."""
+    try:
+        from negmas_llm.meta import LLMMetaNegotiator  # type: ignore
+    except Exception:
+        return False
+    return isinstance(klass, type) and issubclass(klass, LLMMetaNegotiator)
+
+
+def _ctor_accepts(klass, param: str) -> bool:
+    """True if ``klass.__init__`` declares an explicit keyword ``param`` (a
+    named parameter, not merely ``**kwargs``). Used so we only inject an LLM
+    setting the constructor can actually receive; injecting a name the agent
+    also passes to ``super().__init__`` via ``**kwargs`` would be a
+    duplicate-keyword ``TypeError``."""
+    import inspect
+
+    try:
+        sig = inspect.signature(klass.__init__)
+    except (TypeError, ValueError):
+        return False
+    p = sig.parameters.get(param)
+    return p is not None and p.kind in (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
+
+
 # Cache of "no-accept-None" subclasses keyed by the original agent class, so we
 # build one wrapper per base type rather than one per negotiator instance.
 _NO_ACCEPT_NONE_CLASSES: dict[type, type] = {}
@@ -1419,6 +1450,14 @@ def make_mechanism(
         step_time_limit=step_time_limit,
         negotiator_time_limit=negotiator_time_limit,
         hidden_time_limit=hidden_time_limit,
+        # An agent that raises (e.g. its LLM call errors because the model is
+        # missing on the server) must not crash the participant's page. With
+        # this, the mechanism catches the exception, ends the round as
+        # broken+has_error and records erred_negotiator/error_details; HANI
+        # then books it as an "agent failed to start" round (counts for the
+        # participant, worst score for the agent, no questionnaire). See
+        # save_result / end_session.
+        ignore_negotiator_exceptions=True,
     )
     if mechanism_params:
         mech_params |= mechanism_params
@@ -1470,6 +1509,22 @@ def make_mechanism(
         # Ollama-only, so pass provider only for the explicit "LLM*"
         # type strings the settings UI configures.
         if is_llm_string:
+            agent_params["provider"] = llm_settings.get("provider", "ollama")
+    elif _is_llm_meta_negotiator_class(agent_class):
+        # HAN submissions subclass LLMMetaNegotiator, which is NOT an
+        # LLMNegotiator, so they miss the injection above and fall back to
+        # whatever model their own constructor sets -- often a hard-coded
+        # name that does not exist on the server's ollama endpoint, which
+        # breaks the round on the agent's first LLM call. Inject the
+        # configured model/provider so they use the same model as everything
+        # else. Inject ONLY parameters the constructor explicitly accepts:
+        # several of these agents pass model=/provider= to super().__init__
+        # themselves, and also receiving them via **kwargs would raise a
+        # duplicate-keyword TypeError.
+        llm_settings = load_llm_settings()
+        if _ctor_accepts(agent_class, "model"):
+            agent_params["model"] = llm_settings.get("model", "qwen3:4b-instruct")
+        if _ctor_accepts(agent_class, "provider"):
             agent_params["provider"] = llm_settings.get("provider", "ollama")
 
     # Forbid the agent from ACCEPTING a None offer (it would break the
@@ -1573,6 +1628,30 @@ def save_result(m: SAOMechanism):
     # the scmlweb monitor / payment logic never has to recompute it.
     human_advantage = negotiation_advantage(session_state["human_ufun"], human_utility)
     agent_utility = sum(u(m.agreement) for i, u in enumerate(ufuns) if i != human_index)
+
+    # Did the AGENT fail to start? ignore_negotiator_exceptions (see
+    # make_mechanism) ends a round as broken+has_error when a negotiator
+    # raises, recording which one in erred_negotiator. If that is not the
+    # human, the agent crashed (e.g. its LLM model is missing on the server).
+    # We book it as a failed negotiation ended by the agent: the participant
+    # still gets credit (human_utility/advantage are their real disagreement
+    # outcome), but the agent gets the worst possible score, the failure is
+    # noted, and end_session shows no questionnaire. error_details carries the
+    # exception text for the note.
+    _human_id_str = str(session_state.get("human_id", ""))
+    agent_failed = bool(getattr(m.state, "has_error", False)) and (
+        str(getattr(m.state, "erred_negotiator", "")) != _human_id_str
+    )
+    agent_error = ""
+    if agent_failed:
+        agent_error = (
+            str(getattr(m.state, "error_details", "")) or "agent raised an exception"
+        )
+        # Worst possible utility for the agent over the entire outcome space.
+        try:
+            agent_utility = float(ufuns[1 - human_index].minmax()[0])
+        except Exception:
+            agent_utility = 0.0
 
     # Opponent class faced this round. Set in start_negotiation() before the
     # round (last_partner_type). It must NEVER be empty for a real negotiation:
@@ -1698,6 +1777,13 @@ def save_result(m: SAOMechanism):
     else:
         ended_by = ""
 
+    # The agent crashing overrides the raw status: record it as a distinct
+    # "agent_failed" status ended by the agent so the monitor and counters can
+    # recognise it (it still counts for the participant -- see below).
+    if agent_failed:
+        status = "agent_failed"
+        ended_by = "agent"
+
     # Wall-clock timings stashed in session_state by load_scenario /
     # start_negotiation. Defensive defaults so an unexpected None never
     # blows up save_result.
@@ -1743,6 +1829,8 @@ def save_result(m: SAOMechanism):
             ended_at=str(datetime.now()),
             status=status,
             ended_by=ended_by,
+            # Exception text when the agent failed to start (empty otherwise).
+            agent_error=agent_error,
             mechanism_name=m.name,
             mechanism_id=m.id,
             practice=is_practice,
@@ -1829,12 +1917,18 @@ def save_result(m: SAOMechanism):
             # human never engaged AND the round terminated without an
             # explicit decision from them (i.e. agent ended or timed
             # out with zero human actions).
+            # An agent-failed round counts even with zero human actions: the
+            # participant should not be penalised (or asked to redo it) for the
+            # AI agent crashing. Every other zero-action round stays uncounted.
             uncounted = (
                 not is_practice and n_human_actions == 0
+                and not agent_failed
                 and done_counted < n_required
             )
             _round_uncounted = uncounted
-            if status == "timedout":
+            if agent_failed:
+                outcome_phrase = "could not start (the AI agent failed)"
+            elif status == "timedout":
                 outcome_phrase = "timed out"
             elif status == "broken" and ended_by == "human":
                 outcome_phrase = "was ended by you"
@@ -1903,6 +1997,8 @@ def save_result(m: SAOMechanism):
         "is_practice": is_practice,
         "uncounted": _round_uncounted,
         "outcome_phrase": _round_outcome_phrase,
+        "agent_failed": agent_failed,
+        "agent_error": agent_error,
     }
 
 
@@ -1953,6 +2049,49 @@ def end_session():
         session_state["action_panel"].append(
             load_form(session_state["selectable_scenario_type"])
         )
+        return
+
+    # The AI agent failed to start (e.g. its LLM model is missing on the
+    # server). Treat it as a completed round for the participant -- it counts
+    # toward the quota and is not redone -- but skip the per-negotiation
+    # questionnaire (there is nothing to ask about a negotiation that never
+    # happened) and tell them plainly what occurred. The agent already got the
+    # worst possible score for the round (see save_result).
+    if _is_prolific_user(user) and _round_info.get("agent_failed"):
+        print(
+            "[per-neg] agent failed to start -- skipping questionnaire, round "
+            f"counted; error: {str(_round_info.get('agent_error', ''))[:300]}"
+        )
+        try:
+            if hasattr(pn.state, "notifications") and pn.state.notifications:
+                pn.state.notifications.warning(
+                    "The AI agent failed to start, so this negotiation could "
+                    "not take place. It still counts toward your reward — "
+                    "please load the next negotiation.",
+                    duration=0,
+                )
+        except Exception:
+            pass
+        _failed_pid = (
+            user[len(PROLIFIC_PREFIX):] if user.startswith(PROLIFIC_PREFIX) else user
+        )
+        _failed_done = False
+        try:
+            _fm = _prolific_meta(session_state["user_path"], user)
+            _failed_done = (
+                _count_counted_this_session(
+                    session_state["user_path"], _fm.get("started_at", "")
+                )
+                >= PROLIFIC_N_REQUIRED
+            )
+        except Exception:
+            _failed_done = False
+        if _failed_done:
+            session_state["action_panel"].append(_prolific_finish_panel(_failed_pid))
+        else:
+            session_state["action_panel"].append(
+                load_form(session_state["selectable_scenario_type"])
+            )
         return
 
     # Prolific: gate the next-round Load form behind a short per-
@@ -3954,6 +4093,14 @@ def _count_counted_this_session(user_path: Path, since_iso: str) -> int:
             p = row[header.index("practice")] if header.index("practice") < len(row) else ""
             if str(p).lower() in ("1", "true", "yes", "t"):
                 continue
+        # A round where the AGENT failed to start counts even with zero human
+        # actions: the participant is not penalised for the AI crashing (see
+        # save_result). Count it and skip the zero-action filter below.
+        if "status" in header:
+            s_idx = header.index("status")
+            if s_idx < len(row) and str(row[s_idx]) == "agent_failed":
+                n += 1
+                continue
         # n_human_actions filter
         if "n_human_actions" in header:
             idx = header.index("n_human_actions")
@@ -4853,6 +5000,14 @@ By checking the box below and clicking "I Agree", you confirm that:
 def main():
     # Load command-line agents if provided (takes precedence over env var)
     _load_cmdline_agents()
+
+    # Retry ollama "model not found" against the local daemon. The server's
+    # default ollama endpoint is the hosted cloud, which lacks some models an
+    # agent may request; the local daemon usually has them. Idempotent + a
+    # no-op when the first call already succeeds. See ollama_fallback.py.
+    from hani.ollama_fallback import install_ollama_local_fallback
+
+    install_ollama_local_fallback()
 
     session_state["env"] = load(ENV_FILE)
     pn.extension(sizing_mode="stretch_width")
