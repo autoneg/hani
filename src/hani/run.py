@@ -33,6 +33,111 @@ from hani.make_scenarios import generate as _generate_scenarios
 
 app.command(name="generate")(_generate_scenarios)
 
+# `hani experiment ...` -- manage named experiments under ~/hani/experiments/.
+experiment_app = typer.Typer(
+    add_completion=False, help="Create and manage named experiments."
+)
+app.add_typer(experiment_app, name="experiment")
+
+
+@experiment_app.command("create")
+def experiment_create(
+    name: str = typer.Argument(..., help="Experiment name (directory under ~/hani/experiments/)."),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite existing experiment files."
+    ),
+):
+    """Create a new experiment by copying the current defaults.
+
+    Lays out ~/hani/experiments/<name>/ with:
+      - consent.md, scenario_order.txt  (copied from your settings / package defaults)
+      - questionnaires/per_negotiation.yaml  (copied from scmlweb resources if found)
+      - results/  (empty; this experiment's sessions are written here)
+
+    Start HANI for this experiment with `experiment=<name>` (i.e.
+    HANI_EXPERIMENT=<name>, or --experiment <name> on hani-app / hani-guest).
+    With no experiment selected, HANI behaves exactly as before.
+    """
+    from hani.common import EXPERIMENTS_ROOT, get_settings_file
+
+    exp_dir = EXPERIMENTS_ROOT / name
+    console.print(
+        Panel.fit(
+            f"[bold blue]Create experiment[/bold blue]\n[cyan]{exp_dir}[/cyan]",
+            border_style="blue",
+        )
+    )
+    (exp_dir / "results").mkdir(parents=True, exist_ok=True)
+    (exp_dir / "questionnaires").mkdir(parents=True, exist_ok=True)
+
+    # consent.md + scenario_order.txt from the active settings (falls back to
+    # the package defaults via get_settings_file).
+    for filename in ["consent.md", "scenario_order.txt"]:
+        dst = exp_dir / filename
+        if dst.exists() and not force:
+            console.print(f"[yellow]•[/yellow] {filename} already exists (use --force)")
+            continue
+        src = get_settings_file(filename)
+        if src.exists():
+            shutil.copy(src, dst)
+            console.print(f"[green]✓[/green] {filename}")
+        else:
+            console.print(f"[yellow]•[/yellow] no default {filename} to copy")
+
+    # per_negotiation.yaml from scmlweb resources, if present (HANI ships none).
+    pn_dst = exp_dir / "questionnaires" / "per_negotiation.yaml"
+    if pn_dst.exists() and not force:
+        console.print("[yellow]•[/yellow] questionnaires/per_negotiation.yaml already exists")
+    else:
+        for cand in (
+            Path.home() / "scmlweb" / "resources" / "questionnaires" / "per_negotiation.yaml",
+            Path.home() / "code" / "sites" / "scmlweb" / "resources" / "questionnaires" / "per_negotiation.yaml",
+        ):
+            if cand.exists():
+                shutil.copy(cand, pn_dst)
+                console.print(f"[green]✓[/green] questionnaires/per_negotiation.yaml (from {cand})")
+                break
+        else:
+            console.print(
+                "[yellow]•[/yellow] no per_negotiation.yaml found to copy — drop one in "
+                f"{exp_dir / 'questionnaires'} if this experiment uses per-negotiation questionnaires"
+            )
+
+    # Scenarios are experiment-scoped: seed this experiment with the bundled
+    # default scenario categories (the admin can then curate / regenerate them
+    # under the experiment, or point elsewhere). Mirrors `hani setup`.
+    scen_dir = exp_dir / "scenarios"
+    scen_dir.mkdir(parents=True, exist_ok=True)
+    sample_scenarios_dir = BASE / "sample_scenarios"
+    if sample_scenarios_dir.exists():
+        for category_dir in sample_scenarios_dir.iterdir():
+            if not category_dir.is_dir():
+                continue
+            dst_category = scen_dir / category_dir.name
+            if dst_category.exists() and not force:
+                console.print(
+                    f"[yellow]•[/yellow] scenarios/{category_dir.name} already exists (use --force)"
+                )
+                continue
+            if dst_category.exists():
+                shutil.rmtree(dst_category)
+            shutil.copytree(category_dir, dst_category)
+            console.print(f"[green]✓[/green] scenarios/{category_dir.name}")
+    else:
+        console.print(
+            "[yellow]•[/yellow] no bundled sample scenarios found — populate "
+            f"{scen_dir} for this experiment"
+        )
+
+    console.print(
+        Panel.fit(
+            f"[bold green]Experiment ready[/bold green]\n\n"
+            f"Edit files under [cyan]{exp_dir}[/cyan], then start HANI with\n"
+            f"[cyan]experiment={name}[/cyan] (HANI_EXPERIMENT={name} / --experiment {name}).",
+            border_style="green",
+        )
+    )
+
 
 def wait_for_server(
     url: str, timeout: float = 30.0, poll_interval: float = 0.5

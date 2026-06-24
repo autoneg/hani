@@ -75,8 +75,21 @@ def main(
         "Can also be set via the HANI_PORT env var.",
         envvar="HANI_PORT",
     ),
+    experiment: Optional[str] = typer.Option(
+        None,
+        "--experiment",
+        help="Run under a named experiment (consent/questionnaires/results "
+        "resolve to ~/hani/experiments/<name>/). Omit for default behaviour. "
+        "Can also be set via the HANI_EXPERIMENT env var.",
+        envvar="HANI_EXPERIMENT",
+    ),
 ):
     """Run HANI application with authentication."""
+
+    # Select the experiment for the served app (read by hani.common at import).
+    if experiment:
+        typer.echo(f"Experiment: {experiment}")
+        os.environ["HANI_EXPERIMENT"] = experiment
 
     # If --agents is provided via command-line (not from run.py), set it as environment variable
     # run.py already sets _HANI_CMDLINE_AGENTS, so we only set it if not already set
@@ -127,14 +140,16 @@ def main(
 
     # Add extra user args from context
     extra_args = list(ctx.args) if ctx.args else []
-    # Drop any --port from extra_args so the typer-captured value wins.
+    # Drop --port / --experiment from extra_args so the typer-captured values
+    # win and panel serve never sees options it doesn't understand.
     extra_args = [
         a
         for i, a in enumerate(extra_args)
         if not (
-            a == "--port"
+            a in ("--port", "--experiment")
             or a.startswith("--port=")
-            or (i > 0 and extra_args[i - 1] == "--port")
+            or a.startswith("--experiment=")
+            or (i > 0 and extra_args[i - 1] in ("--port", "--experiment"))
         )
     ]
 

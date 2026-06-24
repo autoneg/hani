@@ -1,4 +1,5 @@
 import json
+import os
 import pandas as pd
 import panel as pn
 from negmas import Outcome, Scenario
@@ -8,6 +9,16 @@ from pathlib import Path
 HANI_GUEST_PORT = 5008
 REG_PORT = 5007
 HANI_PORT = 5006
+
+# Active experiment (server-wide, chosen at startup via the `experiment=<name>`
+# CLI parameter, which exports HANI_EXPERIMENT). When set, per-experiment
+# artefacts (consent, questionnaires, scenario order, ...) and results resolve
+# under ~/hani/experiments/<name>/ instead of the default locations. When unset
+# (EXPERIMENT is None) EVERY path below is computed exactly as before, so the
+# default behaviour and storage layout are completely unchanged.
+EXPERIMENTS_ROOT = Path.home() / "hani" / "experiments"
+EXPERIMENT = (os.environ.get("HANI_EXPERIMENT") or "").strip() or None
+EXPERIMENT_DIR = (EXPERIMENTS_ROOT / EXPERIMENT) if EXPERIMENT else None
 
 # Settings directories
 SETTINGS_DIR = Path.home() / "negmas" / "hani" / "settings"
@@ -88,7 +99,17 @@ def get_env(key_path: str, default: Any = None) -> Any:
 
 
 def get_settings_file(filename: str) -> Path:
-    """Get a settings file, falling back to default_settings if not found in user settings."""
+    """Get a settings file, falling back to default_settings if not found in user settings.
+
+    When an experiment is active, an experiment-local copy
+    (~/hani/experiments/<name>/<filename>) takes precedence over the shared
+    user / default settings, so consent text, scenario order, etc. can be
+    customised per experiment. With no experiment active this is unchanged.
+    """
+    if EXPERIMENT_DIR is not None:
+        exp_file = EXPERIMENT_DIR / filename
+        if exp_file.exists():
+            return exp_file
     user_file = SETTINGS_DIR / filename
     if user_file.exists():
         return user_file
@@ -115,7 +136,14 @@ SAMPLE_SCENRIOS = SETTINGS_DIR / "scenarios"
 DEFAULT_SCENRIOS = Path(__file__).parent / "sample_scenarios" / "Default"
 INFO_FILE_NAME = "_info.yaml"
 
-DB_PATH = Path.home() / "negmas" / "hani" / "db"
+# Results root. Per experiment, results live under the experiment directory so
+# each experiment's data is self-contained; with no experiment active this is
+# the historical ~/negmas/hani/db, unchanged.
+DB_PATH = (
+    (EXPERIMENT_DIR / "results")
+    if EXPERIMENT_DIR is not None
+    else Path.home() / "negmas" / "hani" / "db"
+)
 
 # Admin password from env.json (with type assertion)
 ADMIN_PASS: str = str(get_env("admin.password", "adminpass") or "adminpass")
