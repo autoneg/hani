@@ -575,8 +575,32 @@ DISPLAY_MAP = {
 
 
 class HumanPlaceholder(SAONegotiator):
+    def __init__(self, *args, driver: SAONegotiator | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Optional sub-negotiator that drives this (human) seat under
+        # negotiator-driven Autopilot. None for a normal interactive round or
+        # for the "Support Agent" autopilot driver (which acts via its tools).
+        self._driver = driver
+
+    def join(self, *args, **kwargs) -> bool:  # type: ignore[override]
+        """Join the human seat, and (if present) join the driver to the SAME
+        nmi so it receives the human's preferences/ufun. Pattern borrowed from
+        SAOHumanNegotiator.join (negotiator.py) minus the queues."""
+        joined = super().join(*args, **kwargs)
+        if joined and self._driver is not None:
+            try:
+                self._driver.join(*args, **kwargs)
+            except Exception as e:
+                print(f"[autopilot] driver failed to join; disabling driver: {e}")
+                self._driver = None
+        return joined
+
     def __call__(self, state: SAOState, dest: str | None = None) -> SAOResponse:
-        response = get_action(state)
+        if session_state.get("autopilot_active") and self._driver is not None:
+            # Negotiator-driven autopilot: the driver decides, not the human.
+            response = self._driver(state, dest=dest)
+        else:
+            response = get_action(state)
         for tool in session_state["tools"]:
             tool.action_to_execute(session_state, self.nmi, response)
         return response
@@ -1078,6 +1102,61 @@ def no_accept_none_class(base: type) -> type:
     return wrapped
 
 
+def _hide_action_sections():
+    """Hide every action-panel section, overriding the "Offer Panel Always
+    Visible" pin. Used by autopilot -- the human makes no decisions, so the
+    panel is not needed. No-ops gracefully for sections not yet built."""
+    for key in (
+        "partner_offer_section",
+        "decision_buttons_row",
+        "counter_offer_section",
+    ):
+        sec = session_state.get(key)
+        if sec is not None:
+            try:
+                sec.visible = False
+            except Exception:
+                pass
+
+
+def _make_autopilot_driver():
+    """Build the negotiator that drives the human seat under *negotiator-driven*
+    Autopilot (i.e. the driver is one of AUTOPILOT_NEGOTIATORS, not the LLM
+    Support Agent). Returns None when autopilot isn't allowed, the driver is the
+    Support Agent, or nothing resolves. The driver receives the human's ufun/nmi
+    via HumanPlaceholder.join.
+
+    Built whenever autopilot is *available* (regardless of the switch state) so
+    that toggling autopilot on mid-round works -- HumanPlaceholder only consults
+    the driver while ``session_state["autopilot_active"]`` is set."""
+    from hani.support_agent import autopilot as ap
+
+    settings = ap.load_autopilot_settings()
+    if not ap.autopilot_allowed(settings):
+        return None
+    driver_name = ap.resolve_driver(session_state, settings, is_admin())
+    if not ap.is_negotiator_driver(driver_name):
+        return None  # "Support Agent" driver (path A) or nothing -> no path-B driver
+    try:
+        klass = get_agent_type(driver_name)
+    except Exception as e:
+        print(f"[autopilot] could not resolve driver {driver_name!r}: {e}")
+        return None
+    params: dict[str, Any] = {}
+    is_llm_string = isinstance(driver_name, str) and driver_name.startswith("LLM")
+    if is_llm_string or _is_llm_negotiator_class(klass):
+        llm = load_llm_settings()
+        params.setdefault("model", llm.get("model", "qwen3:4b-instruct"))
+        if is_llm_string:
+            params.setdefault("provider", llm.get("provider", "ollama"))
+    params.setdefault("name", "Autopilot")
+    try:
+        return klass(**params)  # type: ignore
+    except Exception as e:
+        print(f"[autopilot] could not instantiate driver {driver_name!r}: {e}")
+        return None
+
+
 def make_mechanism(
     scenario: Scenario,
     human_index: int = CONFIG.human_index,
@@ -1172,11 +1251,23 @@ def make_mechanism(
     # Add verbose flag if enabled and supported by negotiator
     verbose_enabled = os.getenv("_HANI_VERBOSE") == "1"
 
+    # Negotiator-driven autopilot: build the driver that will play the human
+    # seat (None unless autopilot is allowed with a negotiator driver). Joined
+    # to the human's nmi/ufun via HumanPlaceholder.join.
+    autopilot_driver = _make_autopilot_driver()
+    session_state["autopilot_driver"] = autopilot_driver
+
     negotiators = []
     n_negotiators = 2
     for i in range(n_negotiators):
         if i == human_index:
-            negotiators.append(get_class(human_type)(**human_params))
+            human_class = get_class(human_type)
+            try:
+                negotiators.append(human_class(**human_params, driver=autopilot_driver))
+            except TypeError:
+                # Custom human_type that doesn't accept a driver: build plainly
+                # (negotiator-driven autopilot unavailable for that seat).
+                negotiators.append(human_class(**human_params))
         else:
             # Try to pass verbose=True if enabled and supported
             if verbose_enabled:
@@ -2036,6 +2127,118 @@ def advance():
     else:
         # No live Bokeh session (tests / standalone): run inline.
         asyncio.run(_advance_impl())
+
+
+async def _autopilot_kick():
+    """Drive negotiator-driven autopilot from an idle human turn (e.g. the user
+    flips the switch while the action panel is waiting). Mirrors _advance_impl's
+    lock discipline so it can't race the interactive step path or the timer."""
+    lock = _step_lock()
+    if not lock.acquire(blocking=False):
+        # A step is already running; the in-flight step_to_human loop will pick
+        # up autopilot_active at the next human-turn boundary.
+        return
+    try:
+        if negoiation_completed():
+            return
+        _show_typing_indicator()
+        _set_action_buttons_disabled(True)
+        try:
+            await step_to_human()
+        finally:
+            _hide_typing_indicator()
+            _set_action_buttons_disabled(False)
+    finally:
+        lock.release()
+
+
+def on_autopilot_toggle(event=None):
+    """Engage/disengage autopilot from the top-bar switch."""
+    if event is not None:
+        active = bool(event.new)
+    else:
+        sw = session_state.get("autopilot_switch")
+        active = bool(sw.value) if sw is not None else False
+    session_state["autopilot_active"] = active
+
+    agent = session_state.get("support_agent")
+    if not active:
+        # Restore the Support-Agent driver's normal autonomy if we forced it.
+        if agent is not None and hasattr(agent, "set_autopilot"):
+            try:
+                agent.set_autopilot(False)
+            except Exception:
+                pass
+        # Interactive control resumes: the running loop breaks at the next human
+        # turn and rebuilds the action panel (or the panel is already shown).
+        return
+
+    # Engage: no human input, so suspend the countdown (it injects a REJECT on
+    # expiry) and hide the action panel.
+    from hani.support_agent import autopilot as ap
+
+    try:
+        session_state["autopilot_step_delay"] = float(
+            ap.load_autopilot_settings().get("step_delay", 0.0) or 0.0
+        )
+    except Exception:
+        session_state["autopilot_step_delay"] = 0.0
+    timer = session_state.get("timer")
+    if timer is not None:
+        try:
+            timer.stop()
+        except Exception:
+            pass
+    _hide_action_sections()
+
+    mechanism = session_state.get("mechanism")
+    if mechanism is None or mechanism.state.done:
+        return  # nothing to drive yet; honored once a negotiation runs
+
+    if session_state.get("autopilot_driver") is not None:
+        # Negotiator-driven: kick the synchronous loop if idle at a human turn.
+        doc = session_state.get("doc") or pn.state.curdoc
+        if doc is not None:
+            if getattr(doc.callbacks, "_change_callbacks", None) is None:
+                return  # torn-down session; nothing to update
+            doc.add_next_tick_callback(_autopilot_kick)
+        else:
+            asyncio.run(_autopilot_kick())
+    elif agent is not None and hasattr(agent, "set_autopilot"):
+        # Support-Agent driven (path A): force the agent hands-off and, if it's
+        # already the human's turn, nudge it to act now.
+        try:
+            agent.set_autopilot(True)
+            human_index = session_state.get("human_index")
+            if human_index is not None:
+                nmi = mechanism.negotiators[human_index].nmi
+                _notify_support_agent("action_requested", nmi)
+        except Exception as e:
+            print(f"[autopilot] could not engage support-agent driver: {e}")
+
+
+def apply_autopilot_gating():
+    """Enable/disable the top-bar Autopilot switch under the three-way gate:
+    admin-allows AND a driver resolves AND (driver is a negotiator OR the
+    Support Agent is enabled this session). Idempotent."""
+    sw = session_state.get("autopilot_switch")
+    if sw is None:
+        return
+    from hani.support_agent import autopilot as ap
+
+    settings = ap.load_autopilot_settings()
+    admin = is_admin()
+    driver = ap.resolve_driver(session_state, settings, admin)
+    available = ap.autopilot_allowed(settings) and bool(driver)
+    if available and not ap.is_negotiator_driver(driver):
+        # "Support Agent" driver needs the agent enabled for this session.
+        available = support_agent_enabled(is_admin=admin)
+    if not available:
+        try:
+            sw.value = False
+        except Exception:
+            pass
+    sw.disabled = not available
 
 
 def _render_offer_on_table_html(current_offer: Outcome | None) -> str:
@@ -3098,18 +3301,32 @@ async def step_to_human(event=None):
         session_state["history"].clear()
 
     loop = asyncio.get_running_loop()
-    while next_neg_ids[0] != human_id:
-        # The partner step can call a slow LLM agent (seconds to minutes).
-        # Run it in a worker thread so the IOLoop stays free; control
-        # returns here on the IOLoop after it completes, so the Bokeh
-        # mutations below are still on-thread.
-        await loop.run_in_executor(None, mechanism.step)
-
-        add_to_history()
-        next_neg_ids = mechanism.next_negotitor_ids()
-        # print(next_neg_ids[0], human_id, next_neg_ids[0] == human_id)
+    while True:
         if mechanism.state.done:
             break
+        next_neg_ids = mechanism.next_negotitor_ids()
+        is_human = next_neg_ids[0] == human_id
+        # Negotiator-driven autopilot (path B): a driver was wired into the
+        # human seat, so keep stepping THROUGH the human turn. The Support-Agent
+        # driver (path A) leaves autopilot_driver None and is handled below via
+        # the event ping-pong, not this synchronous loop (advisor: don't merge).
+        negotiator_driven = bool(session_state.get("autopilot_active")) and (
+            session_state.get("autopilot_driver") is not None
+        )
+        if is_human and not negotiator_driven:
+            break
+        if is_human and negotiator_driven:
+            _hide_action_sections()
+        # The step may call a slow LLM (opponent, or an LLM autopilot driver);
+        # run it in a worker thread so the IOLoop stays free. Control returns
+        # here on the IOLoop, so the Bokeh mutations below remain on-thread.
+        await loop.run_in_executor(None, mechanism.step)
+        add_to_history()
+        if is_human and negotiator_driven:
+            # Optional pacing so the user can watch the history fill in.
+            delay = float(session_state.get("autopilot_step_delay", 0.0) or 0.0)
+            if delay > 0:
+                await asyncio.sleep(delay)
     # Partner's offer is now in the history. Hide the "thinking" /
     # "loading" indicator before the (potentially slow) tool callbacks
     # and action-panel rebuild run, so the dots disappear as soon as
@@ -3122,7 +3339,13 @@ async def step_to_human(event=None):
         "action_requested", mechanism.negotiators[human_index].nmi
     )
     if not negoiation_completed():
-        action_panel(mechanism.state.current_offer, mechanism.state.current_data)
+        if session_state.get("autopilot_active"):
+            # Autopilot: no action panel. Negotiator-driven rounds only reach
+            # here when done; the Support-Agent driver acts via the
+            # _notify_support_agent ping-pong fired just above.
+            _hide_action_sections()
+        else:
+            action_panel(mechanism.state.current_offer, mechanism.state.current_data)
     # session_state["template"].main[3:5, 3:10] = offer
 
 
@@ -5402,6 +5625,49 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             pass
     else:
         session_state["view_toggle_row"] = None
+
+    # --- Autopilot: top-bar switch (+ driver selector) --------------------
+    # View-independent (lives in the header, so it works in both simple and
+    # full views) and agent-independent (a negotiator driver works even when
+    # the Support Agent is disabled). Greyed until the three-way gate opens
+    # (see apply_autopilot_gating).
+    from hani.support_agent import autopilot as _ap
+
+    _ap_settings = _ap.load_autopilot_settings()
+    autopilot_switch = pn.widgets.Checkbox(
+        name="Autopilot",
+        value=False,
+        disabled=True,
+        styles={"color": "white", "margin": "0 8px"},
+    )
+    session_state["autopilot_switch"] = autopilot_switch
+    autopilot_switch.param.watch(on_autopilot_toggle, "value")
+    try:
+        template.header.append(autopilot_switch)
+    except Exception:
+        pass
+    # Driver selector: shown only where the participant may choose (admins and
+    # the guest playground); otherwise the admin-fixed driver is used and only
+    # the switch shows.
+    if _ap.user_can_select_driver(is_admin()):
+        autopilot_driver_select = pn.widgets.Select(
+            name="",
+            options=_ap.driver_options(_ap_settings),
+            value=_ap.resolve_driver(session_state, _ap_settings, is_admin()),
+            width=200,
+            styles={"margin": "0 8px"},
+        )
+        session_state["autopilot_driver_select"] = autopilot_driver_select
+
+        def _on_driver_change(event=None):
+            apply_autopilot_gating()
+
+        autopilot_driver_select.param.watch(_on_driver_change, "value")
+        try:
+            template.header.append(autopilot_driver_select)
+        except Exception:
+            pass
+    apply_autopilot_gating()
 
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
