@@ -114,11 +114,15 @@ def _session(m, human_id, driver, delay=0.0):
         "human_index": 1,
         "human_action": None,  # never set: proves the driver, not the human, acts
         "tools": [],
-        "toggles": {"show_history": types.SimpleNamespace(value=True)},
+        "toggles": {
+            "show_history": types.SimpleNamespace(value=True),
+            "show_human_offers": types.SimpleNamespace(value=True),
+        },
         "history": [],
         "autopilot_active": True,
         "autopilot_driver": driver,
         "autopilot_step_delay": delay,
+        "step_lock": threading.Lock(),
     }
 
 
@@ -127,11 +131,27 @@ def _patch_env(monkeypatch, ss, m):
     monkeypatch.setattr(
         app, "add_to_history", lambda *a, **k: ss["history"].append(m.state.current_offer)
     )
+    monkeypatch.setattr(app, "_show_typing_indicator", lambda *a, **k: None)
     monkeypatch.setattr(app, "_hide_typing_indicator", lambda *a, **k: None)
+    monkeypatch.setattr(app, "_set_action_buttons_disabled", lambda *a, **k: None)
     monkeypatch.setattr(app, "_hide_action_sections", lambda *a, **k: None)
     monkeypatch.setattr(app, "_notify_support_agent", lambda *a, **k: None)
     monkeypatch.setattr(app, "negoiation_completed", lambda *a, **k: m.state.done)
     monkeypatch.setattr(app, "action_panel", lambda *a, **k: None)
+    # Drive the per-step loop manually in the test (the real one re-schedules via
+    # advance() on the Bokeh doc, which isn't available here).
+    monkeypatch.setattr(app, "_schedule_autopilot_step", lambda: None)
+
+
+async def _drive_autopilot(m):
+    """Emulate the per-tick autopilot drive: partner-step to the human turn,
+    then repeatedly apply one human(driver)+partner cycle via _advance_impl."""
+    await app.step_to_human()
+    steps = 0
+    while not m.state.done and steps < 100:
+        await app._advance_impl()
+        steps += 1
+    return steps
 
 
 def test_negotiator_autopilot_drives_to_completion(monkeypatch):
@@ -140,7 +160,7 @@ def test_negotiator_autopilot_drives_to_completion(monkeypatch):
             m, human_id, driver = _build(n_steps=6)
             ss = _session(m, human_id, driver)
             _patch_env(monkeypatch, ss, m)
-            await app.step_to_human()
+            await _drive_autopilot(m)
             assert m.state.done, "autopilot should run the negotiation to done"
             assert ss["human_action"] is None, "human action must never be consulted"
             assert len(ss["history"]) >= 2, "history should record multiple steps"
@@ -151,6 +171,9 @@ def test_negotiator_autopilot_drives_to_completion(monkeypatch):
 
 
 def test_negotiator_autopilot_keeps_loop_responsive(monkeypatch):
+    """Each step offloads the (slow) partner via run_in_executor, so a heartbeat
+    keeps ticking while a step is in flight."""
+
     def scenario():
         async def go():
             m, human_id, driver = _build(n_steps=4, opponent=_SlowRejecter)
@@ -169,7 +192,7 @@ def test_negotiator_autopilot_keeps_loop_responsive(monkeypatch):
             hb = asyncio.create_task(heartbeat())
             await asyncio.sleep(0.05)
             n0 = len(ticks)
-            await app.step_to_human()
+            await _drive_autopilot(m)
             during = len(ticks) - n0
             hb.cancel()
             await hb
@@ -181,22 +204,30 @@ def test_negotiator_autopilot_keeps_loop_responsive(monkeypatch):
     _run(scenario())
 
 
-def test_negotiator_autopilot_respects_step_delay(monkeypatch):
-    def scenario():
-        async def go():
-            delay = 0.1
-            m, human_id, driver = _build(n_steps=6)
-            ss = _session(m, human_id, driver, delay=delay)
-            _patch_env(monkeypatch, ss, m)
-            t0 = time.perf_counter()
-            await app.step_to_human()
-            elapsed = time.perf_counter() - t0
-            assert m.state.done
-            assert elapsed >= 2 * delay, f"delay not applied (elapsed={elapsed:.2f}s)"
+def test_schedule_autopilot_step_respects_delay(monkeypatch):
+    ss = {"autopilot_active": True, "autopilot_driver": object(), "autopilot_step_delay": 0.2}
+    monkeypatch.setattr(app, "session_state", ss)
+    calls = []
+    monkeypatch.setattr(app, "advance", lambda: calls.append(time.perf_counter()))
+    t0 = time.perf_counter()
+    app._schedule_autopilot_step()
+    assert calls == [], "delay>0 must not fire immediately"
+    time.sleep(0.4)
+    assert len(calls) == 1 and (calls[0] - t0) >= 0.2, "step should fire after the delay"
 
-        return go()
 
-    _run(scenario())
+def test_schedule_autopilot_step_immediate_and_guards_disengage(monkeypatch):
+    ss = {"autopilot_active": True, "autopilot_driver": object(), "autopilot_step_delay": 0.0}
+    monkeypatch.setattr(app, "session_state", ss)
+    calls = []
+    monkeypatch.setattr(app, "advance", lambda: calls.append(1))
+    app._schedule_autopilot_step()
+    assert calls == [1], "delay 0 should advance immediately"
+    # Disengaged before firing -> no advance (the fire-time re-check).
+    ss["autopilot_active"] = False
+    calls.clear()
+    app._schedule_autopilot_step()
+    assert calls == [], "must not advance once autopilot is off"
 
 
 def test_off_breaks_at_human_turn(monkeypatch):

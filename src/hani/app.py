@@ -1119,6 +1119,19 @@ def _hide_action_sections():
                 pass
 
 
+def _restore_action_panel():
+    """Rebuild the interactive action panel when it's the human's turn (used
+    when autopilot disengages or can't engage). No-ops between turns / at end."""
+    mechanism = session_state.get("mechanism")
+    if mechanism is None or mechanism.state.done:
+        return
+    try:
+        if mechanism.next_negotitor_ids()[0] == session_state.get("human_id"):
+            action_panel(mechanism.state.current_offer, mechanism.state.current_data)
+    except Exception as e:
+        print(f"[autopilot] could not restore action panel: {e}")
+
+
 def _make_autopilot_driver():
     """Build the negotiator that drives the human seat under *negotiator-driven*
     Autopilot (i.e. the driver is one of AUTOPILOT_NEGOTIATORS, not the LLM
@@ -2129,27 +2142,30 @@ def advance():
         asyncio.run(_advance_impl())
 
 
-async def _autopilot_kick():
-    """Drive negotiator-driven autopilot from an idle human turn (e.g. the user
-    flips the switch while the action panel is waiting). Mirrors _advance_impl's
-    lock discipline so it can't race the interactive step path or the timer."""
-    lock = _step_lock()
-    if not lock.acquire(blocking=False):
-        # A step is already running; the in-flight step_to_human loop will pick
-        # up autopilot_active at the next human-turn boundary.
-        return
-    try:
-        if negoiation_completed():
-            return
-        _show_typing_indicator()
-        _set_action_buttons_disabled(True)
-        try:
-            await step_to_human()
-        finally:
-            _hide_typing_indicator()
-            _set_action_buttons_disabled(False)
-    finally:
-        lock.release()
+def _schedule_autopilot_step():
+    """Schedule ONE negotiator-driven autopilot step as a separate next-tick
+    (via ``advance``), optionally after the configured delay. Each step is its
+    own Bokeh document-lock acquisition, so the lock is released between steps
+    and incoming UI events (crucially, the user's disengage click) are serviced.
+    ``advance`` -> ``_advance_impl`` steps the human seat (the driver decides,
+    because ``autopilot_active`` is set) then partners to the next human turn,
+    whose ``step_to_human`` tail schedules the following step -- the loop."""
+    delay = float(session_state.get("autopilot_step_delay", 0.0) or 0.0)
+
+    def _fire():
+        # Re-check at fire time: the user may have disengaged during the delay.
+        if session_state.get("autopilot_active") and (
+            session_state.get("autopilot_driver") is not None
+        ):
+            advance()
+
+    if delay > 0:
+        t = threading.Timer(delay, _fire)
+        t.daemon = True
+        t.start()
+        session_state["autopilot_timer"] = t
+    else:
+        _fire()
 
 
 def on_autopilot_toggle(event=None):
@@ -2169,8 +2185,12 @@ def on_autopilot_toggle(event=None):
                 agent.set_autopilot(False)
             except Exception:
                 pass
-        # Interactive control resumes: the running loop breaks at the next human
-        # turn and rebuilds the action panel (or the panel is already shown).
+        # Interactive control resumes. Don't rely on the driving loop to tidy
+        # up: clear the "thinking" indicator, re-enable the buttons, and rebuild
+        # the panel now so the user is never left with a hidden/stale panel.
+        _hide_typing_indicator()
+        _set_action_buttons_disabled(False)
+        _restore_action_panel()
         return
 
     # Engage: no human input, so suspend the countdown (it injects a REJECT on
@@ -2196,14 +2216,11 @@ def on_autopilot_toggle(event=None):
         return  # nothing to drive yet; honored once a negotiation runs
 
     if session_state.get("autopilot_driver") is not None:
-        # Negotiator-driven: kick the synchronous loop if idle at a human turn.
-        doc = session_state.get("doc") or pn.state.curdoc
-        if doc is not None:
-            if getattr(doc.callbacks, "_change_callbacks", None) is None:
-                return  # torn-down session; nothing to update
-            doc.add_next_tick_callback(_autopilot_kick)
-        else:
-            asyncio.run(_autopilot_kick())
+        # Negotiator-driven: start the per-step drive. If a partner step is in
+        # flight, _advance_impl will bail on the lock and the in-flight
+        # step_to_human tail will schedule the drive instead -- either way it
+        # self-starts.
+        _schedule_autopilot_step()
     elif agent is not None and hasattr(agent, "set_autopilot"):
         # Support-Agent driven (path A): force the agent hands-off and, if it's
         # already the human's turn, nudge it to act now.
@@ -2215,6 +2232,25 @@ def on_autopilot_toggle(event=None):
                 _notify_support_agent("action_requested", nmi)
         except Exception as e:
             print(f"[autopilot] could not engage support-agent driver: {e}")
+    else:
+        # No driver actually available (gating should prevent this, but a
+        # swallowed support-agent mount failure can leave support_agent None
+        # while support_agent_enabled() is True). Never strand the user in a
+        # hidden-panel dead session: revert and restore interactive control.
+        print("[autopilot] engaged with no available driver; reverting")
+        session_state["autopilot_active"] = False
+        sw = session_state.get("autopilot_switch")
+        if sw is not None:
+            try:
+                sw.value = False  # re-fires on_autopilot_toggle(active=False)
+            except Exception:
+                pass
+        _restore_action_panel()
+        try:
+            if getattr(pn.state, "notifications", None):
+                pn.state.notifications.warning("Autopilot is unavailable right now.")
+        except Exception:
+            pass
 
 
 def apply_autopilot_gating():
@@ -3301,32 +3337,17 @@ async def step_to_human(event=None):
         session_state["history"].clear()
 
     loop = asyncio.get_running_loop()
-    while True:
+    while next_neg_ids[0] != human_id:
+        # The partner step can call a slow LLM agent (seconds to minutes).
+        # Run it in a worker thread so the IOLoop stays free; control
+        # returns here on the IOLoop after it completes, so the Bokeh
+        # mutations below are still on-thread.
+        await loop.run_in_executor(None, mechanism.step)
+
+        add_to_history()
+        next_neg_ids = mechanism.next_negotitor_ids()
         if mechanism.state.done:
             break
-        next_neg_ids = mechanism.next_negotitor_ids()
-        is_human = next_neg_ids[0] == human_id
-        # Negotiator-driven autopilot (path B): a driver was wired into the
-        # human seat, so keep stepping THROUGH the human turn. The Support-Agent
-        # driver (path A) leaves autopilot_driver None and is handled below via
-        # the event ping-pong, not this synchronous loop (advisor: don't merge).
-        negotiator_driven = bool(session_state.get("autopilot_active")) and (
-            session_state.get("autopilot_driver") is not None
-        )
-        if is_human and not negotiator_driven:
-            break
-        if is_human and negotiator_driven:
-            _hide_action_sections()
-        # The step may call a slow LLM (opponent, or an LLM autopilot driver);
-        # run it in a worker thread so the IOLoop stays free. Control returns
-        # here on the IOLoop, so the Bokeh mutations below remain on-thread.
-        await loop.run_in_executor(None, mechanism.step)
-        add_to_history()
-        if is_human and negotiator_driven:
-            # Optional pacing so the user can watch the history fill in.
-            delay = float(session_state.get("autopilot_step_delay", 0.0) or 0.0)
-            if delay > 0:
-                await asyncio.sleep(delay)
     # Partner's offer is now in the history. Hide the "thinking" /
     # "loading" indicator before the (potentially slow) tool callbacks
     # and action-panel rebuild run, so the dots disappear as soon as
@@ -3339,10 +3360,18 @@ async def step_to_human(event=None):
         "action_requested", mechanism.negotiators[human_index].nmi
     )
     if not negoiation_completed():
-        if session_state.get("autopilot_active"):
-            # Autopilot: no action panel. Negotiator-driven rounds only reach
-            # here when done; the Support-Agent driver acts via the
-            # _notify_support_agent ping-pong fired just above.
+        if session_state.get("autopilot_active") and (
+            session_state.get("autopilot_driver") is not None
+        ):
+            # Negotiator-driven autopilot: no panel; schedule the NEXT step as a
+            # separate next-tick (via advance) so the document lock is released
+            # between steps -- otherwise a continuous loop would hold the lock
+            # and block the user's disengage click. Honors the step delay.
+            _hide_action_sections()
+            _schedule_autopilot_step()
+        elif session_state.get("autopilot_active"):
+            # Support-Agent driven: the agent acts via the _notify_support_agent
+            # ping-pong fired just above; just keep the panel hidden.
             _hide_action_sections()
         else:
             action_panel(mechanism.state.current_offer, mechanism.state.current_data)
