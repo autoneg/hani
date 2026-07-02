@@ -336,3 +336,57 @@ drift). Available once a negotiation panel exists.
 
 Proactive event names passed to `on_event` / `proactive_note`: `"negotiation_started"`,
 `"action_requested"` (gated by the matching `proactive` setting).
+
+---
+
+## Autopilot
+
+**Autopilot** lets an agent make *all* of the human's negotiation decisions
+(accept/reject/end, counter-offers, offers) with no human input. It is a
+**separate concern** from the Support Agent's capabilities and is configured in
+`autopilot_settings.json` (its own file, so it works even when the Support Agent
+is disabled). A top-bar **Autopilot** switch (present in both the simple and full
+views) engages it; while on, the action panel is hidden and the history keeps
+updating on its own.
+
+The autopilot **driver** — who actually decides — is selectable:
+
+| Driver | Behaviour |
+|--------|-----------|
+| **Support Agent** | The LLM Negotiation Support Agent decides every turn. Autopilot temporarily forces it to **FULL** autonomy and requires it to call an action tool each turn (restored when switched off). Requires the agent to be enabled for the session. |
+| a negotiator from **`AUTOPILOT_NEGOTIATORS`** | A plain negmas / negmas-llm negotiator plays the human's seat directly (no LLM Support Agent needed). Instantiated with the human's utility function. |
+
+`AUTOPILOT_NEGOTIATORS` (in `hani.support_agent.autopilot`) defaults to a set of
+pure-negmas negotiators plus the negmas-llm / template negotiators the app
+exposes; override the list to change the offered drivers.
+
+### Who chooses the driver
+
+Resolved by mode: **admin-fixed** for authenticated / Prolific sessions (only the
+switch is shown; the driver comes from the `driver` setting), and
+**user-selectable** for admins and in the guest playground (a driver `Select`
+appears beside the switch, limited to `allowed_drivers`).
+
+### Settings — `autopilot_settings.json`
+
+| Field | Meaning |
+|-------|---------|
+| `allowed` | Admin master switch (the "admin-allows" leg). The Autopilot switch is greyed for everyone when `false`. |
+| `driver` | The admin-fixed default driver (`"Support Agent"` or a negotiator name). |
+| `allowed_drivers` | Subset offered in the user-facing `Select` (`null` = offer all). |
+| `step_delay` | Seconds to pause between autopilot steps (0 = as fast as possible). |
+| `end_in_practice` | Reserved: whether an autopilot driver may END during practice rounds. |
+
+The switch is enabled only under the three-way gate: **admin allows** AND a
+**driver resolves** AND (the driver is a negotiator **OR** the Support Agent is
+enabled this session). Admins can edit all of the above live from the
+**"Autopilot (Admin)"** sidebar card.
+
+### Stall safety (Support-Agent driver)
+
+With no human watching, an autopilot turn that fails to act would stall the
+round. The Support-Agent driver therefore forces a tool call each turn and, if
+the agent still doesn't act (or the LLM errors / isn't configured), a **stall
+net** sends a counter to keep the negotiation moving and, after repeated
+failures, **auto-disengages** autopilot and restores the action panel so the
+human is back in control.

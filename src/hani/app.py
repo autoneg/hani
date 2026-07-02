@@ -5448,8 +5448,10 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     offer_init_toggles = [session_state["toggles"][k] for k in offer_init_keys]
 
     from hani.support_agent.admin_ui import build_admin_card
+    from hani.support_agent.autopilot import build_autopilot_admin_card
 
     support_agent_card = build_admin_card(session_state, is_admin())
+    autopilot_admin_card = build_autopilot_admin_card(session_state, is_admin())
 
     sidebar = pn.Column(
         image,
@@ -5501,6 +5503,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         ),
         llm_card,
         support_agent_card,
+        autopilot_admin_card,
         # Add modals at end of sidebar (they're overlays, won't affect width)
         extraction_modal,
         generation_modal,

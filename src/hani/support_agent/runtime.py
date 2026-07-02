@@ -26,7 +26,7 @@ from typing import Any
 
 import panel as pn
 
-from hani.support_agent.capabilities import CapabilityState
+from hani.support_agent.capabilities import Autonomy, CapabilityState
 from hani.support_agent.tools import ToolDispatcher
 
 __all__ = ["SupportAgent", "get_or_create_support_agent"]
@@ -79,6 +79,34 @@ class SupportAgent:
         # User-facing master switch (the participant can turn the agent off
         # entirely from the floating UI). Never widens admin permissions.
         self.user_enabled = True
+        # Autopilot: while on, the agent decides & acts every turn with no human
+        # input (see set_autopilot / on_event). Autonomy is forced to FULL and
+        # restored on disengage.
+        self.autopilot = False
+        self._saved_autonomy: tuple | None = None
+        self._autopilot_stalls = 0
+
+    def set_autopilot(self, active: bool) -> None:
+        """Engage/disengage hands-off Autopilot for this agent. While engaged,
+        effective autonomy is forced to FULL so the negotiation-action tools
+        execute immediately; the prior autonomy is restored on disengage."""
+        active = bool(active)
+        if active == self.autopilot:
+            return
+        self.autopilot = active
+        self._autopilot_stalls = 0
+        if active:
+            self._saved_autonomy = (
+                self.capabilities.admin_autonomy,
+                self.capabilities.user_autonomy,
+            )
+            self.capabilities.admin_autonomy = Autonomy.FULL
+            self.capabilities.user_autonomy = Autonomy.FULL
+        elif self._saved_autonomy is not None:
+            self.capabilities.admin_autonomy, self.capabilities.user_autonomy = (
+                self._saved_autonomy
+            )
+            self._saved_autonomy = None
 
     # -- extension points ---------------------------------------------------
     def build_system_prompt(self) -> str:
@@ -253,9 +281,19 @@ class SupportAgent:
                 respond=False,
             )
 
+    #: The negotiation-submitting tools an autopilot turn must call one of.
+    _ACTION_TOOLS = {"submit_counter_offer", "accept_offer", "end_negotiation"}
+
     def on_event(self, event_name: str, nmi=None) -> None:
         """Proactive trigger from a negotiation lifecycle event (if enabled)."""
         if not self.user_enabled:
+            return
+        # Autopilot: on every human turn the agent MUST decide and act, bypassing
+        # the proactive gate (which is for optional, chatty observations).
+        if self.autopilot and event_name == "action_requested":
+            if self._busy.locked():
+                return
+            self._run_autopilot_turn()
             return
         proactive = self.settings.get("proactive", {}) or {}
         if not proactive.get(f"on_{event_name}", False):
@@ -265,6 +303,58 @@ class SupportAgent:
         note = self.proactive_note(event_name)
         if note:
             self._run_turn(system_note=note, context_note=self._context_snapshot())
+
+    def _run_autopilot_turn(self) -> None:
+        """One hands-off decision turn. Forces the model to call an action tool;
+        if it still doesn't act (or errors), the stall net keeps the round moving
+        and, after repeated failures, disengages autopilot."""
+        note = (
+            "(system) AUTOPILOT is engaged: it is your turn and NO human is "
+            "watching. You MUST act now by calling exactly one of "
+            "submit_counter_offer, accept_offer, or end_negotiation. Do not just "
+            "chat — an unanswered turn stalls the negotiation."
+        )
+        acted: set[str] = set()
+        try:
+            acted = self._run_turn(
+                system_note=note,
+                context_note=self._context_snapshot(),
+                force_action=True,
+            ) or set()
+        except Exception as e:  # noqa: BLE001 - never let a turn hang the round
+            traceback.print_exc()
+            print(f"[autopilot] support-agent turn failed: {e}")
+        if acted & self._ACTION_TOOLS:
+            self._autopilot_stalls = 0
+            return
+        self._autopilot_stalls += 1
+        self._autopilot_fallback()
+
+    def _autopilot_fallback(self) -> None:
+        """Keep the round moving when the agent didn't act; disengage after
+        repeated stalls so the session can never hang with no human present."""
+        actions = self.session_state.get("actions") or {}
+        if self._autopilot_stalls >= 3:
+            self.toast(
+                "Autopilot disengaged: the support agent kept failing to act. "
+                "You're back in control.",
+                "error",
+            )
+            sw = self.session_state.get("autopilot_switch")
+            if sw is not None:
+                self._post_async(lambda: setattr(sw, "value", False))
+            return
+        reject = actions.get("reject_counter")
+        if callable(reject):
+            self.toast(
+                "Autopilot: the agent didn't act; sending a counter to keep the "
+                "negotiation moving.",
+                "warning",
+            )
+            try:
+                self.run_on_doc(reject)
+            except Exception as e:  # noqa: BLE001
+                print(f"[autopilot] fallback reject failed: {e}")
 
     def proactive_note(self, event_name: str) -> str | None:
         """Return the system note that seeds a proactive turn (or None to stay
@@ -289,10 +379,15 @@ class SupportAgent:
         user_text: str | None = None,
         system_note: str | None = None,
         context_note: str | None = None,
-    ) -> None:
+        force_action: bool = False,
+    ) -> set[str]:
+        """Run one tool-calling turn. Returns the set of tool names executed
+        (used by autopilot to detect whether a negotiation action was taken)."""
+        executed: set[str] = set()
         if not self._busy.acquire(blocking=False):
-            self.post("(I'm still working on the previous request — one moment.)")
-            return
+            if not force_action:  # autopilot turns stay silent about contention
+                self.post("(I'm still working on the previous request — one moment.)")
+            return executed
         try:
             if user_text is not None:
                 # Prepend the live negotiation snapshot to the user's message so the
@@ -308,23 +403,34 @@ class SupportAgent:
             max_iter = int(self.settings.get("max_tool_iterations", 6))
 
             for _ in range(max_iter):
-                message = self._complete(tools)
+                # Only force a tool call on the first iteration; once an action
+                # has run, let the model wrap up normally.
+                message = self._complete(
+                    tools, force_action=force_action and not executed
+                )
                 self.messages.append(message)
                 tool_calls = message.get("tool_calls") or []
                 if not tool_calls:
                     if message.get("content"):
                         self.post(message["content"])
-                    return
+                    return executed
                 for tc in tool_calls:
-                    self._execute_tool_call(tc)
-            self.post("(Stopped after too many tool calls without finishing.)")
+                    executed.add(self._execute_tool_call(tc))
+                if force_action and executed & self._ACTION_TOOLS:
+                    # An autopilot decision has been made; stop here.
+                    return executed
+            if not force_action:
+                self.post("(Stopped after too many tool calls without finishing.)")
+            return executed
         except Exception as e:  # noqa: BLE001 - surface to the human, keep session alive
             traceback.print_exc()
-            self.post(f"⚠️ Support agent error: {e}")
+            if not force_action:
+                self.post(f"⚠️ Support agent error: {e}")
+            return executed
         finally:
             self._busy.release()
 
-    def _complete(self, tools: list[dict]) -> dict:
+    def _complete(self, tools: list[dict], force_action: bool = False) -> dict:
         """One litellm completion. Returns the assistant message as a plain dict."""
         import litellm
         from negmas_llm.common import litellm_model_string, apply_max_tokens
@@ -339,7 +445,9 @@ class SupportAgent:
         }
         if tools:
             kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
+            # Autopilot forces the model to call a tool this turn ("required");
+            # normal turns let it choose whether to act ("auto").
+            kwargs["tool_choice"] = "required" if force_action else "auto"
         apply_max_tokens(kwargs, s["provider"], s["model"], s.get("max_tokens"))
 
         api_key = os.getenv(s.get("api_key_env", "") or "")
@@ -367,7 +475,7 @@ class SupportAgent:
             ]
         return out
 
-    def _execute_tool_call(self, tc: dict) -> None:
+    def _execute_tool_call(self, tc: dict) -> str:
         name = tc["function"]["name"]
         try:
             args = json.loads(tc["function"].get("arguments") or "{}")
@@ -385,6 +493,7 @@ class SupportAgent:
                 "content": json.dumps(result),
             }
         )
+        return name
 
 
 def resolve_agent_class(settings: dict) -> type[SupportAgent]:

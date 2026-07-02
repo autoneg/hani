@@ -165,3 +165,63 @@ def resolve_driver(
 def is_negotiator_driver(driver: str | None) -> bool:
     """True when the driver is a plain negotiator (not the LLM Support Agent)."""
     return bool(driver) and driver != SUPPORT_AGENT_DRIVER
+
+
+def build_autopilot_admin_card(session_state: dict, is_admin: bool):
+    """Admin sidebar card to configure Autopilot (allowed, admin-fixed driver,
+    inter-step delay). Persists to the settings file and re-applies gating live.
+    Returned card is only visible to admins."""
+    import panel as pn
+
+    settings = load_autopilot_settings()
+    w: dict = {}
+    w["allowed"] = pn.widgets.Checkbox(name="Allow Autopilot", value=bool(settings.get("allowed")))
+    w["driver"] = pn.widgets.Select(
+        name="Default driver (used when the user can't pick)",
+        options=driver_options(settings),
+        value=settings.get("driver") or SUPPORT_AGENT_DRIVER,
+    )
+    w["step_delay"] = pn.widgets.FloatInput(
+        name="Step delay (s)", value=float(settings.get("step_delay", 0.0) or 0.0), start=0.0, step=0.5
+    )
+    w["end_in_practice"] = pn.widgets.Checkbox(
+        name="Driver may END in practice rounds", value=bool(settings.get("end_in_practice"))
+    )
+    status = pn.pane.Markdown("", margin=(0, 5))
+    session_state["autopilot_admin_widgets"] = w
+
+    def _save(event=None):
+        new = {
+            **load_autopilot_settings(),
+            "allowed": bool(w["allowed"].value),
+            "driver": w["driver"].value,
+            "step_delay": float(w["step_delay"].value or 0.0),
+            "end_in_practice": bool(w["end_in_practice"].value),
+        }
+        save_autopilot_settings(new)
+        # Re-apply the top-bar switch gating live.
+        try:
+            import hani.app as app
+
+            if hasattr(app, "apply_autopilot_gating"):
+                app.apply_autopilot_gating()
+            sel = session_state.get("autopilot_driver_select")
+            if sel is not None:
+                sel.options = driver_options(new)
+        except Exception as e:  # noqa: BLE001
+            print(f"[autopilot] could not refresh gating after save: {e}")
+        status.object = "✅ Saved."
+
+    save_btn = pn.widgets.Button(name="Save Autopilot Settings", button_type="primary")
+    save_btn.on_click(_save)
+    return pn.Card(
+        w["allowed"],
+        w["driver"],
+        w["step_delay"],
+        w["end_in_practice"],
+        save_btn,
+        status,
+        title="Autopilot (Admin)",
+        collapsed=True,
+        visible=is_admin,
+    )

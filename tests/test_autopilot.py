@@ -243,3 +243,71 @@ def test_human_placeholder_uses_driver_only_under_autopilot(monkeypatch):
     # Autopilot on -> the driver decides (reject with a counter).
     ss["autopilot_active"] = True
     assert human(state).response == ResponseType.REJECT_OFFER
+
+
+# --------------------------------------------------------------------------
+# 3. support-agent driver (Part 3): autonomy force + stall net
+# --------------------------------------------------------------------------
+def _make_support_agent(session_state=None, autonomy="suggest"):
+    from hani.support_agent.runtime import SupportAgent
+    from hani.support_agent.settings import load_support_agent_settings
+
+    settings = {**load_support_agent_settings(), "autonomy": autonomy}
+    agent = SupportAgent(session_state if session_state is not None else {}, settings)
+    # Neutralize UI side effects for the unit test.
+    agent.run_on_doc = lambda fn, **k: fn()
+    agent._post_async = lambda fn: fn()
+    agent.toast = lambda *a, **k: None
+    agent.post = lambda *a, **k: None
+    return agent
+
+
+def test_set_autopilot_forces_and_restores_full_autonomy():
+    from hani.support_agent.capabilities import Autonomy
+
+    agent = _make_support_agent(autonomy="suggest")
+    assert agent.capabilities.autonomy == Autonomy.SUGGEST
+    agent.set_autopilot(True)
+    assert agent.autopilot is True
+    assert agent.capabilities.autonomy == Autonomy.FULL  # forced hands-off
+    agent.set_autopilot(False)
+    assert agent.autopilot is False
+    assert agent.capabilities.autonomy == Autonomy.SUGGEST  # restored
+
+
+def test_autopilot_turn_resets_stalls_when_agent_acts(monkeypatch):
+    agent = _make_support_agent()
+    agent._autopilot_stalls = 2
+    monkeypatch.setattr(agent, "_run_turn", lambda **k: {"submit_counter_offer"})
+    monkeypatch.setattr(agent, "_context_snapshot", lambda: "")
+    agent._run_autopilot_turn()
+    assert agent._autopilot_stalls == 0
+
+
+def test_autopilot_turn_falls_back_when_agent_does_not_act(monkeypatch):
+    agent = _make_support_agent()
+    monkeypatch.setattr(agent, "_run_turn", lambda **k: {"send_toast"})  # no action tool
+    monkeypatch.setattr(agent, "_context_snapshot", lambda: "")
+    called = []
+    monkeypatch.setattr(agent, "_autopilot_fallback", lambda: called.append(True))
+    agent._run_autopilot_turn()
+    assert called, "a non-acting autopilot turn must trigger the stall net"
+
+
+def test_autopilot_fallback_rejects_then_disengages():
+    rejects = []
+    switch = types.SimpleNamespace(value=True)
+    ss = {
+        "actions": {"reject_counter": lambda: rejects.append(1)},
+        "autopilot_switch": switch,
+    }
+    agent = _make_support_agent(ss)
+    # First couple of stalls: keep the round moving with a reject.
+    agent._autopilot_stalls = 1
+    agent._autopilot_fallback()
+    assert rejects == [1]
+    assert switch.value is True
+    # Persistent stalls: disengage so the session can't hang with no human.
+    agent._autopilot_stalls = 3
+    agent._autopilot_fallback()
+    assert switch.value is False
