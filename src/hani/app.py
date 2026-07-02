@@ -2254,21 +2254,31 @@ def on_autopilot_toggle(event=None):
 
 
 def apply_autopilot_gating():
-    """Enable/disable the top-bar Autopilot switch under the three-way gate:
-    admin-allows AND a driver resolves AND (driver is a negotiator OR the
-    Support Agent is enabled this session). Idempotent."""
+    """Show/enable the top-bar Autopilot switch + driver selector.
+
+    The controls are HIDDEN entirely unless the admin has enabled autopilot
+    (``allowed``); they only appear when the admin turns it on. When shown, the
+    switch is enabled under the rest of the gate: a driver resolves AND (the
+    driver is a negotiator OR the Support Agent is enabled this session).
+    Idempotent."""
     sw = session_state.get("autopilot_switch")
+    sel = session_state.get("autopilot_driver_select")
     if sw is None:
         return
     from hani.support_agent import autopilot as ap
 
     settings = ap.load_autopilot_settings()
     admin = is_admin()
+    allowed = ap.autopilot_allowed(settings)  # admin master switch
     driver = ap.resolve_driver(session_state, settings, admin)
-    available = ap.autopilot_allowed(settings) and bool(driver)
+    available = allowed and bool(driver)
     if available and not ap.is_negotiator_driver(driver):
         # "Support Agent" driver needs the agent enabled for this session.
         available = support_agent_enabled(is_admin=admin)
+    # Visibility: autopilot controls exist only when the admin has enabled it.
+    sw.visible = allowed
+    if sel is not None:
+        sel.visible = allowed and ap.user_can_select_driver(admin)
     if not available:
         try:
             sw.value = False
@@ -5670,6 +5680,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         name="Autopilot",
         value=False,
         disabled=True,
+        visible=False,  # shown by apply_autopilot_gating only if admin-enabled
         styles={"color": "white", "margin": "0 8px"},
     )
     session_state["autopilot_switch"] = autopilot_switch
@@ -5682,12 +5693,21 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # the guest playground); otherwise the admin-fixed driver is used and only
     # the switch shows.
     if _ap.user_can_select_driver(is_admin()):
+        # The FastGridTemplate header is dark; force the select (and its option
+        # list) to dark-on-white so it's legible, matching the floating UI's
+        # approach (support_agent/floating_ui._SELECT_SHEET).
+        _ap_select_sheet = (
+            "select, select option { color:#1a1a1a; background:#ffffff; "
+            "border-radius:4px; }"
+        )
         autopilot_driver_select = pn.widgets.Select(
             name="",
             options=_ap.driver_options(_ap_settings),
             value=_ap.resolve_driver(session_state, _ap_settings, is_admin()),
             width=200,
+            visible=False,  # shown by apply_autopilot_gating only if admin-enabled
             styles={"margin": "0 8px"},
+            stylesheets=[_ap_select_sheet],
         )
         session_state["autopilot_driver_select"] = autopilot_driver_select
 
