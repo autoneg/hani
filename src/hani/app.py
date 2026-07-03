@@ -35,6 +35,7 @@ if os.environ.get("_HANI_DUAL_AUTH") == "1":
         traceback.print_exc()
 
 # Import event tracking modules
+from hani import llm_logging
 from hani.events import EventType, create_session
 from hani.event_tracking import (
     set_current_session_id,
@@ -3827,6 +3828,15 @@ def start_negotiation(event=None):
             mechanism = session_state["mechanism"] = await loop.run_in_executor(
                 None, make
             )
+            # Per-negotiation LLM call log (env HANI_LLM_LOG); one file per
+            # negotiation, beside its other data under the session dir.
+            try:
+                llm_logging.attach_mechanism(
+                    mechanism,
+                    session_state["user_path"] / "llm_logs" / f"{mechanism.id}.jsonl",
+                )
+            except Exception:
+                pass
             session_state["timer"].set_duration(mechanism.time_limit)
             session_state["timer"].start()
             session_state["human_action"] = None
