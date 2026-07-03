@@ -1266,18 +1266,29 @@ class CountdownTimer(pn.pane.HTML):
         if self.running:  # if the timer finished naturally, rather than being stopped.
             self.object = '<div style="color:red"><strong>Time\'s up!</strong></div>'
             self.running = False
-            session_state["human_action"] = SAOResponse(
-                ResponseType.REJECT_OFFER,
-                session_state.get("human_last_offer", None),
-                None,
-            )
-            advance()
+            # The session's namespace may have been torn down while this thread
+            # was still ticking (tab closed / session expired). globals().get
+            # never NameErrors, so we exit cleanly instead of crashing the thread.
+            ss = globals().get("session_state")
+            if ss is not None:
+                ss["human_action"] = SAOResponse(
+                    ResponseType.REJECT_OFFER,
+                    ss.get("human_last_offer", None),
+                    None,
+                )
+                advance()
 
     def relative(self) -> str:
-        mech = session_state.get("mechanism", None)
+        # Read via globals() so a torn-down session (see _run) yields "" rather
+        # than raising NameError inside this background timer thread.
+        ss = globals().get("session_state")
+        mech = ss.get("mechanism", None) if ss else None
         if not mech:
             return ""
-        return f" ({1 - mech.relative_time:3.1%})"
+        try:
+            return f" ({1 - mech.relative_time:3.1%})"
+        except Exception:
+            return ""
 
     def reset(self, new_duration=None):
         self.stop()
