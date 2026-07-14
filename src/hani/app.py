@@ -3723,6 +3723,7 @@ def start_negotiation(event=None):
             # The round about to start is the (counted_slot + 1)-th counted one.
             _set_phase_badge(f"Negotiation {counted_slot + 1}")
             sched = _load_prolific_schedule(session_state["user_path"]) or []
+            wanted = None
             if 0 <= counted_slot < len(sched):
                 entry = sched[counted_slot] if isinstance(sched[counted_slot], dict) else {}
                 wanted = entry.get("agent_class_name")
@@ -3738,9 +3739,22 @@ def start_negotiation(event=None):
                         if str(t).split(".")[-1] == wanted or str(t) == wanted:
                             partner_type = t
                             break
-                    if partner_type is None:
-                        print(f"[yellow]Prolific schedule: finalist '{wanted}' not "
-                              f"in configured partner_types; falling back to random[/yellow]")
+            # HARD GUARANTEE: a counted Prolific round MUST face its scheduled
+            # finalist. Never fall through to the random opponent pick below --
+            # that silently breaks the balanced "every participant faces every
+            # finalist exactly once" design (a missing/short schedule.json is
+            # exactly how earlier sessions ended up with duplicate/absent
+            # finalists). Fail loudly instead. Admins are exempt so they can
+            # still probe opponents via the picker below.
+            if partner_type is None and not _admin_mode():
+                raise RuntimeError(
+                    "Prolific counted round cannot resolve its scheduled "
+                    f"finalist: user={session_state.get('user', '?')!r} "
+                    f"counted_slot={counted_slot} schedule_entries={len(sched)} "
+                    f"wanted={wanted!r} "
+                    f"available={[str(t).split('.')[-1] for t in types]}. "
+                    "Refusing to substitute a random opponent."
+                )
     # Admin opponent picker (above Load) overrides the planned/random pick.
     # Read from disk so it survives the page reload the Load button triggers.
     if _admin_mode():
