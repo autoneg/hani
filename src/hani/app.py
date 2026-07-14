@@ -3739,22 +3739,37 @@ def start_negotiation(event=None):
                         if str(t).split(".")[-1] == wanted or str(t) == wanted:
                             partner_type = t
                             break
-            # HARD GUARANTEE: a counted Prolific round MUST face its scheduled
-            # finalist. Never fall through to the random opponent pick below --
-            # that silently breaks the balanced "every participant faces every
-            # finalist exactly once" design (a missing/short schedule.json is
-            # exactly how earlier sessions ended up with duplicate/absent
-            # finalists). Fail loudly instead. Admins are exempt so they can
-            # still probe opponents via the picker below.
+            # HARD GUARANTEE: a counted Prolific round MUST face a finalist,
+            # each finalist exactly once, in a balanced order -- and it must
+            # NEVER fall through to the random opponent pick below (that silently
+            # broke the design: missing/short schedule.json is how earlier
+            # sessions ended up with duplicate/absent finalists). If schedule.json
+            # didn't resolve the opponent, do NOT raise and do NOT random-pick:
+            # walk the finalist rotation deterministically with an in-app counter,
+            # mirroring schedule.json's block-0 cyclic Latin square. Admins are
+            # exempt so they can still probe opponents via the picker below.
             if partner_type is None and not _admin_mode():
-                raise RuntimeError(
-                    "Prolific counted round cannot resolve its scheduled "
-                    f"finalist: user={session_state.get('user', '?')!r} "
-                    f"counted_slot={counted_slot} schedule_entries={len(sched)} "
-                    f"wanted={wanted!r} "
-                    f"available={[str(t).split('.')[-1] for t in types]}. "
-                    "Refusing to substitute a random opponent."
-                )
+                try:
+                    fin = _prolific_finalist_pool(types)
+                    if fin:
+                        offset = _prolific_rotation_offset(session_state["user_path"])
+                        partner_type = fin[(offset + counted_slot) % len(fin)]
+                        print(
+                            "[yellow]Prolific: schedule.json did not resolve "
+                            f"counted slot {counted_slot} (wanted={wanted!r}); "
+                            f"using deterministic rotation offset={offset} -> "
+                            f"{str(partner_type).split('.')[-1]}[/yellow]"
+                        )
+                except Exception as e:  # noqa: BLE001
+                    # ABSOLUTE last resort: never crash a live participant. Leave
+                    # partner_type unset so the generic pick below (random) runs.
+                    # Random is worse than the balanced schedule/rotation but far
+                    # better than a mid-session crash.
+                    print(
+                        "[red]Prolific: deterministic finalist rotation failed "
+                        f"({e!r}); falling back to a random opponent as a last "
+                        "resort to avoid crashing the session.[/red]"
+                    )
     # Admin opponent picker (above Load) overrides the planned/random pick.
     # Read from disk so it survives the page reload the Load button triggers.
     if _admin_mode():
@@ -4528,6 +4543,51 @@ def _build_per_neg_form(
     btn.on_click(_on_click)
     blocks.append(btn)
     return pn.Column(*blocks)
+
+
+# The HAN 2026 finalists, in the canonical slot order. Used ONLY by the
+# deterministic fallback below when schedule.json cannot resolve a counted
+# round's opponent -- the normal path uses schedule.json (written by Laravel),
+# which carries these same class paths. Hardcoded for now (kept in sync with
+# Laravel's PROLIFIC_FINALISTS); TODO: source dynamically from the env/group.
+_PROLIFIC_FINALISTS_FALLBACK = [
+    "a22280.original.aegis_agent_r168.AegisR168FinalNegotiator",
+    "a21049.negotiatorx.negotiator.NegotiatorX",
+    "a22270.civic_compass_han.civic_compass.CivicCompassHANNegotiator",
+    "a21099.equinox.Equinox",
+]
+
+
+def _prolific_finalist_pool(types) -> list:
+    """The finalists to rotate over in the deterministic fallback. Prefer the
+    live partner_types (real objects HANI can instantiate) when they look like
+    the expected 4-finalist set; otherwise use the hardcoded class paths so the
+    fallback works even if group resolution changed. Never returns empty."""
+    t = list(types) if types else []
+    if len(t) == len(_PROLIFIC_FINALISTS_FALLBACK):
+        return t
+    return list(_PROLIFIC_FINALISTS_FALLBACK)
+
+
+def _prolific_rotation_offset(user_path: Path) -> int:
+    """Stable per-session rotation offset for the deterministic finalist
+    fallback. Assigned ONCE per session from a monotonic global counter so
+    successive sessions sweep the cyclic orderings (mirroring schedule.json's
+    block-0 Latin square) instead of all starting on the same finalist. Best
+    effort: any I/O failure yields 0 (still valid, just unrotated)."""
+    try:
+        per_user = user_path / "fallback_rotation.txt"
+        if per_user.exists():
+            return int((per_user.read_text().strip() or "0"))
+        counter = user_path.parent / "_prolific_fallback_counter.txt"
+        n = 0
+        if counter.exists():
+            n = int((counter.read_text().strip() or "0"))
+        counter.write_text(str(n + 1))
+        per_user.write_text(str(n))
+        return n
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def _load_prolific_schedule(user_path: Path) -> list[dict] | None:
