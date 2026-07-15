@@ -2369,6 +2369,15 @@ def display_state(state: SAOState) -> pn.Column:
 def load_form(selectable_scenario_type):
     has_user = pn.state.user is not None
     new_scenario_loaded = session_state["new_scenario_loaded"]
+
+    # Reload-proof questionnaire gate: if the previous round's per-negotiation
+    # questionnaire is still unanswered, show it here INSTEAD of the Load/Start
+    # controls. A page reload drops the in-memory questionnaire panel, so we
+    # recompute the pending round from disk. Placed before the auto-load timer
+    # is armed below, so an idle reload cannot auto-skip the questionnaire.
+    _pending_form = _pending_perneg_panel()
+    if _pending_form is not None:
+        return _pending_form
     # if selectable_scenario_type:
     #     type_selector = session_state["selected_scenario_type"] = pn.widgets.Select(
     #         name="Scenario Type", options=MAKER_MAP, value=list(MAKER_MAP.keys())[0]
@@ -3657,6 +3666,16 @@ def start_negotiation(event=None):
         except Exception:
             pass
 
+    # Reload-proof questionnaire gate: never START a new negotiation while the
+    # previous round's per-negotiation questionnaire is unanswered (covers the
+    # manual Start button AND the auto-load path, which calls this directly).
+    if _is_prolific_user(session_state.get("user", "")):
+        _pending_form = _pending_perneg_panel()
+        if _pending_form is not None:
+            session_state["action_panel"].clear()
+            session_state["action_panel"].append(_pending_form)
+            return
+
     # Prolific session cap: refuse to start a new negotiation once the
     # participant has used their allotted negotiations or wall-clock time.
     user = session_state.get("user")
@@ -4428,6 +4447,99 @@ def _save_per_neg_answers(
         writer.writerow(row)
 
 
+def _submitted_perneg_mids(user_path: Path) -> set:
+    """mechanism_ids that already have a SUBMITTED per-negotiation questionnaire."""
+    import csv as _csv
+    path = user_path / "negotiation_questionnaires.csv"
+    out: set = set()
+    if not path.exists():
+        return out
+    try:
+        with path.open(newline="") as fh:
+            for r in _csv.DictReader(fh):
+                if r.get("mechanism_id") and str(r.get("submitted_at") or "").strip():
+                    out.add(r["mechanism_id"])
+    except Exception:
+        pass
+    return out
+
+
+def _pending_perneg_round(user_path: Path) -> dict | None:
+    """The most recent ENGAGED negotiation (human acted, agent did not fail to
+    start) whose per-negotiation questionnaire has NOT been submitted, or None.
+
+    This is what makes the questionnaire gate reload-proof: the in-memory
+    questionnaire panel is lost on a page reload, so we recompute the pending
+    round from disk (results.csv vs negotiation_questionnaires.csv) and re-show
+    it. Gating on the LAST engaged round matches the per-round flow and avoids
+    false positives from abandoned/replayed practice attempts (the latest,
+    answered attempt clears the gate)."""
+    subs = _submitted_perneg_mids(user_path)
+    last = None
+    for header, row in _iter_result_rows(user_path):
+        def g(name, header=header, row=row):
+            return row[header.index(name)] if name in header and header.index(name) < len(row) else ""
+        status = str(g("status")).strip().lower()
+        try:
+            acts = int(g("n_human_actions"))
+        except (TypeError, ValueError):
+            acts = 1  # missing column => treat as engaged (backward compat)
+        if acts > 0 and status != "agent_failed":
+            last = {
+                "mechanism_id": str(g("mechanism_id")),
+                "scenario": str(g("scenario")),
+                "agent_type": str(g("agent_type")),
+                "is_practice": str(g("practice")).strip().lower() in ("1", "true", "yes", "t"),
+            }
+    if last and last["mechanism_id"] and last["mechanism_id"] not in subs:
+        return last
+    return None
+
+
+def _perneg_after_submit():
+    """Swap the just-submitted questionnaire for the next screen: the finish /
+    submit panel if the session is now complete, otherwise the Load form."""
+    session_state["action_panel"].clear()
+    user = session_state.get("user", "")
+    pid_clean = user[len(PROLIFIC_PREFIX):] if user.startswith(PROLIFIC_PREFIX) else user
+    done = False
+    try:
+        meta = _prolific_meta(session_state["user_path"], user)
+        done = _count_counted_this_session(
+            session_state["user_path"], meta.get("started_at", "")
+        ) >= PROLIFIC_N_REQUIRED
+    except Exception:
+        done = False
+    if done:
+        session_state["action_panel"].append(_prolific_finish_panel(pid_clean))
+    else:
+        session_state["action_panel"].append(
+            load_form(session_state["selectable_scenario_type"])
+        )
+
+
+def _pending_perneg_panel():
+    """A Panel with the pending per-negotiation questionnaire (blocking the next
+    round until it is answered), or None when nothing is pending / not Prolific."""
+    if not _is_prolific_user(session_state.get("user", "")):
+        return None
+    pending = _pending_perneg_round(session_state["user_path"])
+    if not pending:
+        return None
+    spec = _per_neg_questionnaire_spec()
+    if not (spec and spec.get("questions")):
+        return None
+    return _build_per_neg_form(
+        spec=spec,
+        mechanism_id=pending["mechanism_id"],
+        scenario_name=pending["scenario"],
+        agent_type=pending["agent_type"],
+        is_practice=pending["is_practice"],
+        user_path=session_state["user_path"],
+        after_submit=_perneg_after_submit,
+    )
+
+
 def _build_per_neg_form(
     spec: dict,
     mechanism_id: str,
@@ -4785,6 +4897,14 @@ def load_scenario(event=None):
     # A load is happening (manual or auto) -- cancel any pending auto-load
     # timers so they can't double-fire after the participant has acted.
     _cancel_auto_load()
+    # Reload-proof questionnaire gate: do not load a new scenario while the
+    # previous round's per-negotiation questionnaire is unanswered.
+    if _is_prolific_user(session_state.get("user", "")):
+        _pending_form = _pending_perneg_panel()
+        if _pending_form is not None:
+            session_state["action_panel"].clear()
+            session_state["action_panel"].append(_pending_form)
+            return
     # Stamp the moment the participant pressed Load (for Prolific
     # timing analytics: time spent reading preferences before Start,
     # and total elapsed from session-start before the practice round).
