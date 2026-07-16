@@ -128,17 +128,31 @@ class Tool(pn.viewable.Viewable):
             self.upper_button, self.lower_button, self.side_button, self.close_button
         )
 
+    def _tool_controller(self):
+        try:
+            return self.session_state.get("tool_controller")
+        except Exception:
+            return None
+
     def move_up(self, event=None):
-        print("Moving up")
+        controller = self._tool_controller()
+        if controller is not None:
+            controller.move_obj_to_pane(self, "upper")
 
     def move_down(self, event=None):
-        print("Moving down")
+        controller = self._tool_controller()
+        if controller is not None:
+            controller.move_obj_to_pane(self, "lower")
 
     def move_side(self, event=None):
-        print("Moving side")
+        controller = self._tool_controller()
+        if controller is not None:
+            controller.move_obj_to_pane(self, "side")
 
     def close(self, event=None):
-        print("Closing")
+        controller = self._tool_controller()
+        if controller is not None:
+            controller.hide_obj(self)
 
     def _enable_switch(self) -> Any:
         """The on/off switch shown at the top of every (non-permanent) tool tab.

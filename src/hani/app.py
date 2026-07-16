@@ -151,6 +151,7 @@ from hani.common import (
     save_llm_settings,
     AGENT_TYPES,
 )
+from hani.support_agent.settings import support_agent_enabled
 from hani.llm_service import (
     extract_outcome_from_text,
     generate_text_from_outcome,
@@ -858,8 +859,32 @@ DISPLAY_MAP = {
 
 
 class HumanPlaceholder(SAONegotiator):
+    def __init__(self, *args, driver: SAONegotiator | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Optional sub-negotiator that drives this (human) seat under
+        # negotiator-driven Autopilot. None for a normal interactive round or
+        # for the "Support Agent" autopilot driver (which acts via its tools).
+        self._driver = driver
+
+    def join(self, *args, **kwargs) -> bool:  # type: ignore[override]
+        """Join the human seat, and (if present) join the driver to the SAME
+        nmi so it receives the human's preferences/ufun. Pattern borrowed from
+        SAOHumanNegotiator.join (negotiator.py) minus the queues."""
+        joined = super().join(*args, **kwargs)
+        if joined and self._driver is not None:
+            try:
+                self._driver.join(*args, **kwargs)
+            except Exception as e:
+                print(f"[autopilot] driver failed to join; disabling driver: {e}")
+                self._driver = None
+        return joined
+
     def __call__(self, state: SAOState, dest: str | None = None) -> SAOResponse:
-        response = get_action(state)
+        if session_state.get("autopilot_active") and self._driver is not None:
+            # Negotiator-driven autopilot: the driver decides, not the human.
+            response = self._driver(state, dest=dest)
+        else:
+            response = get_action(state)
         for tool in session_state["tools"]:
             tool.action_to_execute(session_state, self.nmi, response)
         return response
@@ -960,6 +985,9 @@ def default_tools():
             side=True,
         ),
     ]
+    # NOTE: the optional Negotiation Support Agent is no longer a tool tab. It is
+    # mounted as a floating chat bubble (bottom-right) in main() when enabled --
+    # see hani.support_agent.floating_ui.
     if is_admin():
         tools += [
             # Utility Plot, Outcome Plot and Trace are now in the all-user
@@ -1224,6 +1252,9 @@ class CountdownTimer(pn.pane.HTML):
         self.update_interval = update_interval
         self.thread = None
         self._start = None
+        # Keep a stable reference for the worker thread even if module globals
+        # are reloaded/teared down as sessions connect/disconnect.
+        self._session_state = session_state
 
     def start(self):
         if self.running or not self.duration or np.isinf(self.duration):
@@ -1252,6 +1283,7 @@ class CountdownTimer(pn.pane.HTML):
 
         if np.isinf(self.duration):
             return
+        state = self._session_state
         end_time = time.time() + self.duration
         while self.running and time.time() < end_time:
             remaining = int(end_time - time.time())
@@ -1266,23 +1298,16 @@ class CountdownTimer(pn.pane.HTML):
         if self.running:  # if the timer finished naturally, rather than being stopped.
             self.object = '<div style="color:red"><strong>Time\'s up!</strong></div>'
             self.running = False
-            # The session's namespace may have been torn down while this thread
-            # was still ticking (tab closed / session expired). globals().get
-            # never NameErrors, so we exit cleanly instead of crashing the thread.
-            ss = globals().get("session_state")
-            if ss is not None:
-                ss["human_action"] = SAOResponse(
+            if state is not None:
+                state["human_action"] = SAOResponse(
                     ResponseType.REJECT_OFFER,
-                    ss.get("human_last_offer", None),
+                    state.get("human_last_offer", None),
                     None,
                 )
                 advance()
 
     def relative(self) -> str:
-        # Read via globals() so a torn-down session (see _run) yields "" rather
-        # than raising NameError inside this background timer thread.
-        ss = globals().get("session_state")
-        mech = ss.get("mechanism", None) if ss else None
+        mech = self._session_state.get("mechanism", None)
         if not mech:
             return ""
         try:
@@ -1437,6 +1462,72 @@ def no_end_class(base: type) -> type:
     _NO_END_CLASSES[base] = wrapped
     return wrapped
 
+def _hide_action_sections():
+    """Hide every action-panel section, overriding the "Offer Panel Always
+    Visible" pin. Used by autopilot -- the human makes no decisions, so the
+    panel is not needed. No-ops gracefully for sections not yet built."""
+    for key in (
+        "partner_offer_section",
+        "decision_buttons_row",
+        "counter_offer_section",
+    ):
+        sec = session_state.get(key)
+        if sec is not None:
+            try:
+                sec.visible = False
+            except Exception:
+                pass
+
+
+def _restore_action_panel():
+    """Rebuild the interactive action panel when it's the human's turn (used
+    when autopilot disengages or can't engage). No-ops between turns / at end."""
+    mechanism = session_state.get("mechanism")
+    if mechanism is None or mechanism.state.done:
+        return
+    try:
+        if mechanism.next_negotitor_ids()[0] == session_state.get("human_id"):
+            action_panel(mechanism.state.current_offer, mechanism.state.current_data)
+    except Exception as e:
+        print(f"[autopilot] could not restore action panel: {e}")
+
+
+def _make_autopilot_driver():
+    """Build the negotiator that drives the human seat under *negotiator-driven*
+    Autopilot (i.e. the driver is one of AUTOPILOT_NEGOTIATORS, not the LLM
+    Support Agent). Returns None when autopilot isn't allowed, the driver is the
+    Support Agent, or nothing resolves. The driver receives the human's ufun/nmi
+    via HumanPlaceholder.join.
+
+    Built whenever autopilot is *available* (regardless of the switch state) so
+    that toggling autopilot on mid-round works -- HumanPlaceholder only consults
+    the driver while ``session_state["autopilot_active"]`` is set."""
+    from hani.support_agent import autopilot as ap
+
+    settings = ap.load_autopilot_settings()
+    if not ap.autopilot_allowed(settings):
+        return None
+    driver_name = ap.resolve_driver(session_state, settings, is_admin())
+    if not ap.is_negotiator_driver(driver_name):
+        return None  # "Support Agent" driver (path A) or nothing -> no path-B driver
+    try:
+        klass = get_agent_type(driver_name)
+    except Exception as e:
+        print(f"[autopilot] could not resolve driver {driver_name!r}: {e}")
+        return None
+    params: dict[str, Any] = {}
+    is_llm_string = isinstance(driver_name, str) and driver_name.startswith("LLM")
+    if is_llm_string or _is_llm_negotiator_class(klass):
+        llm = load_llm_settings()
+        params.setdefault("model", llm.get("model", "qwen3:4b-instruct"))
+        if is_llm_string:
+            params.setdefault("provider", llm.get("provider", "ollama"))
+    params.setdefault("name", "Autopilot")
+    try:
+        return klass(**params)  # type: ignore
+    except Exception as e:
+        print(f"[autopilot] could not instantiate driver {driver_name!r}: {e}")
+        return None
 
 def make_mechanism(
     scenario: Scenario,
@@ -1564,11 +1655,23 @@ def make_mechanism(
     # Add verbose flag if enabled and supported by negotiator
     verbose_enabled = os.getenv("_HANI_VERBOSE") == "1"
 
+    # Negotiator-driven autopilot: build the driver that will play the human
+    # seat (None unless autopilot is allowed with a negotiator driver). Joined
+    # to the human's nmi/ufun via HumanPlaceholder.join.
+    autopilot_driver = _make_autopilot_driver()
+    session_state["autopilot_driver"] = autopilot_driver
+
     negotiators = []
     n_negotiators = 2
     for i in range(n_negotiators):
         if i == human_index:
-            negotiators.append(get_class(human_type)(**human_params))
+            human_class = get_class(human_type)
+            try:
+                negotiators.append(human_class(**human_params, driver=autopilot_driver))
+            except TypeError:
+                # Custom human_type that doesn't accept a driver: build plainly
+                # (negotiator-driven autopilot unavailable for that seat).
+                negotiators.append(human_class(**human_params))
         else:
             # Try to pass verbose=True if enabled and supported
             if verbose_enabled:
@@ -2413,7 +2516,10 @@ def load_form(selectable_scenario_type):
     # (Start enabled), the auto-START timer covers it instead, so cancel any
     # pending auto-load.
     if _is_prolific_user(session_state.get("user", "")):
-        if new_scenario_loaded:
+        # ?noautostart disables the between-rounds auto-load entirely (cancel
+        # any armed timer and never re-arm) so a facilitator can load each
+        # round by hand -- e.g. when recording a training video.
+        if new_scenario_loaded or _auto_pilot_disabled():
             _cancel_auto_load()
         else:
             _schedule_auto_load()
@@ -2614,6 +2720,151 @@ def advance():
         asyncio.run(_advance_impl())
 
 
+def _schedule_autopilot_step():
+    """Schedule ONE negotiator-driven autopilot step as a separate next-tick
+    (via ``advance``), optionally after the configured delay. Each step is its
+    own Bokeh document-lock acquisition, so the lock is released between steps
+    and incoming UI events (crucially, the user's disengage click) are serviced.
+    ``advance`` -> ``_advance_impl`` steps the human seat (the driver decides,
+    because ``autopilot_active`` is set) then partners to the next human turn,
+    whose ``step_to_human`` tail schedules the following step -- the loop."""
+    delay = float(session_state.get("autopilot_step_delay", 0.0) or 0.0)
+
+    def _fire():
+        # Re-check at fire time: the user may have disengaged during the delay.
+        if session_state.get("autopilot_active") and (
+            session_state.get("autopilot_driver") is not None
+        ):
+            advance()
+
+    if delay > 0:
+        t = threading.Timer(delay, _fire)
+        t.daemon = True
+        t.start()
+        session_state["autopilot_timer"] = t
+    else:
+        _fire()
+
+
+def on_autopilot_toggle(event=None):
+    """Engage/disengage autopilot from the top-bar switch."""
+    if event is not None:
+        active = bool(event.new)
+    else:
+        sw = session_state.get("autopilot_switch")
+        active = bool(sw.value) if sw is not None else False
+    session_state["autopilot_active"] = active
+
+    agent = session_state.get("support_agent")
+    if not active:
+        # Restore the Support-Agent driver's normal autonomy if we forced it.
+        if agent is not None and hasattr(agent, "set_autopilot"):
+            try:
+                agent.set_autopilot(False)
+            except Exception:
+                pass
+        # Interactive control resumes. Don't rely on the driving loop to tidy
+        # up: clear the "thinking" indicator, re-enable the buttons, and rebuild
+        # the panel now so the user is never left with a hidden/stale panel.
+        _hide_typing_indicator()
+        _set_action_buttons_disabled(False)
+        _restore_action_panel()
+        return
+
+    # Engage: no human input, so suspend the countdown (it injects a REJECT on
+    # expiry) and hide the action panel.
+    from hani.support_agent import autopilot as ap
+
+    try:
+        session_state["autopilot_step_delay"] = float(
+            ap.load_autopilot_settings().get("step_delay", 0.0) or 0.0
+        )
+    except Exception:
+        session_state["autopilot_step_delay"] = 0.0
+    timer = session_state.get("timer")
+    if timer is not None:
+        try:
+            timer.stop()
+        except Exception:
+            pass
+    _hide_action_sections()
+
+    mechanism = session_state.get("mechanism")
+    if mechanism is None or mechanism.state.done:
+        return  # nothing to drive yet; honored once a negotiation runs
+
+    if session_state.get("autopilot_driver") is not None:
+        # Negotiator-driven: start the per-step drive. If a partner step is in
+        # flight, _advance_impl will bail on the lock and the in-flight
+        # step_to_human tail will schedule the drive instead -- either way it
+        # self-starts.
+        _schedule_autopilot_step()
+    elif agent is not None and hasattr(agent, "set_autopilot"):
+        # Support-Agent driven (path A): force the agent hands-off and, if it's
+        # already the human's turn, nudge it to act now.
+        try:
+            agent.set_autopilot(True)
+            human_index = session_state.get("human_index")
+            if human_index is not None:
+                nmi = mechanism.negotiators[human_index].nmi
+                _notify_support_agent("action_requested", nmi)
+        except Exception as e:
+            print(f"[autopilot] could not engage support-agent driver: {e}")
+    else:
+        # No driver actually available (gating should prevent this, but a
+        # swallowed support-agent mount failure can leave support_agent None
+        # while support_agent_enabled() is True). Never strand the user in a
+        # hidden-panel dead session: revert and restore interactive control.
+        print("[autopilot] engaged with no available driver; reverting")
+        session_state["autopilot_active"] = False
+        sw = session_state.get("autopilot_switch")
+        if sw is not None:
+            try:
+                sw.value = False  # re-fires on_autopilot_toggle(active=False)
+            except Exception:
+                pass
+        _restore_action_panel()
+        try:
+            if getattr(pn.state, "notifications", None):
+                pn.state.notifications.warning("Autopilot is unavailable right now.")
+        except Exception:
+            pass
+
+
+def apply_autopilot_gating():
+    """Show/enable the top-bar Autopilot switch + driver selector.
+
+    The controls are HIDDEN entirely unless the admin has enabled autopilot
+    (``allowed``); they only appear when the admin turns it on. When shown, the
+    switch is enabled under the rest of the gate: a driver resolves AND (the
+    driver is a negotiator OR the Support Agent is enabled this session).
+    Idempotent."""
+    sw = session_state.get("autopilot_switch")
+    sel = session_state.get("autopilot_driver_select")
+    if sw is None:
+        return
+    from hani.support_agent import autopilot as ap
+
+    settings = ap.load_autopilot_settings()
+    admin = is_admin()
+    allowed = ap.autopilot_allowed(settings)  # admin master switch
+    driver = ap.resolve_driver(session_state, settings, admin)
+    available = allowed and bool(driver)
+    if available and not ap.is_negotiator_driver(driver):
+        # "Support Agent" driver needs the agent enabled for this session.
+        available = support_agent_enabled(is_admin=admin)
+    # Visibility: autopilot controls exist only when the admin has enabled it.
+    sw.visible = allowed
+    if sel is not None:
+        sel.visible = allowed and ap.user_can_select_driver(admin)
+    if not available:
+        try:
+            sw.value = False
+        except Exception:
+            pass
+    sw.disabled = not available
+
+
 def _render_offer_on_table_html(current_offer: Outcome | None) -> str:
     """HTML for the bottom 'Offer on the table' line. Uses the scenario's
     OutcomeDisplay so the text matches the partner's chat bubble exactly
@@ -2661,29 +2912,37 @@ def action_panel(
     current_offer: Outcome | None, current_data: dict | None = None
 ) -> pn.Column:
     if session_state["action_panel_displayed"]:
-        partner_offer_section = session_state.get("partner_offer_section")
-        decision_row = session_state.get("decision_buttons_row")
-        counter_section = session_state.get("counter_offer_section")
-        undo_btn = session_state.get("undo_decision_btn")
         has_offer_now = current_offer is not None
-        always_toggle = session_state["toggles"].get("offer_panel_always_visible")
-        always_visible = bool(always_toggle.value) if always_toggle is not None else False
-        if partner_offer_section is not None:
-            partner_offer_section.visible = True
-        if decision_row is not None:
-            decision_row.visible = True
-        if counter_section is not None:
-            # Hide counter-offer UI on new round if there's a partner
-            # offer to react to; otherwise leave it visible so the
-            # participant can make an opening offer.
-            counter_section.visible = (not has_offer_now) or always_visible
-        if undo_btn is not None:
-            undo_btn.visible = False
-        # Refresh the offer-on-the-table line + Accept button so the
-        # panel mirrors the most recent partner offer instead of being
-        # frozen at the first one rendered this negotiation.
-        _refresh_offer_on_table(current_offer)
-        return session_state["action_panel"][0]
+        built_with_offer = bool(session_state.get("action_panel_has_partner_offer"))
+        if has_offer_now != built_with_offer:
+            # The panel shape changed (no-offer -> offer, or offer -> no-offer).
+            # Rebuild from scratch so we don't get stuck with only the "End"
+            # row after a first no-offer turn.
+            session_state["action_panel_displayed"] = False
+            session_state["action_panel"].clear()
+        else:
+            partner_offer_section = session_state.get("partner_offer_section")
+            decision_row = session_state.get("decision_buttons_row")
+            counter_section = session_state.get("counter_offer_section")
+            undo_btn = session_state.get("undo_decision_btn")
+            always_toggle = session_state["toggles"].get("offer_panel_always_visible")
+            always_visible = bool(always_toggle.value) if always_toggle is not None else False
+            if partner_offer_section is not None:
+                partner_offer_section.visible = True
+            if decision_row is not None:
+                decision_row.visible = True
+            if counter_section is not None:
+                # Hide counter-offer UI on new round if there's a partner
+                # offer to react to; otherwise leave it visible so the
+                # participant can make an opening offer.
+                counter_section.visible = (not has_offer_now) or always_visible
+            if undo_btn is not None:
+                undo_btn.visible = False
+            # Refresh the offer-on-the-table line + Accept button so the
+            # panel mirrors the most recent partner offer instead of being
+            # frozen at the first one rendered this negotiation.
+            _refresh_offer_on_table(current_offer)
+            return session_state["action_panel"][0]
     if not session_state["action_panel_displayed"]:
         session_state["action_panel"].clear()
 
@@ -3064,6 +3323,23 @@ def action_panel(
     my_util = pn.bind(offer_util, *widgets)
     session_state["offer_widgets"] = widgets
 
+    # Support Agent (test rule): warn via toast/board/chat when the human's draft
+    # offer drops below their reserved value. The watcher fires on the IOLoop; the
+    # agent (looked up lazily) does its own direct, deadlock-free UI calls.
+    # Gated exactly like the agent itself so a disabled session attaches nothing.
+    if support_agent_enabled(is_admin=is_admin()):
+
+        def _sa_offer_watch(event=None):
+            agent = session_state.get("support_agent")
+            if agent is not None:
+                try:
+                    agent.warn_if_draft_below_reserved()
+                except Exception as e:  # noqa: BLE001
+                    print(f"support agent draft watch: {e}")
+
+        for _w in widgets:
+            _w.param.watch(_sa_offer_watch, "value")
+
     # --- Current Offer Section (at the top) ---
     # Display the current offer from partner with utility (color coded)
     has_current_offer = current_offer is not None
@@ -3173,6 +3449,7 @@ def action_panel(
             margin=(0, 4),
         )
     else:
+        session_state["decision_buttons_row"] = None
         # Section containing partner offer, buttons, and divider (can be hidden)
         partner_offer_section = pn.Column(
             current_offer_display,
@@ -3183,6 +3460,7 @@ def action_panel(
             margin=(0, 4),
         )
     session_state["partner_offer_section"] = partner_offer_section
+    session_state["action_panel_has_partner_offer"] = has_current_offer
 
     # Build the structured outcome section with generate text button.
     # The domain's _info.yaml may set `n_issue_columns: 1` or `2`
@@ -3396,6 +3674,169 @@ def action_panel(
     if has_current_offer and not always_visible:
         counter_offer_section.visible = False
 
+    # --- Shared action API -------------------------------------------------
+    # Expose the same operations the human buttons trigger as plain callables
+    # in session_state["actions"]. The Negotiation Support Agent invokes these
+    # (marshalled onto the document) so that "pressing a button" means invoking
+    # the identical operation -- never synthesising fake click events, never
+    # duplicating the confirm-dialog / history / event-logging logic. The human
+    # path above is unchanged.
+    _issue_list = list(issues)
+    _HILITE = (
+        ":host { outline: 3px solid #ffc107; outline-offset: 2px; "
+        "border-radius: 6px; }"
+    )
+
+    def _issue_widget(issue):
+        return session_state.get(f"issue_{issue.name}")
+
+    def _coerce(issue, value):
+        if hasattr(issue, "min_value"):
+            try:
+                return int(float(value)) if isinstance(issue.min_value, int) else float(value)
+            except (TypeError, ValueError):
+                return value
+        return value
+
+    def _resolve_issue(key: str):
+        for issue in _issue_list:
+            if issue.name == key:
+                return issue
+        for issue in _issue_list:
+            if issue.name.lower() == str(key).lower():
+                return issue
+        for issue in _issue_list:
+            if str(key).lower() in issue.name.lower() or issue.name.lower() in str(key).lower():
+                return issue
+        return None
+
+    def _set_offer(outcome: dict):
+        applied, missing = {}, []
+        for key, value in (outcome or {}).items():
+            issue = _resolve_issue(key)
+            widget = _issue_widget(issue) if issue is not None else None
+            if widget is None:
+                missing.append(key)
+                continue
+            try:
+                widget.value = _coerce(issue, value)
+                applied[issue.name] = widget.value
+            except Exception as e:  # noqa: BLE001
+                missing.append(f"{key} ({e})")
+        return {"ok": not missing, "applied": applied, "unrecognised": missing}
+
+    def _set_text(text: str):
+        widget = session_state.get("text_input_widget")
+        if widget is None:
+            return {"ok": False, "error": "no message field (text is disabled)"}
+        widget.value = text or ""
+        return {"ok": True}
+
+    def _draft_offer():
+        out = {}
+        for issue in _issue_list:
+            w = _issue_widget(issue)
+            if w is not None:
+                out[issue.name] = w.value
+        return out
+
+    def _can_act():
+        mech = session_state.get("mechanism")
+        if mech is None or getattr(mech.state, "done", False):
+            return False
+        try:
+            return mech.next_negotitor_ids()[0] == session_state.get("human_id")
+        except Exception:
+            return False
+
+    def _highlight(key: str):
+        if key == "reject":
+            on_reject_counter()
+        btn = {"accept": accept_btn, "reject": reject_btn, "end": end_btn}.get(key)
+        if btn is not None:
+            try:
+                btn.stylesheets = list(getattr(btn, "stylesheets", []) or []) + [_HILITE]
+            except Exception:
+                pass
+        return {"ok": True, "highlighted": key}
+
+    def _issue_info(issue):
+        info = {"name": issue.name}
+        if hasattr(issue, "min_value") and hasattr(issue, "max_value"):
+            info["min"], info["max"] = issue.min_value, issue.max_value
+        else:
+            try:
+                info["values"] = list(issue.all)
+            except Exception:
+                pass
+        return info
+
+    def _utility(outcome):
+        try:
+            return float(human_ufun(outcome)) if outcome is not None else None
+        except Exception:
+            return None
+
+    def _history(mech):
+        """Recent offer/message exchange, the same information the human sees."""
+        out = []
+        state = getattr(mech, "state", None)
+        trace = getattr(state, "trace", None) or []
+        human_id = session_state.get("human_id")
+        names = [i.name for i in _issue_list]
+        for item in trace[-14:]:
+            offer = getattr(item, "offer", None)
+            neg = getattr(item, "negotiator", None)
+            data = getattr(item, "data", None) or {}
+            out.append(
+                {
+                    "by": "you" if neg == human_id else "partner",
+                    "offer": dict(zip(names, offer)) if offer else None,
+                    "message": data.get("text") if isinstance(data, dict) else None,
+                }
+            )
+        return out
+
+    def _context():
+        partner = session_state.get("current_partner_offer")
+        partner_dict = (
+            dict(zip((i.name for i in _issue_list), partner)) if partner else None
+        )
+        draft = _draft_offer()
+        draft_tuple = tuple(draft.get(i.name) for i in _issue_list)
+        text_widget = session_state.get("text_input_widget")
+        mech = session_state.get("mechanism")
+        state = getattr(mech, "state", None)
+        return {
+            "issues": [_issue_info(i) for i in _issue_list],
+            "partner_offer": partner_dict,
+            "partner_offer_utility": _utility(partner),
+            "draft_offer": draft,
+            "draft_offer_utility": _utility(draft_tuple)
+            if any(v is not None for v in draft_tuple)
+            else None,
+            "draft_message": (text_widget.value if text_widget else None),
+            "reserved_value": float(getattr(human_ufun, "reserved_value", 0.0) or 0.0),
+            "is_my_turn": _can_act(),
+            "step": getattr(state, "step", None),
+            "n_steps": getattr(getattr(mech, "nmi", None), "n_steps", None),
+            "relative_time": getattr(state, "relative_time", None),
+            "history": _history(mech) if mech is not None else [],
+        }
+
+    session_state["actions"] = {
+        "set_offer": _set_offer,
+        "set_text": _set_text,
+        "get_offer": _draft_offer,
+        "get_partner_offer": lambda: session_state.get("current_partner_offer"),
+        "can_act": _can_act,
+        "context": _context,
+        "highlight": _highlight,
+        "accept": lambda confirm=True: (on_accept() if confirm else do_accept()),
+        "end": lambda confirm=True: (on_end() if confirm else do_end()),
+        "reject_counter": lambda: on_reject(),
+    }
+
     session_state["action_panel"].append(col)
     return col
 
@@ -3523,7 +3964,6 @@ async def step_to_human(event=None):
 
         add_to_history()
         next_neg_ids = mechanism.next_negotitor_ids()
-        # print(next_neg_ids[0], human_id, next_neg_ids[0] == human_id)
         if mechanism.state.done:
             break
     # Partner's offer is now in the history. Hide the "thinking" /
@@ -3534,8 +3974,25 @@ async def step_to_human(event=None):
     human_index = session_state["human_index"]
     for tool in session_state["tools"]:
         tool.action_requested(session_state, mechanism.negotiators[human_index].nmi)
+    _notify_support_agent(
+        "action_requested", mechanism.negotiators[human_index].nmi
+    )
     if not negoiation_completed():
-        action_panel(mechanism.state.current_offer, mechanism.state.current_data)
+        if session_state.get("autopilot_active") and (
+            session_state.get("autopilot_driver") is not None
+        ):
+            # Negotiator-driven autopilot: no panel; schedule the NEXT step as a
+            # separate next-tick (via advance) so the document lock is released
+            # between steps -- otherwise a continuous loop would hold the lock
+            # and block the user's disengage click. Honors the step delay.
+            _hide_action_sections()
+            _schedule_autopilot_step()
+        elif session_state.get("autopilot_active"):
+            # Support-Agent driven: the agent acts via the _notify_support_agent
+            # ping-pong fired just above; just keep the panel hidden.
+            _hide_action_sections()
+        else:
+            action_panel(mechanism.state.current_offer, mechanism.state.current_data)
     # session_state["template"].main[3:5, 3:10] = offer
 
 
@@ -3576,6 +4033,21 @@ def add_tools(timing: Timing):
     session_state["tools"] = (
         session_state["tools"] + upper_tools + lower_tools + side_tools
     )
+
+
+def _notify_support_agent(event_name, nmi=None):
+    """Fire a proactive lifecycle event at the Support Agent, if one is running.
+
+    The agent is no longer a Tool, so it doesn't receive the tool lifecycle
+    dispatch; we notify it explicitly. Runs off the IOLoop (the agent may call a
+    slow LLM); the runtime guards re-entrancy and marshals UI effects back.
+    """
+    agent = session_state.get("support_agent")
+    if agent is None:
+        return
+    import threading
+
+    threading.Thread(target=agent.on_event, args=(event_name, nmi), daemon=True).start()
 
 
 def send_event_to_tools(event):
@@ -3893,6 +4365,12 @@ def start_negotiation(event=None):
             await step_to_human()
             add_tools(Timing.Start)
             send_event_to_tools("negotiation_started")
+            _notify_support_agent(
+                "negotiation_started",
+                session_state["mechanism"].negotiators[
+                    session_state["human_index"]
+                ].nmi,
+            )
             # Surface the participant's own preferences now that the
             # round is live (instead of leaving Scenario Info focused).
             _focus_preferences_tab()
@@ -3994,6 +4472,43 @@ PROLIFIC_COUNTED_TIME_LIMIT = int(os.environ.get("PROLIFIC_COUNTED_TIME_LIMIT", 
 
 def _is_prolific_user(user: str | None) -> bool:
     return bool(user) and str(user).startswith(PROLIFIC_PREFIX)
+
+
+def _auto_pilot_disabled(session_state=session_state) -> bool:
+    """True when the ?noautostart URL flag is set for this session.
+
+    When present (e.g. ``?noautostart=1`` or a bare ``?noautostart``), HANI
+    skips BOTH Prolific timers: the auto-START timer that presses Start after
+    Load, and the between-rounds auto-LOAD timer that loads+starts the next
+    negotiation. This lets a facilitator drive the whole session manually --
+    e.g. to record a training video without timers firing mid-take. The flag
+    only affects Prolific sessions (the timers are Prolific-only). Read once
+    from ``session_args`` and cached in ``session_state``.
+    """
+    if "noautostart" in session_state:
+        return session_state["noautostart"]
+    val = False
+    try:
+        args = getattr(pn.state, "session_args", None) or {}
+        raw = (
+            args.get("noautostart")
+            or args.get("noAutoStart")
+            or args.get("no_auto_start")
+        )
+        if raw is not None:
+            v = raw[0] if isinstance(raw, (list, tuple)) else raw
+            if isinstance(v, (bytes, bytearray)):
+                v = v.decode()
+            v = str(v).strip().lower()
+            # A bare ?noautostart (empty value) counts as enabled; only an
+            # explicit falsey value turns it back off.
+            val = v not in ("0", "false", "no", "off")
+    except Exception:
+        val = False
+    session_state["noautostart"] = val
+    if val:
+        print("[per-neg] ?noautostart set -- auto-start/auto-load disabled")
+    return val
 
 
 def _prolific_meta(user_path: Path, user: str) -> dict:
@@ -4834,8 +5349,16 @@ def load_scenario(event=None):
     # 120). Gives them enough time to read preferences without enabling
     # a "Load, walk away, timeout, repeat" loop that bills idle time.
     # The timer is cancelled in start_negotiation() if they click Start
-    # first.
-    if _is_prolific_user(session_state.get("user", "")):
+    # first. ?noautostart skips arming it (and cancels any stale timer) so a
+    # facilitator can press Start by hand -- e.g. recording a training video.
+    if _is_prolific_user(session_state.get("user", "")) and _auto_pilot_disabled():
+        old = session_state.pop("auto_start_timer", None)
+        if old is not None:
+            try:
+                old.cancel()
+            except Exception:
+                pass
+    elif _is_prolific_user(session_state.get("user", "")):
         try:
             import threading
             old = session_state.pop("auto_start_timer", None)
@@ -5801,6 +6324,12 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     offer_init_keys = ["init_with_last", "init_with_best"]
     offer_init_toggles = [session_state["toggles"][k] for k in offer_init_keys]
 
+    from hani.support_agent.admin_ui import build_admin_card
+    from hani.support_agent.autopilot import build_autopilot_admin_card
+
+    support_agent_card = build_admin_card(session_state, is_admin())
+    autopilot_admin_card = build_autopilot_admin_card(session_state, is_admin())
+
     sidebar = pn.Column(
         image,
         pn.Card(*display_toggles, title="Display Toggles", collapsed=True),
@@ -5850,6 +6379,8 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             visible=is_admin(),
         ),
         llm_card,
+        support_agent_card,
+        autopilot_admin_card,
         # Add modals at end of sidebar (they're overlays, won't affect width)
         extraction_modal,
         generation_modal,
@@ -5996,10 +6527,68 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     else:
         session_state["view_toggle_row"] = None
 
+    # --- Autopilot: top-bar switch (+ driver selector) --------------------
+    # View-independent (lives in the header, so it works in both simple and
+    # full views) and agent-independent (a negotiator driver works even when
+    # the Support Agent is disabled). Greyed until the three-way gate opens
+    # (see apply_autopilot_gating).
+    from hani.support_agent import autopilot as _ap
+
+    _ap_settings = _ap.load_autopilot_settings()
+    autopilot_switch = pn.widgets.Checkbox(
+        name="Autopilot",
+        value=False,
+        disabled=True,
+        visible=False,  # shown by apply_autopilot_gating only if admin-enabled
+        styles={"color": "white", "margin": "0 8px"},
+    )
+    session_state["autopilot_switch"] = autopilot_switch
+    autopilot_switch.param.watch(on_autopilot_toggle, "value")
+    try:
+        template.header.append(autopilot_switch)
+    except Exception:
+        pass
+    # Driver selector: shown only where the participant may choose (admins and
+    # the guest playground); otherwise the admin-fixed driver is used and only
+    # the switch shows.
+    if _ap.user_can_select_driver(is_admin()):
+        # The FastGridTemplate header is dark; force the select (and its option
+        # list) to dark-on-white so it's legible, matching the floating UI's
+        # approach (support_agent/floating_ui._SELECT_SHEET).
+        _ap_select_sheet = (
+            "select, select option { color:#1a1a1a; background:#ffffff; "
+            "border-radius:4px; }"
+        )
+        autopilot_driver_select = pn.widgets.Select(
+            name="",
+            options=_ap.driver_options(_ap_settings),
+            value=_ap.resolve_driver(session_state, _ap_settings, is_admin()),
+            width=200,
+            visible=False,  # shown by apply_autopilot_gating only if admin-enabled
+            styles={"margin": "0 8px"},
+            stylesheets=[_ap_select_sheet],
+        )
+        session_state["autopilot_driver_select"] = autopilot_driver_select
+
+        def _on_driver_change(event=None):
+            apply_autopilot_gating()
+
+        autopilot_driver_select.param.watch(_on_driver_change, "value")
+        try:
+            template.header.append(autopilot_driver_select)
+        except Exception:
+            pass
+    apply_autopilot_gating()
+
     session_state["upper_tabs"] = upper_tabs = pn.Tabs()
     session_state["lower_tabs"] = lower_tabs = pn.Tabs()
     session_state["side_tabs"] = side_tabs = pn.Tabs()
     session_state["tools"] = []
+    # Controls tool enable/visibility/order for the human move/close buttons and
+    # for the Support Agent. Cheap and harmless even when the agent is disabled.
+    from hani.support_agent.tool_controller import ToolController
+
+    session_state["tool_controller"] = ToolController(session_state)
     # The tabs widget that actually displays Preferences / Scenario Info,
     # so _focus_preferences_tab can switch to Preferences regardless of
     # view. Full view shows upper_tabs directly; simple view replaces this
@@ -6092,6 +6681,32 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
         # template.main[0:5, 10:12] = tools_pane
 
     session_state["template"] = template
+
+    # Optional Negotiation Support Agent: a floating chat bubble at the bottom
+    # right of the page (not a tool tab). Mounted into the always-present, light
+    # history wrapper (NOT the dark header) so its position:fixed children float
+    # over either layout while inheriting the light theme. Imported lazily so
+    # nothing is pulled in when the agent is disabled. Default ("auto") = admins
+    # only, so a normal user's session is byte-for-byte the current app.
+    if support_agent_enabled(is_admin=is_admin()):
+        try:
+            from hani.support_agent.settings import load_support_agent_settings
+            from hani.support_agent.floating_ui import build_floating_agent
+
+            floating = build_floating_agent(
+                session_state, load_support_agent_settings(), is_admin()
+            )
+            # Mount into the header: it is NOT transformed, so position:fixed children
+            # anchor to the viewport (grid cells use CSS transform, which would trap a
+            # fixed element inside the cell). The panel forces its own light theme.
+            template.header.append(floating)
+            # Full-width, always-visible status board below all the panels.
+            board_panel = session_state.get("support_board_panel")
+            if board_panel is not None:
+                template.main[5:6, 0:12] = board_panel  # type: ignore
+        except Exception as e:  # noqa: BLE001 - never let the agent break the app
+            print(f"Support agent: could not mount floating UI: {e}")
+
     template.servable(title="Human Agent Negotiation Interface")
 
 

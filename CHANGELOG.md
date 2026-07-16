@@ -5,6 +5,43 @@ All notable changes to the HANI (Human-Agent Negotiation Interface) project will
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Optional Negotiation Support Agent** (`hani.support_agent`): an LLM-driven
+  assistant, disabled by default and admin-gated, that can:
+  - chat with the user (and post messages unprompted) via a floating **chat
+    bubble** (bottom-right) that opens a `pn.chat.ChatInterface`, with a master
+    on/off switch and capability/autonomy controls the user can narrow within
+    the admin ceiling;
+  - send toast notifications;
+  - control any tool's enable/disable, visibility, and order (new
+    `ToolController`, which also activates the previously-stubbed tool
+    move/close buttons);
+  - drive the action panel (fill the offer, write the message, send a
+    counter-offer, accept, or end) through a shared action API extracted from
+    `action_panel` and exposed in `session_state["actions"]`.
+  - Multi-turn tool-calling via `litellm` (any provider; own key/host/port in
+    `support_agent_settings.json`), run off the IOLoop with all UI effects
+    marshalled through the session document.
+  - **Capability + autonomy model**: an admin grants a ceiling
+    (`suggest`/`semi`/`full` autonomy + per-capability switches); the human
+    negotiator can only narrow it, never widen. Agent-initiated actions are
+    logged distinctly (`component="SupportAgent"`, `actor="agent"`).
+  - **Enablement**: resolved from the `--support-agent on|off|auto` CLI flag
+    (`hani` / `hani-app` / `hani-guest`) → `HANI_SUPPORT_AGENT` env var →
+    settings `mode` (legacy `enabled` bool still honoured). Default `auto` =
+    **on for admins, off for normal users**, so a normal participant's session
+    is byte-for-byte the current app.
+
+### Fixed
+- Action panel now rebuilds when the turn transitions from "no offer on the
+  table" to "partner offer available" (and vice versa), so the participant no
+  longer gets stuck with an End-only row after a later partner offer arrives.
+- Timer worker thread no longer depends on module-global `session_state` lookup;
+  it uses an instance-held session reference, preventing `NameError` crashes in
+  countdown rendering and timeout handling.
+
 ## [0.3.2] - 2026-05-22
 
 ### Added

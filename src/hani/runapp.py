@@ -68,6 +68,13 @@ def main(
     dev: bool = typer.Option(
         False, "--dev", help="Run in development mode with auto-reload"
     ),
+    support_agent: Optional[str] = typer.Option(
+        None,
+        "--support-agent",
+        help="Negotiation Support Agent: 'on' (everyone), 'off' (nobody), or 'auto' "
+        "(admins only, the default). Overrides the settings file; also settable via "
+        "the HANI_SUPPORT_AGENT env var.",
+    ),
     port: int = typer.Option(
         5006,
         "--port",
@@ -91,6 +98,11 @@ def main(
         typer.echo(f"Experiment: {experiment}")
         os.environ["HANI_EXPERIMENT"] = experiment
 
+    # Support Agent enablement override (env var is read by the app at runtime).
+    if support_agent:
+        os.environ["HANI_SUPPORT_AGENT"] = support_agent
+    if os.environ.get("HANI_SUPPORT_AGENT"):
+        typer.echo(f"Support Agent: {os.environ['HANI_SUPPORT_AGENT']}")
     # If --agents is provided via command-line (not from run.py), set it as environment variable
     # run.py already sets _HANI_CMDLINE_AGENTS, so we only set it if not already set
     if agents and not os.environ.get("_HANI_CMDLINE_AGENTS"):

@@ -1,0 +1,28 @@
+{
+  "mode": "auto",
+  "agent_class": null,
+  "provider": "ollama",
+  "model": "qwen3:4b-instruct",
+  "api_key_env": "OPENAI_API_KEY",
+  "api_base": null,
+  "temperature": 0.3,
+  "max_tokens": 2000,
+  "max_tool_iterations": 6,
+  "autonomy": "full",
+  "capabilities": {
+    "chat": true,
+    "toast": true,
+    "tool_enable": true,
+    "tool_visibility": true,
+    "tool_order": true,
+    "fill_offer": true,
+    "fill_text": true,
+    "submit_counter": true,
+    "accept": true,
+    "end": true
+  },
+  "proactive": {
+    "on_negotiation_started": false,
+    "on_action_requested": false
+  }
+}
