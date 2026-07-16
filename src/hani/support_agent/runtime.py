@@ -32,6 +32,7 @@ from hani.support_agent.tools import ToolDispatcher
 __all__ = ["SupportAgent", "get_or_create_support_agent"]
 
 _VALID_TOAST_LEVELS = {"info", "success", "warning", "error"}
+_VALID_PROACTIVE_DELIVERY = {"toast", "board"}
 
 
 class SupportAgent:
@@ -78,13 +79,20 @@ class SupportAgent:
         self.dispatcher = self.make_dispatcher()
         # User-facing master switch (the participant can turn the agent off
         # entirely from the floating UI). Never widens admin permissions.
-        self.user_enabled = True
+        default_enabled = bool(session_state.get("support_agent_default_enabled", True))
+        self.user_enabled = bool(
+            session_state.get("support_agent_user_enabled", default_enabled)
+        )
+        session_state["support_agent_user_enabled"] = self.user_enabled
         # Autopilot: while on, the agent decides & acts every turn with no human
         # input (see set_autopilot / on_event). Autonomy is forced to FULL and
         # restored on disengage.
         self.autopilot = False
         self._saved_autonomy: tuple | None = None
         self._autopilot_stalls = 0
+        # Where proactive (event-triggered) assistant messages are surfaced.
+        # Chat replies to explicit user messages still go to chat.
+        self.user_proactive_delivery = "toast"
 
     def set_autopilot(self, active: bool) -> None:
         """Engage/disengage hands-off Autopilot for this agent. While engaged,
@@ -302,7 +310,17 @@ class SupportAgent:
             return  # don't pile up on an in-flight turn
         note = self.proactive_note(event_name)
         if note:
-            self._run_turn(system_note=note, context_note=self._context_snapshot())
+            channel = str(
+                self.session_state.get("support_proactive_delivery", "toast")
+            ).lower()
+            if channel not in _VALID_PROACTIVE_DELIVERY:
+                channel = "toast"
+            self.user_proactive_delivery = channel
+            self._run_turn(
+                system_note=note,
+                context_note=self._context_snapshot(),
+                output_channel=channel,
+            )
 
     def _run_autopilot_turn(self) -> None:
         """One hands-off decision turn. Forces the model to call an action tool;
@@ -371,6 +389,24 @@ class SupportAgent:
             )
         return None
 
+    def _deliver_assistant_message(self, text: str, *, channel: str = "chat") -> None:
+        """Surface assistant text through the requested channel.
+
+        ``channel`` applies to non-chat turns (proactive events); explicit chat
+        replies continue to use chat.
+        """
+        if not text:
+            return
+        if channel == "toast":
+            if not self.toast(text, "info"):
+                self.post(text)
+            return
+        if channel == "board":
+            if not self.show_on_board(text):
+                self.post(text)
+            return
+        self.post(text)
+
     # ------------------------------------------------------------------ #
     # The tool-calling loop.                                              #
     # ------------------------------------------------------------------ #
@@ -380,6 +416,7 @@ class SupportAgent:
         system_note: str | None = None,
         context_note: str | None = None,
         force_action: bool = False,
+        output_channel: str = "chat",
     ) -> set[str]:
         """Run one tool-calling turn. Returns the set of tool names executed
         (used by autopilot to detect whether a negotiation action was taken)."""
@@ -412,7 +449,9 @@ class SupportAgent:
                 tool_calls = message.get("tool_calls") or []
                 if not tool_calls:
                     if message.get("content"):
-                        self.post(message["content"])
+                        self._deliver_assistant_message(
+                            message["content"], channel=output_channel
+                        )
                     return executed
                 for tc in tool_calls:
                     executed.add(self._execute_tool_call(tc))

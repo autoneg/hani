@@ -68,13 +68,13 @@ def test_autonomy_execute_gates():
 # --------------------------------------------------------------------------- #
 # Settings
 # --------------------------------------------------------------------------- #
-def test_default_mode_is_admin_only(monkeypatch):
+def test_default_mode_is_on_for_everyone(monkeypatch):
     monkeypatch.delenv("HANI_SUPPORT_AGENT", raising=False)
-    # Default mode is unset -> resolves to "auto" (admins only).
+    # Default mode is unset -> resolves to "on" (everyone).
     assert DEFAULT_SUPPORT_AGENT_SETTINGS["mode"] is None
-    assert support_agent_mode({}) == "auto"
-    assert support_agent_enabled({}, is_admin=True) is True   # admin gets it
-    assert support_agent_enabled({}, is_admin=False) is False  # normal user: off (= main)
+    assert support_agent_mode({}) == "on"
+    assert support_agent_enabled({}, is_admin=True) is True
+    assert support_agent_enabled({}, is_admin=False) is True
 
 
 def test_explicit_modes_and_legacy_enabled(monkeypatch):
@@ -390,6 +390,14 @@ def test_user_master_switch_gates_turns(monkeypatch):
     agent.on_event("negotiation_started")  # must not raise / call litellm
 
 
+def test_session_default_can_start_agent_disabled():
+    settings = dict(DEFAULT_SUPPORT_AGENT_SETTINGS, capabilities={"chat": True})
+    ss = {"doc": None, "support_agent_default_enabled": False}
+    agent = SupportAgent(ss, settings)
+    assert agent.user_enabled is False
+    assert ss["support_agent_user_enabled"] is False
+
+
 def test_floating_agent_builds_with_bubble_and_hidden_panel():
     from hani.support_agent.floating_ui import build_floating_agent
 
@@ -462,6 +470,49 @@ def test_warn_if_draft_below_reserved(monkeypatch):
     actions["context"] = lambda: {"draft_offer_utility": 0.8, "reserved_value": 0.5}
     agent.warn_if_draft_below_reserved()
     assert len(sent) == 1
+
+
+def test_proactive_message_can_go_to_status_board(monkeypatch):
+    board = pn.pane.Markdown("")
+    posted = []
+    settings = dict(
+        DEFAULT_SUPPORT_AGENT_SETTINGS,
+        capabilities={"chat": True},
+        proactive={"on_action_requested": True},
+    )
+    ss = {"doc": None, "support_board": board, "support_proactive_delivery": "board"}
+    agent = SupportAgent(ss, settings)
+    agent.post = lambda text, user="Support Agent": posted.append(text)
+    monkeypatch.setattr(
+        agent, "_complete", lambda tools, force_action=False: {"role": "assistant", "content": "Board note"}
+    )
+
+    agent.on_event("action_requested")
+
+    assert "Board note" in board.object
+    assert posted == []
+
+
+def test_proactive_message_can_go_to_toast(monkeypatch):
+    posted = []
+    toasts = []
+    settings = dict(
+        DEFAULT_SUPPORT_AGENT_SETTINGS,
+        capabilities={"chat": True},
+        proactive={"on_action_requested": True},
+    )
+    ss = {"doc": None, "support_proactive_delivery": "toast"}
+    agent = SupportAgent(ss, settings)
+    agent.post = lambda text, user="Support Agent": posted.append(text)
+    agent.toast = lambda message, level="info": toasts.append((message, level)) or True
+    monkeypatch.setattr(
+        agent, "_complete", lambda tools, force_action=False: {"role": "assistant", "content": "Toast note"}
+    )
+
+    agent.on_event("action_requested")
+
+    assert toasts == [("Toast note", "info")]
+    assert posted == []
 
 
 def test_loop_stops_at_iteration_cap(monkeypatch):

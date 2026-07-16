@@ -8,7 +8,7 @@ It mirrors the load/save/fallback pattern in ``hani.common``:
 2. Default settings: ``<package>/default_settings/support_agent_settings.json``
 3. Hardcoded defaults (this module).
 
-The agent is **disabled by default**. When disabled, none of the runtime code
+The agent is **enabled by default**. When disabled, none of the runtime code
 (litellm, the chat tool, lifecycle hooks) is touched, so existing experiments are
 completely unaffected.
 """
@@ -95,7 +95,7 @@ Be concise and helpful."""
 
 DEFAULT_SUPPORT_AGENT_SETTINGS: dict[str, Any] = {
     # Who gets the assistant: "off" (nobody), "on" (everybody), or "auto" (admins
-    # only). None here means "unset" -> resolves to "auto" unless a legacy
+    # only). None here means "unset" -> resolves to "on" unless a legacy
     # `enabled` bool is present in the user's file. The HANI_SUPPORT_AGENT env var
     # / `--support-agent` CLI flag override this.
     "mode": None,
@@ -161,7 +161,7 @@ def support_agent_mode(settings: dict | None = None) -> str:
     """Resolve the assistant mode: "on", "off", or "auto" (admins only).
 
     Precedence: ``HANI_SUPPORT_AGENT`` env var (CLI flag) > settings ``mode`` >
-    legacy settings ``enabled`` bool > "auto".
+    legacy settings ``enabled`` bool > "on".
     """
     env = os.getenv(SUPPORT_AGENT_ENV_VAR)
     if env is not None:
@@ -184,15 +184,14 @@ def support_agent_mode(settings: dict | None = None) -> str:
     if "enabled" in settings and settings.get("enabled") is not None:
         return "on" if settings.get("enabled") else "off"
 
-    return "auto"  # default: assistant for admins, not for normal users
+    return "on"  # default: assistant for everyone
 
 
 def support_agent_enabled(settings: dict | None = None, is_admin: bool = False) -> bool:
     """Whether the assistant is enabled for THIS session.
 
     Cheap gate used everywhere before importing/instantiating the runtime. With
-    the default ("auto") mode the assistant is on for admins and off for everyone
-    else -- so a normal user's session is byte-for-byte the current app.
+    the default ("on") mode the assistant is available to everyone.
     """
     mode = support_agent_mode(settings)
     if mode == "on":

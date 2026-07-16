@@ -6686,13 +6686,18 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # right of the page (not a tool tab). Mounted into the always-present, light
     # history wrapper (NOT the dark header) so its position:fixed children float
     # over either layout while inheriting the light theme. Imported lazily so
-    # nothing is pulled in when the agent is disabled. Default ("auto") = admins
-    # only, so a normal user's session is byte-for-byte the current app.
+    # nothing is pulled in when the agent is disabled.
     if support_agent_enabled(is_admin=is_admin()):
         try:
             from hani.support_agent.settings import load_support_agent_settings
             from hani.support_agent.floating_ui import build_floating_agent
 
+            # Session default for the user's on/off switch: ON for normal
+            # users, OFF for Prolific users (they can still enable it).
+            if "support_agent_default_enabled" not in session_state:
+                session_state["support_agent_default_enabled"] = not _is_prolific_user(
+                    session_state.get("user", "")
+                )
             floating = build_floating_agent(
                 session_state, load_support_agent_settings(), is_admin()
             )

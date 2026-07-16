@@ -150,6 +150,7 @@ def build_floating_agent(
 
     def _on_enable(event):
         runtime.user_enabled = bool(event.new)
+        session_state["support_agent_user_enabled"] = runtime.user_enabled
         chat.disabled = not runtime.user_enabled
         _render_state(runtime.user_enabled)
 
@@ -177,6 +178,27 @@ def build_floating_agent(
     )
     autonomy_sel.param.watch(lambda e: caps.set_user_autonomy(e.new), "value")
 
+    proactive_delivery = pn.widgets.Select(
+        name="Proactive messages",
+        options={
+            "Toast notifications": "toast",
+            "Bottom status board": "board",
+        },
+        value=str(session_state.get("support_proactive_delivery", "toast")).lower(),
+        width=220,
+        stylesheets=[_SELECT_SHEET],
+    )
+    if proactive_delivery.value not in ("toast", "board"):
+        proactive_delivery.value = "toast"
+    session_state["support_proactive_delivery"] = proactive_delivery.value
+    runtime.user_proactive_delivery = proactive_delivery.value
+
+    def _on_proactive_delivery(event):
+        session_state["support_proactive_delivery"] = event.new
+        runtime.user_proactive_delivery = event.new
+
+    proactive_delivery.param.watch(_on_proactive_delivery, "value")
+
     controls = pn.Card(
         pn.pane.Markdown(
             "What I may do (switch any off, or back on):",
@@ -184,6 +206,7 @@ def build_floating_agent(
         ),
         *cap_rows,
         autonomy_sel,
+        proactive_delivery,
         title="⚙️ Capabilities",
         collapsed=True,
         header_background="#eef1f5",

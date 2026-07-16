@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Optional Negotiation Support Agent** (`hani.support_agent`): an LLM-driven
-  assistant, disabled by default and admin-gated, that can:
+  assistant, enabled by default (with a user on/off switch), that can:
   - chat with the user (and post messages unprompted) via a floating **chat
     bubble** (bottom-right) that opens a `pn.chat.ChatInterface`, with a master
     on/off switch and capability/autonomy controls the user can narrow within
@@ -30,9 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     logged distinctly (`component="SupportAgent"`, `actor="agent"`).
   - **Enablement**: resolved from the `--support-agent on|off|auto` CLI flag
     (`hani` / `hani-app` / `hani-guest`) → `HANI_SUPPORT_AGENT` env var →
-    settings `mode` (legacy `enabled` bool still honoured). Default `auto` =
-    **on for admins, off for normal users**, so a normal participant's session
-    is byte-for-byte the current app.
+    settings `mode` (legacy `enabled` bool still honoured). Default is now
+    **on for everyone**; in Prolific sessions the user-facing Support Agent
+    switch starts **off** by default (and remains user-toggleable).
+  - Human-facing control for proactive Support Agent messages: choose whether
+    unprompted/event-triggered messages appear as toast notifications or on the
+    always-visible bottom status board (chat replies remain in chat).
 
 ### Fixed
 - Action panel now rebuilds when the turn transitions from "no offer on the

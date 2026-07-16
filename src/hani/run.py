@@ -273,7 +273,7 @@ def main(
         None,
         "--support-agent",
         help="Negotiation Support Agent: 'on' (everyone), 'off' (nobody), or 'auto' "
-        "(admins only, the default). Overrides the settings file; also settable via "
+        "(admins only). Default is 'on'. Overrides the settings file; also settable via "
         "the HANI_SUPPORT_AGENT env var. Applies to both the main app and playground.",
     ),
     main_port: int = typer.Option(

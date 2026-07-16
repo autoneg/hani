@@ -28,8 +28,7 @@ def main(
         None,
         "--support-agent",
         help="Negotiation Support Agent: 'on' (everyone), 'off' (nobody), or 'auto' "
-        "(admins only). Guests are not admins, so 'auto'/default means off here; use "
-        "'on' to enable it in the playground. Also settable via HANI_SUPPORT_AGENT.",
+        "(admins only). Default is 'on'. Also settable via HANI_SUPPORT_AGENT.",
     ),
     port: int = typer.Option(
         HANI_GUEST_PORT,

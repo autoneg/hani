@@ -1,8 +1,9 @@
 # Negotiation Support Agent
 
 The **Negotiation Support Agent** is an optional, LLM-driven assistant that helps a
-human negotiator during a live negotiation. It is **disabled by default** and
-admin-gated; when off, it has zero effect on the app and on existing experiments.
+human negotiator during a live negotiation. It is **enabled by default**; the
+participant can switch it on/off from the floating panel. In Prolific sessions it
+starts **off by default** (still user-toggleable).
 
 It appears as a small **chat-bubble icon at the bottom-right of the page**. Clicking
 the bubble opens a chat panel; from there the participant can turn the agent on/off
@@ -42,10 +43,10 @@ The three values mean:
 |-------|------------------------|
 | `on` | Everyone. |
 | `off` | Nobody. |
-| `auto` | **Admins only** — this is the default. |
+| `auto` | **Admins only**. |
 
-So **out of the box the assistant is on for admins and off for normal users**, which
-means a normal participant's session is byte-for-byte the current app. Examples:
+So **out of the box the assistant is on for everyone** (except Prolific sessions,
+which start with the user switch off). Examples:
 
 ```bash
 hani --support-agent on      # everyone gets it
@@ -56,13 +57,13 @@ HANI_SUPPORT_AGENT=on hani-guest   # enable it in the playground (guests aren't 
 ## Configuring the agent
 
 Configuration lives in `~/negmas/hani/settings/support_agent_settings.json` (falls back
-to the bundled default, `mode: "auto"`). Admins can also edit it live from the
+to the bundled default, `mode: "on"`). Admins can also edit it live from the
 **“Support Agent (Admin)”** card in the sidebar (the **“Assistant for”** selector maps
 to `mode`).
 
 ```json
 {
-  "mode": "auto",
+  "mode": "on",
   "agent_class": null,
   "provider": "openai",
   "model": "gpt-4o-mini",
@@ -88,7 +89,7 @@ to `mode`).
 
 | Field | Meaning |
 |-------|---------|
-| `mode` | `on` / `off` / `auto` (admins only, default). Overridden by `--support-agent` / `HANI_SUPPORT_AGENT`. (Legacy `enabled: true/false` is still honoured.) |
+| `mode` | `on` / `off` / `auto` (admins only). Default is `on`. Overridden by `--support-agent` / `HANI_SUPPORT_AGENT`. (Legacy `enabled: true/false` is still honoured.) |
 | `agent_class` | Optional dotted path to a custom agent class (see [below](#building-a-custom-support-agent)). Empty/`null` → the built-in agent. |
 | `provider` / `model` | Any litellm provider and model. |
 | `api_key_env` | Name of the **environment variable** holding the API key (not needed for Ollama). The key itself is never stored in the settings file. |
@@ -126,6 +127,11 @@ There are two layers:
 
 The **effective** permission is the intersection: a participant can always make the
 agent *less* powerful, but never *more* powerful than the admin allowed.
+
+Participants can also choose where **proactive** assistant messages appear:
+either as toast notifications or on the always-visible bottom status board. This
+setting only affects unprompted/event-triggered messages; direct chat replies
+remain in chat.
 
 ---
 

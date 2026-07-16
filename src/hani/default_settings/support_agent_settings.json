@@ -1,5 +1,5 @@
 {
-  "mode": "auto",
+  "mode": "on",
   "agent_class": null,
   "provider": "ollama",
   "model": "qwen3:4b-instruct",
