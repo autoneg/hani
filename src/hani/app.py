@@ -965,6 +965,9 @@ class CountdownTimer(pn.pane.HTML):
         self.update_interval = update_interval
         self.thread = None
         self._start = None
+        # Keep a stable reference for the worker thread even if module globals
+        # are reloaded/teared down as sessions connect/disconnect.
+        self._session_state = session_state
 
     def start(self):
         if self.running or not self.duration or np.isinf(self.duration):
@@ -993,6 +996,7 @@ class CountdownTimer(pn.pane.HTML):
 
         if np.isinf(self.duration):
             return
+        state = self._session_state
         end_time = time.time() + self.duration
         while self.running and time.time() < end_time:
             remaining = int(end_time - time.time())
@@ -1007,15 +1011,15 @@ class CountdownTimer(pn.pane.HTML):
         if self.running:  # if the timer finished naturally, rather than being stopped.
             self.object = '<div style="color:red"><strong>Time\'s up!</strong></div>'
             self.running = False
-            session_state["human_action"] = SAOResponse(
+            state["human_action"] = SAOResponse(
                 ResponseType.REJECT_OFFER,
-                session_state.get("human_last_offer", None),
+                state.get("human_last_offer", None),
                 None,
             )
             advance()
 
     def relative(self) -> str:
-        mech = session_state.get("mechanism", None)
+        mech = self._session_state.get("mechanism", None)
         if not mech:
             return ""
         return f" ({1 - mech.relative_time:3.1%})"
@@ -1975,7 +1979,10 @@ def load_form(selectable_scenario_type):
     # (Start enabled), the auto-START timer covers it instead, so cancel any
     # pending auto-load.
     if _is_prolific_user(session_state.get("user", "")):
-        if new_scenario_loaded:
+        # ?noautostart disables the between-rounds auto-load entirely (cancel
+        # any armed timer and never re-arm) so a facilitator can load each
+        # round by hand -- e.g. when recording a training video.
+        if new_scenario_loaded or _auto_pilot_disabled():
             _cancel_auto_load()
         else:
             _schedule_auto_load()
@@ -2334,29 +2341,37 @@ def action_panel(
     current_offer: Outcome | None, current_data: dict | None = None
 ) -> pn.Column:
     if session_state["action_panel_displayed"]:
-        partner_offer_section = session_state.get("partner_offer_section")
-        decision_row = session_state.get("decision_buttons_row")
-        counter_section = session_state.get("counter_offer_section")
-        undo_btn = session_state.get("undo_decision_btn")
         has_offer_now = current_offer is not None
-        always_toggle = session_state["toggles"].get("offer_panel_always_visible")
-        always_visible = bool(always_toggle.value) if always_toggle is not None else False
-        if partner_offer_section is not None:
-            partner_offer_section.visible = True
-        if decision_row is not None:
-            decision_row.visible = True
-        if counter_section is not None:
-            # Hide counter-offer UI on new round if there's a partner
-            # offer to react to; otherwise leave it visible so the
-            # participant can make an opening offer.
-            counter_section.visible = (not has_offer_now) or always_visible
-        if undo_btn is not None:
-            undo_btn.visible = False
-        # Refresh the offer-on-the-table line + Accept button so the
-        # panel mirrors the most recent partner offer instead of being
-        # frozen at the first one rendered this negotiation.
-        _refresh_offer_on_table(current_offer)
-        return session_state["action_panel"][0]
+        built_with_offer = bool(session_state.get("action_panel_has_partner_offer"))
+        if has_offer_now != built_with_offer:
+            # The panel shape changed (no-offer -> offer, or offer -> no-offer).
+            # Rebuild from scratch so we don't get stuck with only the "End"
+            # row after a first no-offer turn.
+            session_state["action_panel_displayed"] = False
+            session_state["action_panel"].clear()
+        else:
+            partner_offer_section = session_state.get("partner_offer_section")
+            decision_row = session_state.get("decision_buttons_row")
+            counter_section = session_state.get("counter_offer_section")
+            undo_btn = session_state.get("undo_decision_btn")
+            always_toggle = session_state["toggles"].get("offer_panel_always_visible")
+            always_visible = bool(always_toggle.value) if always_toggle is not None else False
+            if partner_offer_section is not None:
+                partner_offer_section.visible = True
+            if decision_row is not None:
+                decision_row.visible = True
+            if counter_section is not None:
+                # Hide counter-offer UI on new round if there's a partner
+                # offer to react to; otherwise leave it visible so the
+                # participant can make an opening offer.
+                counter_section.visible = (not has_offer_now) or always_visible
+            if undo_btn is not None:
+                undo_btn.visible = False
+            # Refresh the offer-on-the-table line + Accept button so the
+            # panel mirrors the most recent partner offer instead of being
+            # frozen at the first one rendered this negotiation.
+            _refresh_offer_on_table(current_offer)
+            return session_state["action_panel"][0]
     if not session_state["action_panel_displayed"]:
         session_state["action_panel"].clear()
 
@@ -2863,6 +2878,7 @@ def action_panel(
             margin=(0, 4),
         )
     else:
+        session_state["decision_buttons_row"] = None
         # Section containing partner offer, buttons, and divider (can be hidden)
         partner_offer_section = pn.Column(
             current_offer_display,
@@ -2873,6 +2889,7 @@ def action_panel(
             margin=(0, 4),
         )
     session_state["partner_offer_section"] = partner_offer_section
+    session_state["action_panel_has_partner_offer"] = has_current_offer
 
     # Build the structured outcome section with generate text button.
     # The domain's _info.yaml may set `n_issue_columns: 1` or `2`
@@ -3782,6 +3799,43 @@ def _is_prolific_user(user: str | None) -> bool:
     return bool(user) and str(user).startswith(PROLIFIC_PREFIX)
 
 
+def _auto_pilot_disabled(session_state=session_state) -> bool:
+    """True when the ?noautostart URL flag is set for this session.
+
+    When present (e.g. ``?noautostart=1`` or a bare ``?noautostart``), HANI
+    skips BOTH Prolific timers: the auto-START timer that presses Start after
+    Load, and the between-rounds auto-LOAD timer that loads+starts the next
+    negotiation. This lets a facilitator drive the whole session manually --
+    e.g. to record a training video without timers firing mid-take. The flag
+    only affects Prolific sessions (the timers are Prolific-only). Read once
+    from ``session_args`` and cached in ``session_state``.
+    """
+    if "noautostart" in session_state:
+        return session_state["noautostart"]
+    val = False
+    try:
+        args = getattr(pn.state, "session_args", None) or {}
+        raw = (
+            args.get("noautostart")
+            or args.get("noAutoStart")
+            or args.get("no_auto_start")
+        )
+        if raw is not None:
+            v = raw[0] if isinstance(raw, (list, tuple)) else raw
+            if isinstance(v, (bytes, bytearray)):
+                v = v.decode()
+            v = str(v).strip().lower()
+            # A bare ?noautostart (empty value) counts as enabled; only an
+            # explicit falsey value turns it back off.
+            val = v not in ("0", "false", "no", "off")
+    except Exception:
+        val = False
+    session_state["noautostart"] = val
+    if val:
+        print("[per-neg] ?noautostart set -- auto-start/auto-load disabled")
+    return val
+
+
 def _prolific_meta(user_path: Path, user: str) -> dict:
     """Get-or-create the per-Prolific-session metadata file.
 
@@ -4550,8 +4604,16 @@ def load_scenario(event=None):
     # 120). Gives them enough time to read preferences without enabling
     # a "Load, walk away, timeout, repeat" loop that bills idle time.
     # The timer is cancelled in start_negotiation() if they click Start
-    # first.
-    if _is_prolific_user(session_state.get("user", "")):
+    # first. ?noautostart skips arming it (and cancels any stale timer) so a
+    # facilitator can press Start by hand -- e.g. recording a training video.
+    if _is_prolific_user(session_state.get("user", "")) and _auto_pilot_disabled():
+        old = session_state.pop("auto_start_timer", None)
+        if old is not None:
+            try:
+                old.cancel()
+            except Exception:
+                pass
+    elif _is_prolific_user(session_state.get("user", "")):
         try:
             import threading
             old = session_state.pop("auto_start_timer", None)
