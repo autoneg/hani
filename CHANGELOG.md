@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     **on for admins, off for normal users**, so a normal participant's session
     is byte-for-byte the current app.
 
+### Fixed
+- Action panel now rebuilds when the turn transitions from "no offer on the
+  table" to "partner offer available" (and vice versa), so the participant no
+  longer gets stuck with an End-only row after a later partner offer arrives.
+- Timer worker thread no longer depends on module-global `session_state` lookup;
+  it uses an instance-held session reference, preventing `NameError` crashes in
+  countdown rendering and timeout handling.
+
 ## [0.3.2] - 2026-05-22
 
 ### Added
