@@ -36,5 +36,6 @@ hani-guest --prefix hanplay --index app --root-path=/hanplay \
     --allow-websocket-origin localhost:5008 \
     --allow-websocket-origin 127.0.0.1:8000 \
     --allow-websocket-origin localhost:8000 \
+    --session-token-expiration 900000 \
     "${extra_origins[@]}" \
     "$@"
