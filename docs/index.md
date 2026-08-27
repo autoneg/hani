@@ -39,7 +39,7 @@ HANI is a web-based interface for conducting negotiations between humans and AI 
 ### 1. Install HANI
 
 ```bash
-pip install hani
+pip install .
 ```
 
 ### 2. Initialize Configuration
@@ -68,8 +68,4 @@ Then open your browser to [http://localhost:5006](http://localhost:5006) and log
 
 ## License
 
-HANI is released under the GNU Affero General Public License v3 (AGPL-3.0).
-
-## Author
-
-Created by [Yasser Mohammad](mailto:yasserfarouk@gmail.com)
+License information is withheld for anonymous review.

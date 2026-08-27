@@ -368,7 +368,7 @@ def test_custom_dispatcher_registers_extra_tool():
     agent = MyAgent({"doc": None}, dict(DEFAULT_SUPPORT_AGENT_SETTINGS, capabilities={"chat": True}))
     names = {s["function"]["name"] for s in agent.dispatcher.schemas()}
     assert "say_hi" in names
-    assert agent.dispatcher.execute("say_hi", {"name": "Yasser"}) == {"ok": True, "hi": "Yasser"}
+    assert agent.dispatcher.execute("say_hi", {"name": "Alice"}) == {"ok": True, "hi": "Alice"}
 
 
 def test_user_master_switch_gates_turns(monkeypatch):

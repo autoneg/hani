@@ -4,7 +4,7 @@ version = "0.3.2"
 description = "Run Human-Agent Negotiations"
 license = "AGPL-3.0-or-later"
 authors = [
-    { name = "Yasser Mohammad", email = "yasserfarouk@gmail.com" },
+    { name = "Anonymous" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -29,12 +29,6 @@ dependencies = [
     "sqlalchemy>=2.0.39",
     "typer>=0.9.0",
 ]
-
-[project.urls]
-Homepage = "https://github.com/autoneg/hani"
-Documentation = "https://autoneg.github.io/hani/"
-Repository = "https://github.com/autoneg/hani"
-Changelog = "https://github.com/autoneg/hani/blob/main/CHANGELOG.md"
 
 [build-system]
 # requires = ["hatchling"]

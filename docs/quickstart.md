@@ -5,7 +5,7 @@ This guide will get you up and running with HANI in minutes.
 ## Step 1: Install HANI
 
 ```bash
-pip install hani
+pip install .
 ```
 
 ## Step 2: Initialize Configuration

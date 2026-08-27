@@ -70,7 +70,7 @@ launches `hani-guest`.
 | `PROLIFIC_AUTO_START_SECONDS` | `120` | Idle timeout before HANI auto-starts the next round. |
 | `PROLIFIC_FINALISTS` | *(empty)* | Comma-separated dotted Python class names of the agents available for counted rounds. When non-empty, `schedule.json` picks from this list. Empty falls back to the configured `partner_types`. |
 | `PROLIFIC_PER_NEG_YAML` | *(unset)* | Absolute path to a per-negotiation questionnaire YAML. If unset or the file is missing, the per-round form is silently skipped. |
-| `SCMLWEB_BASE_URL` | `https://anac.cs.brown.edu` | Base URL for the completion link. Override with e.g. `http://localhost:8000` for local dev. |
+| `SCMLWEB_BASE_URL` | `https://study-host.example.org` | Base URL for the completion link. Override with e.g. `http://localhost:8000` for local dev. |
 
 ## Per-participant schedule (`schedule.json`)
 

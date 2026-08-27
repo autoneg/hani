@@ -4803,7 +4803,7 @@ def _prolific_submit_url(pid: str) -> str:
     Override via SCMLWEB_BASE_URL (e.g. http://localhost:8000 for
     local dev); the production default reaches the live host.
     """
-    base = os.environ.get("SCMLWEB_BASE_URL", "https://anac.cs.brown.edu").rstrip("/")
+    base = os.environ.get("SCMLWEB_BASE_URL", "https://study-host.example.org").rstrip("/")
     return f"{base}/prolific/done?PROLIFIC_PID={pid}"
 
 

@@ -5,12 +5,12 @@
 - Python 3.13 or higher
 - pip (Python package manager)
 
-## Installing from PyPI
+## Installing from Source
 
-The simplest way to install HANI is via pip:
+From the project root:
 
 ```bash
-pip install hani
+pip install .
 ```
 
 ## Installing with Optional Dependencies
@@ -20,7 +20,7 @@ pip install hani
 To build the documentation locally:
 
 ```bash
-pip install hani[doc]
+pip install ".[doc]"
 ```
 
 ### Development Dependencies
@@ -28,7 +28,7 @@ pip install hani[doc]
 For contributing to HANI:
 
 ```bash
-pip install hani[dev]
+pip install ".[dev]"
 ```
 
 ## Installing from Source
@@ -36,8 +36,7 @@ pip install hani[dev]
 To install the latest development version:
 
 ```bash
-git clone https://github.com/autoneg/hani.git
-cd hani
+cd hani   # the project root
 pip install -e .
 ```
 
@@ -100,7 +99,7 @@ This creates the settings directory at `~/negmas/hani/settings/` with:
 To upgrade to the latest version:
 
 ```bash
-pip install --upgrade hani
+git pull && pip install .
 ```
 
 !!! note "Upgrading from v0.2.x"
@@ -113,7 +112,7 @@ pip install --upgrade hani
 If you encounter permission errors, try installing with `--user`:
 
 ```bash
-pip install --user hani
+pip install --user .
 ```
 
 ### Dependency Conflicts
@@ -123,7 +122,7 @@ If you have dependency conflicts, consider using a virtual environment:
 ```bash
 python -m venv hani-env
 source hani-env/bin/activate  # On Windows: hani-env\Scripts\activate
-pip install hani
+pip install .
 ```
 
 ### Panel/Bokeh Issues

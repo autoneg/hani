@@ -117,4 +117,4 @@ The generator must implement:
 - `get_outcome()` - Returns the generated outcome
 - `panel()` - Returns the Panel UI component
 
-See the [source code](https://github.com/autoneg/hani/tree/main/src/hani/tools) for complete examples.
+See `src/hani/tools/` for complete examples.

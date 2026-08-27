@@ -163,7 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - GitHub Actions workflow for automatic documentation deployment
   - Documentation pages: Installation, Quick Start, Authentication, Ollama setup, Tools, Offer Generators, Scenarios
   - Added LICENSE file (AGPL-3.0)
-  - Added badges to README (PyPI, downloads, license, documentation)
+  - Added badges to README
 
 ### Changed
 - Removed `python-dotenv` dependency (replaced by env.json)
@@ -385,6 +385,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Links
-- [Repository](https://github.com/yasserfarouk/hani)
-- [Documentation](https://yasserfarouk.github.io/hani/)
-- [Issue Tracker](https://github.com/yasserfarouk/hani/issues)

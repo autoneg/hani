@@ -1,25 +1,17 @@
 # Human-Agent Negotiation Interface (HANI)
 
-[![PyPI version](https://img.shields.io/pypi/v/hani.svg)](https://pypi.python.org/pypi/hani)
-[![Python](https://img.shields.io/pypi/pyversions/hani.svg)](https://pypi.python.org/pypi/hani)
-[![Downloads](https://img.shields.io/pypi/dm/hani.svg)](https://pypi.python.org/pypi/hani)
-[![License](https://img.shields.io/pypi/l/hani.svg)](https://pypi.python.org/pypi/hani)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://autoneg.github.io/hani/)
-
 ![hani](hani.png)
 
 HANI is a web-based interface for conducting negotiations between humans and AI agents. It provides a rich set of tools for analyzing negotiation dynamics, making offers, and understanding your negotiation partner's behavior.
 
-📖 **Full documentation:** [autoneg.github.io/hani](https://autoneg.github.io/hani/) — installation, quick start, authentication, scenarios, Prolific integration, and more.
-
-🎮 **Try it now:** [anac.cs.brown.edu/hanplay/app](https://anac.cs.brown.edu/hanplay/app) — public playground, no signup required.
+📖 **Full documentation:** see the `docs/` directory (build locally with `mkdocs serve`) — installation, quick start, authentication, scenarios, Prolific integration, and more.
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-pip install hani
+pip install .
 ```
 
 ### Initial Setup
@@ -346,8 +338,7 @@ LLM API keys can be set in `~/negmas/hani/settings/llm_settings.json` or via env
 To contribute, clone this repo and install development dependencies:
 
 ```bash
-git clone https://github.com/autoneg/hani.git
-cd hani
+cd hani   # the project root
 pip install -e ".[dev]"
 ```
 
@@ -380,10 +371,4 @@ src/hani/
 
 ## License
 
-This project is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](https://www.gnu.org/licenses/agpl-3.0.en.html).
-
-See the [LICENSE](LICENSE) file for details.
-
-## Author
-
-Yasser Mohammad (yasserfarouk@gmail.com)
+License information is withheld for anonymous review.
