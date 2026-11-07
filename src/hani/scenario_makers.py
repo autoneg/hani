@@ -3,7 +3,7 @@ from negmas.helpers.inout import load
 from numpy import argmin
 from typing import Iterable
 from negmas import (
-    DiscreteCartesianOutcomeSpace,
+    EnumerableCartesianOutcomeSpace,
     LinearAdditiveUtilityFunction,
     AffineFun,
     Scenario,
@@ -98,7 +98,7 @@ def make_trade_scenario(
         [make_issue(quantity, name="Quantity"), make_issue(price, name="Price")],
         name="Trade",
     )
-    assert isinstance(os, DiscreteCartesianOutcomeSpace)
+    assert isinstance(os, EnumerableCartesianOutcomeSpace)
     quantities = list(os.issues[0].all)
     ufuns = []
     for name, p in zip(names, params):

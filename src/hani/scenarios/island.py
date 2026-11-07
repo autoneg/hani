@@ -1,7 +1,7 @@
 from negmas.preferences.value_fun import TableFun
 from negmas.helpers.inout import load
 from negmas import (
-    DiscreteCartesianOutcomeSpace,
+    EnumerableCartesianOutcomeSpace,
     LinearAdditiveUtilityFunction,
     UtilityFunction,
     make_issue,
@@ -105,7 +105,7 @@ def make_island_scenario(
         ],
         name="Island",
     )
-    assert isinstance(os, DiscreteCartesianOutcomeSpace)
+    assert isinstance(os, EnumerableCartesianOutcomeSpace)
 
     def make_ufun(target: str) -> UtilityFunction:
         weights = [

@@ -3,7 +3,7 @@ import random
 from negmas.preferences.value_fun import TableFun
 from negmas.helpers.inout import load
 from negmas import (
-    DiscreteCartesianOutcomeSpace,
+    EnumerableCartesianOutcomeSpace,
     LinearAdditiveUtilityFunction,
     UtilityFunction,
     make_issue,
@@ -44,7 +44,7 @@ def make_trade_scenario(
         ],
         name="Trade",
     )
-    assert isinstance(os, DiscreteCartesianOutcomeSpace)
+    assert isinstance(os, EnumerableCartesianOutcomeSpace)
     seller_starts = seller_starts or (seller_starts is None and random.random() < 0.5)
     seller_target = int_in(seller_target)
     buyer_target = int_in(buyer_target)

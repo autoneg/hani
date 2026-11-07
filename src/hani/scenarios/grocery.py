@@ -2,7 +2,7 @@ import itertools
 from negmas.helpers.inout import load
 from negmas import (
     AffineFun,
-    DiscreteCartesianOutcomeSpace,
+    EnumerableCartesianOutcomeSpace,
     LinearAdditiveUtilityFunction,
     LinearFun,
     UtilityFunction,
@@ -81,7 +81,7 @@ def make_grocery_scenario(
         ],
         name="Grocery",
     )
-    assert isinstance(os, DiscreteCartesianOutcomeSpace)
+    assert isinstance(os, EnumerableCartesianOutcomeSpace)
 
     def make_ufun(target: str) -> UtilityFunction:
         offer_for = "agent" if offer_for_agent else "human"

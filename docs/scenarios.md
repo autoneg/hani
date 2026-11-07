@@ -32,7 +32,7 @@ The outcome space file defines the issues being negotiated.
 
 ```yaml
 name: Trade
-type: DiscreteCartesianOutcomeSpace
+type: EnumerableCartesianOutcomeSpace
 issues:
   - name: Quantity
     type: ContiguousIssue
@@ -217,7 +217,7 @@ Create `MyScenario.yml`:
 
 ```yaml
 name: MyScenario
-type: DiscreteCartesianOutcomeSpace
+type: EnumerableCartesianOutcomeSpace
 issues:
   - name: IssueA
     type: ContiguousIssue

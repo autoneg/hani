@@ -6,7 +6,7 @@ from typing import Any
 from negmas import (
     ContiguousIssue,
     ContinuousIssue,
-    DiscreteCartesianOutcomeSpace,
+    EnumerableCartesianOutcomeSpace,
     Outcome,
     ResponseType,
     SAOResponse,
@@ -31,7 +31,7 @@ def get_scenario() -> Scenario:
             make_issue([100, 110, 120, 200], name="price"),
         ]
     )
-    assert isinstance(os, DiscreteCartesianOutcomeSpace)
+    assert isinstance(os, EnumerableCartesianOutcomeSpace)
     ufuns = generate_ufuns_for(os)
     return Scenario(outcome_space=os, ufuns=ufuns)
 
