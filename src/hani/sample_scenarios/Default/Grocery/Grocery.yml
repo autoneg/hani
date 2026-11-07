@@ -20,4 +20,4 @@ issues:
   - 0
   - 4
 name: Grocery
-type: DiscreteCartesianOutcomeSpace
+type: EnumerableCartesianOutcomeSpace

@@ -40,4 +40,4 @@ issues:
   - alice
   - bob
 name: Island
-type: DiscreteCartesianOutcomeSpace
+type: EnumerableCartesianOutcomeSpace
