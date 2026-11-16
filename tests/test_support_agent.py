@@ -619,3 +619,19 @@ def test_ask_user_and_message_user_are_tools():
     assert agent.dispatcher.execute("message_user", {"text": "hi"})["ok"]
     assert chat.sent[-1][1] == "hi"
     assert agent.dispatcher.execute("ask_user", {})["ok"] is False
+
+
+def test_flatten_tool_messages_for_ollama():
+    from hani.support_agent.runtime import flatten_tool_messages
+
+    history = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "1", "type": "function", "function": {"name": "assess", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "1", "name": "assess", "content": '{"ok": true}'},
+    ]
+    flat = flatten_tool_messages(history)
+    assert [m["role"] for m in flat] == ["user", "assistant", "user"]
+    assert "assess" in flat[1]["content"] and "tool_calls" not in flat[1]
+    assert "tool result: assess" in flat[2]["content"] and '"ok": true' in flat[2]["content"]
+    assert "tool_calls" in history[1]  # the stored conversation is not modified

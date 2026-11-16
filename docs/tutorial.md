@@ -197,23 +197,24 @@ class CoachAgent(SupportAgent):
         return COACH_PROMPT
 ```
 
-### Run a model locally with Ollama
+### Pick a model
 
-HANI's default support-agent model is a small local one, so nothing leaves your machine:
-
-```bash
-ollama pull qwen3:4b-instruct
-```
-
-(See [Setting up Ollama](ollama.md) for details, including using a cloud provider
-instead.) Then:
+The screenshots in Levels 3 to 7 were made with **Gemma** served through
+[Ollama](https://ollama.com) (`gemma4:cloud`), which follows instructions and calls tools
+reliably. Add it to your settings next to `agent_class`:
 
 ```json
-{ "agent_class": "level3_llm_coach:CoachAgent" }
+{
+  "agent_class": "level3_llm_coach:CoachAgent",
+  "provider": "ollama",
+  "model": "gemma4:cloud"
+}
 ```
 
-The `provider` and `model` default to `ollama` / `qwen3:4b-instruct`, so nothing else is
-needed. Restart, **Start**, make a counter-offer, and ask `Should I accept this offer?`:
+Any other [litellm](https://docs.litellm.ai) provider works too (see
+[Setting up Ollama](ollama.md)). A small local model such as the default `qwen3:4b-instruct`
+runs fully offline but follows tool instructions less reliably. Restart, **Start**, make a
+counter-offer (**Reject**, then **Send**) and ask `Should I accept this offer?`:
 
 ![Level 3: the LLM coach answering in the chat](assets/tutorial/level3-full.png)
 
@@ -289,7 +290,7 @@ class ToolCoachAgent(SupportAgent):
 
 Three pieces: a **schema** that tells the model what the tool is for, a **handler** that
 does the work and returns a dict, and `dispatcher_class` to plug it in. Set
-`{ "agent_class": "level4_tools:ToolCoachAgent" }`, restart, and ask
+`{ "agent_class": "level4_tools:ToolCoachAgent", "provider": "ollama", "model": "gemma4:cloud" }`, restart, and ask
 `Should I accept this offer?`:
 
 ![Level 4: the coach consulting its assess_partner_offer tool](assets/tutorial/level4-full.png)
@@ -353,19 +354,23 @@ let it fill in offers but never send, accept or end on its own:
 * Turning off `submit_counter`, `accept` and `end` removes those tools from the model
   entirely.
 
-Restart, click **Start**, make a counter-offer and ask `Propose a counter-offer`. The
-coach uses its tool to judge the partner's offer against your reserved value and the
-current target, and answers with a concrete recommendation:
+Add `"provider": "ollama", "model": "gemma4:cloud"` as before, restart and click **Start**.
+Make a counter-offer (**Reject**, then **Send**). When the partner answers, the coach speaks
+up **by itself**, as a pop-up (proactive messages are delivered as a toast by default; the
+participant can switch to the status box in the chat panel's settings):
 
-![Level 5: the finished Deal Coach recommending a counter-offer](assets/tutorial/level5-full.png)
+![Level 5: a proactive recommendation as a toast](assets/tutorial/level5-proactive-full.png)
 
-!!! note "Proactive notes and small models"
-    With `on_action_requested` enabled, the agent also takes a turn by itself each time it
-    is your turn. Proactive messages are delivered as a **toast** by default (the
-    participant can switch to the status board in the chat panel's settings). They only
-    appear if the model produces text, and a 4B local model can stay silent or ignore
-    instructions such as "fill in the offer fields". For reliable proactive advice and
-    offer filling, point `provider` / `model` at a stronger model.
+Now click **Reject** to open the offer editor and ask `Propose a counter-offer`. The coach
+uses its tool, then **fills in the offer fields and the message** for you to review. It does
+not send anything, because the settings only allow `suggest`; you press **Send**:
+
+![Level 5: the coach fills in a counter-offer for review](assets/tutorial/level5-fill-full.png)
+
+!!! note "Models and tools"
+    Proactive notes and offer filling depend on the model producing the right tool calls.
+    If a small model stays silent or ignores an instruction, try a stronger one through
+    `provider` / `model`.
 
 !!! success "Experiment"
     Open the **⚙️ Capabilities** panel in the chat. You can switch capabilities off, or
@@ -507,6 +512,11 @@ appears with one button per option:
 Click **Aggressive** (or type your own answer). The agent acknowledges and carries on:
 
 ![Level 7: the agent adapts to the answer](assets/tutorial/level7-answer-full.png)
+
+Now make a counter-offer and ask `Should I accept this offer?`. The coach's advice follows
+the style you picked (here it prepares an aggressive counter-offer instead of accepting):
+
+![Level 7: advice in the chosen style](assets/tutorial/level7-advice-full.png)
 
 !!! warning "`ask_user` blocks"
     Call it from a worker thread — `on_event`, `handle_user_message` or a tool handler —

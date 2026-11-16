@@ -37,6 +37,42 @@ _VALID_PROACTIVE_DELIVERY = {"toast", "board"}
 BOARD_PLACEHOLDER = "*Messages from your assistant appear here.*"
 
 
+def flatten_tool_messages(messages: list[dict]) -> list[dict]:
+    """Express tool calls and tool results as plain text.
+
+    litellm's Ollama chat transform rebuilds each message from only its role,
+    content, thinking and images: it drops an assistant message's ``tool_calls``,
+    so the model never learns it called a tool and cannot connect the following
+    ``tool`` result to anything (it typically calls the same tool again until the
+    loop limit). For Ollama we therefore send the call and its result as text. The
+    stored conversation is left untouched.
+    """
+    out: list[dict] = []
+    for m in messages:
+        role = m.get("role")
+        if role == "assistant" and m.get("tool_calls"):
+            calls = "; ".join(
+                f'{t["function"]["name"]}({t["function"].get("arguments") or "{}"})'
+                for t in m["tool_calls"]
+            )
+            out.append(
+                {
+                    "role": "assistant",
+                    "content": ((m.get("content") or "") + f"\n[tool call: {calls}]").strip(),
+                }
+            )
+        elif role == "tool":
+            out.append(
+                {
+                    "role": "user",
+                    "content": f'[tool result: {m.get("name", "tool")}] {m.get("content", "")}',
+                }
+            )
+        else:
+            out.append(m)
+    return out
+
+
 class SupportAgent:
     """Base Negotiation Support Agent.
 
@@ -556,9 +592,14 @@ class SupportAgent:
         import os
 
         s = self.settings
+        messages = (
+            flatten_tool_messages(self.messages)
+            if str(s["provider"]).lower() == "ollama"
+            else self.messages
+        )
         kwargs: dict[str, Any] = {
             "model": litellm_model_string(s["provider"], s["model"]),
-            "messages": self.messages,
+            "messages": messages,
             "temperature": s.get("temperature", 0.3),
         }
         if tools:

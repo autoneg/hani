@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Tool calling with the Ollama provider: litellm's Ollama chat transform drops an
+  assistant message's `tool_calls`, so models never saw that they had called a tool and
+  repeated the same call until the loop limit ("Stopped after too many tool calls").
+  Tool calls and results are now sent to Ollama as plain text (the stored conversation is
+  unchanged).
+
+### Changed
+- The agent message box beside the assistant bubble now spans nearly the full window width.
+
+### Documentation
+- Tutorial screenshots for Levels 3 to 7 recaptured with Gemma (`gemma4:cloud`) via
+  Ollama, now showing the proactive toast and the coach filling in a counter-offer.
+
 ## [0.4.0] - 2026-11-16
 
 ### Added

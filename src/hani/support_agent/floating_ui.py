@@ -370,7 +370,7 @@ def _build_status_board(session_state: dict[str, Any]) -> None:
     # A compact message box in the empty space beside the assistant's bubble
     # (bottom-right). position: fixed keeps it on screen at every window size and
     # it takes no room from the panels. It is always present (placeholder text
-    # until the agent writes), is up to 80% of the window wide, grows with its content up to 40% of the
+    # until the agent writes), spans the window (all but the bubble's corner), grows with its content up to 40% of the
     # viewport height
     # and scrolls only when the content is longer than that.
     board = pn.pane.Markdown(
@@ -380,7 +380,7 @@ def _build_status_board(session_state: dict[str, Any]) -> None:
             "position": "fixed",
             "bottom": "28px",
             "right": "96px",
-            "width": "min(80vw, calc(100vw - 130px))",
+            "width": "calc(100vw - 120px)",
             "z-index": "900",
             "color": "#1a1a1a",
             "background": "#ffffff",

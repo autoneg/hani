@@ -6733,8 +6733,8 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
                 pn.config.raw_css.append(
                     ".sa-board { position: fixed !important; bottom: 28px !important; "
                     "right: 96px !important; top: auto !important; left: auto !important; "
-                    "width: min(80vw, calc(100vw - 130px)) !important; "
-                    "max-width: calc(100vw - 130px) !important; z-index: 900 !important; }"
+                    "width: calc(100vw - 120px) !important; "
+                    "max-width: calc(100vw - 120px) !important; z-index: 900 !important; }"
                 )
         except Exception as e:  # noqa: BLE001 - never let the agent break the app
             print(f"Support agent: could not mount floating UI: {e}")
