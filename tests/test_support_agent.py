@@ -416,6 +416,16 @@ def test_floating_agent_builds_with_bubble_and_hidden_panel():
     assert len(list(widget)) == 3       # chat_panel, bubble, click overlay
 
 
+def test_floating_agent_mounts_nothing_when_admin_disabled():
+    from hani.support_agent.floating_ui import build_floating_agent
+
+    ss = {}
+    settings = dict(DEFAULT_SUPPORT_AGENT_SETTINGS, mode="off")
+    widget = build_floating_agent(ss, settings, is_admin=True)
+    assert isinstance(widget, pn.Spacer)
+    assert "support_chat" not in ss and "support_agent" not in ss
+
+
 def test_show_on_board_tool_and_update():
     import panel as pn
 

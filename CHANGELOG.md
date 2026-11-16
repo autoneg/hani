@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     unprompted/event-triggered messages appear as toast notifications or on the
     always-visible bottom status board (chat replies remain in chat).
 
+- **Documentation**: README rewritten around the current feature set (Support
+  Agent, Autopilot, agent groups / per-session opponent pools, named
+  experiments, the Prolific workflow, data collection & analytics); new
+  `docs/experiments.md` and `docs/agents.md`; Ollama local-fallback and
+  per-negotiation LLM logging documented; index/nav updated.
+
 ### Fixed
 - Action panel now rebuilds when the turn transitions from "no offer on the
   table" to "partner offer available" (and vice versa), so the participant no

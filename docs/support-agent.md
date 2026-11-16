@@ -49,10 +49,15 @@ So **out of the box the assistant is on for everyone** (except Prolific sessions
 which start with the user switch off). Examples:
 
 ```bash
-hani --support-agent on      # everyone gets it
+hani --support-agent on      # everyone gets it (both main app and playground)
 hani-app --support-agent off # force off for this deployment
 HANI_SUPPORT_AGENT=on hani-guest   # enable it in the playground (guests aren't admins)
 ```
+
+!!! note "Sub-commands take the env var, not the flag"
+    The flag exists on the top-level `hani`, on `hani-app` and on `hani-guest`.
+    The `hani main` / `hani guest` sub-commands do **not** accept it — use
+    `HANI_SUPPORT_AGENT=on hani main` for those.
 
 ## Configuring the agent
 

@@ -4804,7 +4804,10 @@ def _prolific_submit_url(pid: str) -> str:
     local dev); the production default reaches the live host.
     """
     base = os.environ.get("SCMLWEB_BASE_URL", "https://anac.cs.brown.edu").rstrip("/")
-    return f"{base}/prolific/done?PROLIFIC_PID={pid}"
+    # SCMLWEB_PROLIFIC_PATH lets a second deployment (e.g. a variant of the
+    # study) use its own flow prefix; default keeps the historical URL.
+    path = "/" + os.environ.get("SCMLWEB_PROLIFIC_PATH", "/prolific").strip("/")
+    return f"{base}{path}/done?PROLIFIC_PID={pid}"
 
 
 def _prolific_finish_panel(pid: str):
@@ -6689,9 +6692,16 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
     # nothing is pulled in when the agent is disabled.
     if support_agent_enabled(is_admin=is_admin()):
         try:
-            from hani.support_agent.settings import load_support_agent_settings
+            from hani.support_agent.settings import (
+                load_support_agent_settings,
+                support_agent_enabled as _support_agent_enabled,
+            )
             from hani.support_agent.floating_ui import build_floating_agent
 
+            _sa_settings = load_support_agent_settings()
+            if not _support_agent_enabled(_sa_settings, is_admin=is_admin()):
+                template.servable(title="Human Agent Negotiation Interface")
+                return
             # Session default for the user's on/off switch: ON for normal
             # users, OFF for Prolific users (they can still enable it).
             if "support_agent_default_enabled" not in session_state:
@@ -6699,7 +6709,7 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
                     session_state.get("user", "")
                 )
             floating = build_floating_agent(
-                session_state, load_support_agent_settings(), is_admin()
+                session_state, _sa_settings, is_admin()
             )
             # Mount into the header: it is NOT transformed, so position:fixed children
             # anchor to the viewport (grid cells use CSS transform, which would trap a

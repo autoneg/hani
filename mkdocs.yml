@@ -73,13 +73,17 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Quick Start: quickstart.md
+  - Tutorial - Build a Support Agent: tutorial.md
   - Authentication: authentication.md
   - Setting up Ollama: ollama.md
   - Tools: tools.md
   - Offer Generators: offer-generators.md
-  - Support Agent: support-agent.md
+  - Support Agent & Autopilot: support-agent.md
+  - Agents & Opponent Pools: agents.md
   - Defining Scenarios: scenarios.md
-  - Prolific Integration: prolific.md
+  - Running Studies:
+    - Experiments: experiments.md
+    - Prolific Integration: prolific.md
   - Changelog: changelog.md
 
 extra:

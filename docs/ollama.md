@@ -179,3 +179,42 @@ Administrators can configure LLM settings directly in the HANI interface:
 4. Configure provider, model, and prompts
 
 Changes are saved to `llm_settings.json` and take effect immediately.
+
+## Local fallback
+
+On a deployment server, the default endpoint litellm talks to for `ollama/…`
+models may be the hosted cloud (`ollama.com`), which only serves a curated set of
+models. A model that lives only in your **local** daemon then fails with
+`APIConnectionError: model '<name>' not found`, which would kill the
+negotiation.
+
+HANI installs a thin wrapper around `litellm.completion` that retries such a call
+once against the local Ollama daemon:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HANI_OLLAMA_LOCAL_BASE` | `http://localhost:11434` | Base URL of the local Ollama daemon used for the retry. |
+
+The fallback is scoped to `ollama/` and `ollama_chat/` models only, and it is a
+no-op when the first call succeeds — so it is harmless on dev boxes whose default
+endpoint is already local. It covers both the agents' message layer and HANI's
+own text extraction/generation.
+
+## Support Agent and Autopilot
+
+The [Negotiation Support Agent](support-agent.md) has its **own** LLM
+configuration in `support_agent_settings.json`, separate from the settings on
+this page. To run it against a local model:
+
+```json
+{
+  "provider": "ollama",
+  "model": "ollama_chat/qwen2.5:7b-instruct",
+  "api_base": "http://localhost:11434",
+  "api_key_env": null
+}
+```
+
+To capture every prompt and response an LLM opponent produces during a
+negotiation, set `HANI_LLM_LOG=1` (see
+[Experiments](experiments.md#per-negotiation-llm-call-logging)).

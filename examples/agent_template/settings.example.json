@@ -1,0 +1,8 @@
+{
+  "agent_class": "my_agent:MyAgent",
+  "provider": "ollama",
+  "model": "qwen3:4b-instruct",
+  "autonomy": "suggest",
+  "capabilities": { "submit_counter": false, "accept": false, "end": false },
+  "proactive": { "on_action_requested": false }
+}

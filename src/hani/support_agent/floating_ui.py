@@ -20,6 +20,7 @@ import panel as pn
 
 from hani.support_agent.capabilities import Autonomy, Capability
 from hani.support_agent.runtime import get_or_create_support_agent
+from hani.support_agent.settings import support_agent_enabled
 
 __all__ = ["build_floating_agent"]
 
@@ -84,9 +85,31 @@ _CHAT_SHEET = ":host, .chat-feed, .message { color: #1a1a1a; }"
 _SELECT_SHEET = "select, select option { color:#1a1a1a; background:#ffffff; }"
 
 
+def _bubble_icon_svg(enabled: bool) -> str:
+    """Crisp centered icon for the floating bubble (avoids emoji misalignment)."""
+    path = (
+        "M7.5 8.5C7.5 6.29 9.29 4.5 11.5 4.5H20.5C22.71 4.5 24.5 6.29 24.5 8.5V14.5"
+        "C24.5 16.71 22.71 18.5 20.5 18.5H14.5L10.2 22V18.5H11.5C9.29 18.5 7.5 16.71 7.5 14.5Z"
+    )
+    stroke = "#ffffff"
+    fill = "rgba(255,255,255,0.08)" if enabled else "rgba(255,255,255,0.00)"
+    return (
+        "<div style='width:56px;height:56px;display:flex;align-items:center;justify-content:center;'>"
+        "<svg width='28' height='28' viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg' "
+        "fill='none' aria-hidden='true'>"
+        f"<path d='{path}' fill='{fill}' stroke='{stroke}' stroke-width='2.2' "
+        "stroke-linecap='round' stroke-linejoin='round'/>"
+        "</svg></div>"
+    )
+
+
 def build_floating_agent(
     session_state: dict[str, Any], settings: dict, is_admin: bool
 ) -> pn.viewable.Viewable:
+    # Hard gate: if disabled by admin/config/env for this session, mount nothing.
+    if not support_agent_enabled(settings, is_admin=is_admin):
+        return pn.Spacer(width=0, height=0)
+
     runtime = get_or_create_support_agent(session_state, settings)
     caps = runtime.capabilities
 
@@ -135,8 +158,8 @@ def build_floating_agent(
     # --- master on/off (visual feedback on the bubble) ----------------------
     enable_sw = pn.widgets.Switch(value=runtime.user_enabled, name="")
     status = pn.pane.HTML(margin=(0, 0, 4, 0))
-    bubble_icon = pn.pane.HTML()
-    bubble = pn.Column(bubble_icon, styles=_BUBBLE_STYLE)
+    bubble_icon = pn.pane.HTML(margin=0)
+    bubble = pn.Column(bubble_icon, styles={**_BUBBLE_STYLE, "padding": "0"})
 
     def _render_state(enabled: bool):
         status.object = (
@@ -145,8 +168,7 @@ def build_floating_agent(
             else "<span style='color:#9a9a9a;font-weight:600;font-size:12px;'>○ off</span>"
         )
         bubble.styles = {**_BUBBLE_STYLE, "background": _ON_BG if enabled else _OFF_BG}
-        glyph = "💬" if enabled else "🤖"
-        bubble_icon.object = f"<span style='font-size:26px;color:white;'>{glyph}</span>"
+        bubble_icon.object = _bubble_icon_svg(enabled)
 
     def _on_enable(event):
         runtime.user_enabled = bool(event.new)
