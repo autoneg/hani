@@ -231,6 +231,8 @@ what you need and call `super()` where it makes sense.
 |--------|-----------|-----|
 | `self.post` | `(text, user="Support Agent") -> None` | Post a chat message (unprompted-safe; never re-triggers the callback). |
 | `self.toast` | `(message, level="info") -> bool` | Toast the user; `level` ∈ `info\|success\|warning\|error`. |
+| `self.message_user` | `(text, channel="chat") -> None` | Tell the human something at any moment (`chat`, `toast` or `board`). |
+| `self.ask_user` | `(question, options=None, timeout=180) -> str \| None` | Ask the human and block for the answer (worker thread only). `None` on timeout or Autopilot. |
 | `self.show_on_board` | `(text, append=False) -> bool` | Write markdown/HTML to the always-visible bottom board. |
 | `self.run_on_doc` | `(fn, timeout=30.0)` | Run a UI mutation on the session document and get its result (safe from a worker thread; **don't** call from the IOLoop). |
 | `self._post_async` | `(fn) -> None` | Fire-and-forget UI mutation (safe from either thread). |
@@ -290,6 +292,8 @@ Each is advertised only when its capability is *effective*.
 | `show_on_board(content, append?)` | none (always) | Write markdown/HTML to the bottom board. |
 | `get_negotiation_state()` | none (always) | Read the full live state (same as the injected snapshot). |
 | `list_tools()` | any tool-control cap | List tool tabs + state. |
+| `message_user(text, channel?)` | `CHAT` | Tell the human something at any moment: `chat` (default), `toast` or `board`. |
+| `ask_user(question, options?)` | `CHAT` | Ask the human a question (answer buttons + free text) and wait for the answer. |
 | `set_tool_enabled(name, enabled)` | `TOOL_ENABLE` | Enable/disable a tool. |
 | `set_tool_visible(name, visible)` | `TOOL_VISIBILITY` | Show/hide a tool tab. |
 | `move_tool(name, position?, pane?)` | `TOOL_ORDER` | Reorder / move a tool between panes. |

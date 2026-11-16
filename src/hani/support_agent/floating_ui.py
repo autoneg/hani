@@ -19,7 +19,7 @@ from typing import Any
 import panel as pn
 
 from hani.support_agent.capabilities import Autonomy, Capability
-from hani.support_agent.runtime import get_or_create_support_agent
+from hani.support_agent.runtime import BOARD_PLACEHOLDER, get_or_create_support_agent
 from hani.support_agent.settings import support_agent_enabled
 
 __all__ = ["build_floating_agent"]
@@ -174,6 +174,11 @@ def build_floating_agent(
         runtime.user_enabled = bool(event.new)
         session_state["support_agent_user_enabled"] = runtime.user_enabled
         chat.disabled = not runtime.user_enabled
+        if not runtime.user_enabled:
+            # The agent may have hidden tools; never leave the human without them.
+            ctrl = session_state.get("tool_controller")
+            if ctrl is not None:
+                ctrl.restore_all()
         _render_state(runtime.user_enabled)
 
     enable_sw.param.watch(_on_enable, "value")
@@ -362,15 +367,32 @@ def _build_status_board(session_state: dict[str, Any]) -> None:
     ``support_board`` (the runtime updates ``.object``) and ``support_board_panel``
     (main() places it in the grid bottom row).
     """
+    # A compact message box in the empty space beside the assistant's bubble
+    # (bottom-right). position: fixed keeps it on screen at every window size and
+    # it takes no room from the panels. It is always present (placeholder text
+    # until the agent writes), is up to 80% of the window wide, grows with its content up to 40% of the
+    # viewport height
+    # and scrolls only when the content is longer than that.
     board = pn.pane.Markdown(
-        "",  # empty until the agent writes; no wasted header space
-        sizing_mode="stretch_both",
+        BOARD_PLACEHOLDER,
+        css_classes=["sa-board"],
         styles={
+            "position": "fixed",
+            "bottom": "28px",
+            "right": "96px",
+            "width": "min(80vw, calc(100vw - 130px))",
+            "z-index": "900",
             "color": "#1a1a1a",
             "background": "#ffffff",
-            "border-top": "2px solid #e2e6ec",
-            "padding": "6px 12px",
-            "overflow": "auto",
+            "border": "1px solid #d5dae3",
+            "border-radius": "8px",
+            "box-shadow": "0 2px 8px rgba(0,0,0,.12)",
+            "padding": "4px 12px",
+            "min-height": "40px",
+            "max-height": "40vh",
+            "overflow-y": "auto",
+            "box-sizing": "border-box",
+            "font-size": "13px",
         },
         margin=(0, 0),
     )

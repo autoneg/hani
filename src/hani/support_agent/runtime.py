@@ -33,6 +33,8 @@ __all__ = ["SupportAgent", "get_or_create_support_agent"]
 
 _VALID_TOAST_LEVELS = {"info", "success", "warning", "error"}
 _VALID_PROACTIVE_DELIVERY = {"toast", "board"}
+#: Shown on the always-visible status strip until the agent writes something.
+BOARD_PLACEHOLDER = "*Messages from your assistant appear here.*"
 
 
 class SupportAgent:
@@ -93,6 +95,8 @@ class SupportAgent:
         # Where proactive (event-triggered) assistant messages are surfaced.
         # Chat replies to explicit user messages still go to chat.
         self.user_proactive_delivery = "toast"
+        # A question the agent is waiting on (see ask_user): {"event", "answer"}.
+        self._pending_question: dict[str, Any] | None = None
 
     def set_autopilot(self, active: bool) -> None:
         """Engage/disengage hands-off Autopilot for this agent. While engaged,
@@ -194,9 +198,8 @@ class SupportAgent:
             return False
 
         def _do():
-            board.object = (
-                f"{board.object}\n\n{text}" if append and board.object else text
-            )
+            current = "" if board.object == BOARD_PLACEHOLDER else board.object
+            board.object = f"{current}\n\n{text}" if append and current else text
 
         self._post_async(_do)
         return True
@@ -217,10 +220,86 @@ class SupportAgent:
     # ------------------------------------------------------------------ #
     # Entry points.                                                       #
     # ------------------------------------------------------------------ #
+    def message_user(self, text: str, channel: str = "chat") -> None:
+        """Tell the human something at any moment: ``channel`` is ``"chat"``,
+        ``"toast"`` or ``"board"``. Safe from a worker thread or the IOLoop."""
+        if channel == "toast":
+            if not self._toast_nowait(text):
+                self.post(text)
+        else:
+            self._deliver_assistant_message(text, channel=channel)
+
+    def _toast_nowait(self, text: str, level: str = "info") -> bool:
+        """Toast without blocking (so it is safe even from the IOLoop)."""
+        level = level if level in _VALID_TOAST_LEVELS else "info"
+
+        def _do():
+            notif = getattr(pn.state, "notifications", None)
+            if notif:
+                getattr(notif, level)(text, duration=0 if level in ("error", "warning") else 8000)
+
+        if getattr(pn.state, "notifications", None) is None and self._doc() is None:
+            return False
+        self._post_async(_do)
+        return True
+
+    def ask_user(
+        self, question: str, options: list[str] | None = None, timeout: float = 180.0
+    ) -> str | None:
+        """Ask the human a question and block until they answer.
+
+        Shows ``question`` in the chat with optional answer buttons; a typed chat
+        reply also counts. Returns the answer, or ``None`` if there is no chat, an
+        autopilot is running (nobody to ask), or ``timeout`` seconds pass.
+
+        Call this from a worker thread (a tool handler, ``on_event``,
+        ``handle_user_message``), never from the IOLoop: it blocks.
+        """
+        chat = self.session_state.get("support_chat")
+        if chat is None or self.autopilot or self._pending_question is not None:
+            return None
+        pending = {"event": threading.Event(), "answer": None}
+        self._pending_question = pending
+        buttons: list = []
+
+        def _show():
+            body = [pn.pane.Markdown(f"**{question}**", margin=(0, 5))]
+            if options:
+                for opt in options:
+                    b = pn.widgets.Button(name=str(opt), button_type="primary", margin=(2, 4))
+                    b.on_click(lambda _e, o=str(opt): self._answer_question(o, echo=True))
+                    buttons.append(b)
+                body.append(pn.FlexBox(*buttons))
+            chat.send(pn.Column(*body), user="Support Agent", respond=False)
+
+        try:
+            self._post_async(_show)
+            pending["event"].wait(timeout)
+            return pending["answer"]
+        finally:
+            self._pending_question = None
+            for b in buttons:
+                b.disabled = True
+
+    def _answer_question(self, answer: str, echo: bool = False) -> bool:
+        """Deliver ``answer`` to the waiting ``ask_user`` (button click or typed reply)."""
+        pending = self._pending_question
+        if pending is None:
+            return False
+        pending["answer"] = answer
+        if echo:
+            chat = self.session_state.get("support_chat")
+            if chat is not None:
+                chat.send(answer, user="User", respond=False)
+        pending["event"].set()
+        return True
+
     def handle_user_message(self, text: str) -> None:
         """Called (from the worker thread) when the human sends a chat message."""
         if not self.user_enabled:
             self.post("(The assistant is turned off. Switch it on to chat.)")
+            return
+        if self._answer_question(text):  # a reply to a pending ask_user
             return
         self._run_turn(user_text=text, context_note=self._context_snapshot())
 

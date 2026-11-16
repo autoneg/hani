@@ -544,3 +544,78 @@ def test_loop_stops_at_iteration_cap(monkeypatch):
     )
     agent.handle_user_message("loop forever")
     assert any("too many tool calls" in p for p in posted)
+
+
+# --------------------------------------------------------------------------- #
+# Agent-controlled interface: permanent tools, message_user, ask_user
+# --------------------------------------------------------------------------- #
+def test_agent_may_hide_permanent_tools_but_humans_may_not():
+    combined = _tabs("Scenario Info", "Preferences", perm=("Preferences",))
+    ss = {"upper_tabs": _tabs(), "lower_tabs": _tabs(), "side_tabs": _tabs(),
+          "display_tabs": combined}
+    ctrl = ToolController(ss)
+    assert not ctrl.set_tool_visible("Preferences", False)["ok"]
+    assert ctrl.set_tool_visible("Preferences", False, allow_permanent=True)["ok"]
+    assert list(combined._names) == ["Scenario Info"]
+    assert ctrl.restore_all() == ["Preferences"]
+    assert "Preferences" in list(combined._names)
+
+
+def test_show_restores_enabled_state():
+    combined = _tabs("Scenario Info", "Trace")
+    ctrl = ToolController({"upper_tabs": _tabs(), "lower_tabs": _tabs(),
+                           "side_tabs": _tabs(), "display_tabs": combined})
+    tool = combined.objects[1]
+    ctrl.set_tool_visible("Trace", False)
+    tool.enabled = False  # a hidden tab may be switched off by the container
+    ctrl.set_tool_visible("Trace", True)
+    assert tool.enabled is True
+
+
+class _FakeChat:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, value, user=None, respond=True):
+        self.sent.append((user, value))
+
+
+def _agent_with_chat():
+    chat = _FakeChat()
+    agent = SupportAgent({"support_chat": chat}, dict(DEFAULT_SUPPORT_AGENT_SETTINGS))
+    return agent, chat
+
+
+def test_ask_user_returns_typed_reply():
+    import threading
+    import time
+
+    agent, chat = _agent_with_chat()
+    box = {}
+    t = threading.Thread(target=lambda: box.update(a=agent.ask_user("Style?", ["Cautious"], timeout=5)))
+    t.start()
+    for _ in range(100):
+        if agent._pending_question is not None:
+            break
+        time.sleep(0.02)
+    agent.handle_user_message("Balanced")
+    t.join(5)
+    assert box["a"] == "Balanced"
+    assert agent._pending_question is None
+    assert chat.sent  # the question was shown
+
+
+def test_ask_user_times_out_and_respects_autopilot():
+    agent, _ = _agent_with_chat()
+    assert agent.ask_user("hello?", timeout=0.05) is None
+    agent.autopilot = True
+    assert agent.ask_user("hello?", timeout=0.05) is None
+
+
+def test_ask_user_and_message_user_are_tools():
+    agent, chat = _agent_with_chat()
+    names = [s["function"]["name"] for s in agent.dispatcher.schemas()]
+    assert "ask_user" in names and "message_user" in names
+    assert agent.dispatcher.execute("message_user", {"text": "hi"})["ok"]
+    assert chat.sent[-1][1] == "hi"
+    assert agent.dispatcher.execute("ask_user", {})["ok"] is False

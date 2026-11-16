@@ -64,3 +64,11 @@ def test_assess_tool_verdicts(utility, time, verdict):
     ctx = {"partner_offer_utility": utility, "reserved_value": 0.3, "relative_time": time}
     agent = ToolCoachAgent(_ss(ctx), dict(DEFAULT_SUPPORT_AGENT_SETTINGS))
     assert agent.dispatcher.execute("assess_partner_offer", {})["verdict"] == verdict
+
+
+def test_advanced_levels_load():
+    for spec in ("level6_guided:GuidedAgent", "level7_asking:AskingCoach"):
+        settings = {**DEFAULT_SUPPORT_AGENT_SETTINGS, "agent_class": spec}
+        cls = resolve_agent_class(settings)
+        assert issubclass(cls, SupportAgent) and cls is not SupportAgent
+        assert cls(_ss({}), settings)

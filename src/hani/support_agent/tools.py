@@ -64,6 +64,8 @@ class ToolDispatcher:
                 self._set_tool_visible,
                 self._schema_set_tool_visible,
             ),
+            "message_user": (Capability.CHAT, self._message_user, self._schema_message_user),
+            "ask_user": (Capability.CHAT, self._ask_user, self._schema_ask_user),
             "move_tool": (Capability.TOOL_ORDER, self._move_tool, self._schema_move_tool),
             "get_negotiation_state": (
                 None,
@@ -194,6 +196,60 @@ class ToolDispatcher:
         )
 
     # ------------------------------------------------------------------ #
+    # Talking to the human at any moment                                  #
+    # ------------------------------------------------------------------ #
+    def _message_user(self, args: dict) -> dict:
+        text = str(args.get("text", "")).strip()
+        if not text:
+            return {"ok": False, "error": "text is required"}
+        channel = str(args.get("channel", "chat")).lower()
+        if channel not in ("chat", "toast", "board"):
+            channel = "chat"
+        self.runtime.message_user(text, channel=channel)
+        _log_agent_action(self.ss, "message_user", f"{channel}: {text[:80]}")
+        return {"ok": True, "channel": channel}
+
+    def _schema_message_user(self) -> dict:
+        return _fn(
+            "message_user",
+            "Send the human a message right now, even in the middle of your work. "
+            "channel: 'chat' (default), 'toast' (a pop-up) or 'board' (the status strip).",
+            {
+                "text": {"type": "string", "description": "What to tell the human."},
+                "channel": {"type": "string", "enum": ["chat", "toast", "board"]},
+            },
+            ["text"],
+        )
+
+    def _ask_user(self, args: dict) -> dict:
+        question = str(args.get("question", "")).strip()
+        if not question:
+            return {"ok": False, "error": "question is required"}
+        options = [str(o) for o in (args.get("options") or []) if str(o).strip()]
+        answer = self.runtime.ask_user(question, options or None)
+        _log_agent_action(self.ss, "ask_user", question[:80])
+        if answer is None:
+            return {"ok": False, "error": "the human did not answer (or cannot be asked now)"}
+        return {"ok": True, "answer": answer}
+
+    def _schema_ask_user(self) -> dict:
+        return _fn(
+            "ask_user",
+            "Ask the human a question and wait for the answer (use sparingly, only when "
+            "you truly need their preference or a decision). Optionally offer short "
+            "answer buttons; the human can also type a free-text reply.",
+            {
+                "question": {"type": "string"},
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional short choices shown as buttons.",
+                },
+            },
+            ["question"],
+        )
+
+    # ------------------------------------------------------------------ #
     # Tool control                                                        #
     # ------------------------------------------------------------------ #
     def _controller(self):
@@ -213,7 +269,9 @@ class ToolDispatcher:
         if ctrl is None:
             return {"ok": False, "error": "tool controller unavailable"}
         name, enabled = args.get("name"), bool(args.get("enabled", True))
-        res = self.runtime.run_on_doc(lambda: ctrl.set_tool_enabled(name, enabled))
+        res = self.runtime.run_on_doc(
+            lambda: ctrl.set_tool_enabled(name, enabled, allow_permanent=True)
+        )
         _log_agent_action(self.ss, "set_tool_enabled", f"{name}={enabled}")
         return res
 
@@ -233,7 +291,9 @@ class ToolDispatcher:
         if ctrl is None:
             return {"ok": False, "error": "tool controller unavailable"}
         name, visible = args.get("name"), bool(args.get("visible", True))
-        res = self.runtime.run_on_doc(lambda: ctrl.set_tool_visible(name, visible))
+        res = self.runtime.run_on_doc(
+            lambda: ctrl.set_tool_visible(name, visible, allow_permanent=True)
+        )
         _log_agent_action(self.ss, "set_tool_visible", f"{name}={visible}")
         return res
 

@@ -14,6 +14,8 @@ interface running on your own machine.
 | [3](#level-3-give-it-a-brain) | An LLM coach | System prompts and local models (Ollama) | yes |
 | [4](#level-4-give-it-a-tool) | A coach with its own tool | Tool calling | yes |
 | [5](#level-5-the-finished-deal-coach) | The finished **Deal Coach** | Proactive advice, safe autonomy | yes |
+| [6](#level-6-advanced-control-the-interface) | A **guided** agent | Show/hide tools, chat, toast and the status board at any moment | no |
+| [7](#level-7-advanced-ask-the-user) | An **asking** coach | Asking the user a question and adapting to the answer | optional |
 
 All the code lives in
 [`examples/support_agent_tutorial/`](https://github.com/autoneg/hani/tree/main/examples/support_agent_tutorial).
@@ -372,6 +374,152 @@ current target, and answers with a concrete recommendation:
 
 ---
 
+## Level 6 (advanced): Control the interface
+
+A support agent is not just a chat window. At **any moment** it can
+
+| Ability | In code | LLM tool |
+|---------|---------|----------|
+| Write in the chat | `self.post(text)` / `self.message_user(text)` | *(its normal reply)*, `message_user` |
+| Pop up a notification (toast) | `self.message_user(text, channel="toast")` | `send_toast`, `message_user` |
+| Write to the always-visible status strip at the bottom | `self.message_user(text, channel="board")` | `show_on_board`, `message_user` |
+| Show or hide any tool tab, **including the pinned ones** | `dispatcher.execute("set_tool_visible", ...)` | `set_tool_visible` |
+| Switch a tool on or off | `dispatcher.execute("set_tool_enabled", ...)` | `set_tool_enabled` |
+| Reorder tools and move them between panes | `dispatcher.execute("move_tool", ...)` | `move_tool` |
+| Ask the user a question | `self.ask_user(question, options)` | `ask_user` ([Level 7](#level-7-advanced-ask-the-user)) |
+
+This level uses them **without any LLM**: the agent reveals the analysis tools step by step
+as the negotiation develops, and tells you what it did. The same calls are available to an
+LLM agent as tools, so you can let the model decide instead (Level 5) or script the policy
+yourself, as here. Scripted policies are predictable, free and easy to test.
+
+```python title="level6_guided.py"
+from hani.support_agent.runtime import SupportAgent
+
+ADVANCED = ["Value Histogram", "Utility Plot", "Outcome Plot", "Trace"]
+
+
+class GuidedAgent(SupportAgent):
+    def __init__(self, session_state, settings):
+        super().__init__(session_state, settings)
+        self._turns = 0
+
+    def _tool(self, name: str, visible: bool) -> None:
+        self.dispatcher.execute("set_tool_visible", {"name": name, "visible": visible})
+        if visible:  # some plots are switched off by default: turn them on too
+            self.dispatcher.execute("set_tool_enabled", {"name": name, "enabled": True})
+
+    def on_event(self, event_name: str, nmi=None) -> None:
+        if not self.user_enabled:
+            return
+        if event_name == "negotiation_started":
+            for name in ADVANCED:  # start simple: hide everything advanced
+                self._tool(name, False)
+            self.message_user(
+                "I hid the advanced plots so you can focus on the offers. "
+                "I will bring them back as the negotiation develops."
+            )
+        elif event_name == "action_requested":
+            self._turns += 1
+            if self._turns == 2:
+                self._tool("Utility Plot", True)
+                self.message_user("Second round: here is the Utility Plot.", channel="toast")
+                self.message_user("**Plan:** compare the partner's offers on the Utility Plot.", channel="board")
+            if self._turns == 3:
+                for name in ("Outcome Plot", "Trace"):
+                    self._tool(name, True)
+                self.message_user("All tools are back. Check the Outcome Plot for the Pareto front.")
+```
+
+`on_event` is called by HANI with `"negotiation_started"` when a negotiation begins and
+`"action_requested"` every time it is the human's turn. Use
+`{ "agent_class": "level6_guided:GuidedAgent" }`, restart and click **Start**. The agent has
+hidden the four analysis tabs and explained why:
+
+![Level 6: the advanced plots are hidden and the agent explains](assets/tutorial/level6-start-full.png)
+
+Make a counter-offer (**Reject**, then **Send**). On the second round the agent brings back
+the Utility Plot, **pops up a notification** and writes its plan on the **status strip** at the
+bottom of the window:
+
+![Level 6: a toast notification and the status strip](assets/tutorial/level6-toast-full.png)
+
+On the third round the rest of the tools return:
+
+![Level 6: all tools are back](assets/tutorial/level6-all-full.png)
+
+!!! note "The human is never locked out"
+    Everything the agent hides is restored automatically if the participant switches the
+    assistant off, and the agent can only do what the settings allow (`tool_visibility`,
+    `tool_enable`, `tool_order`, `toast`, `chat` capabilities).
+
+!!! success "Experiment"
+    Change *when* each tool appears, hide the **Preferences** tab for a round, or have the
+    agent write the partner's latest utility to the board on every turn.
+
+---
+
+## Level 7 (advanced): Ask the user
+
+Sometimes the agent needs a decision only the human can make. `self.ask_user(question,
+options)` shows the question in the chat with answer buttons, **waits** for the answer
+(a button click or a typed reply) and returns it. It returns `None` if nobody answers within
+`timeout` seconds or while Autopilot is on (there is nobody to ask).
+
+Here the coach asks, at the start, which style the user wants and then adapts: it tells the
+model, and from then on its advice follows that style.
+
+```python title="level7_asking.py"
+from level5_deal_coach import DealCoach
+
+STYLES = {
+    "Cautious": "Prefer safe deals; recommend accepting any offer above the reserved value.",
+    "Balanced": "Weigh risk and reward; accept good-enough offers late, counter early.",
+    "Aggressive": "Push hard for the best deal; counter unless the offer is excellent.",
+}
+
+
+class AskingCoach(DealCoach):
+    style = "Balanced"
+
+    def on_event(self, event_name: str, nmi=None) -> None:
+        if event_name == "negotiation_started" and self.user_enabled:
+            answer = self.ask_user(
+                "How should I help you in this negotiation?", list(STYLES)
+            )
+            if answer in STYLES:
+                self.style = answer
+            # Tell the model what the user chose (it is part of the conversation).
+            self.messages.append(
+                {"role": "user", "content": f"(system) The user wants a "
+                 f"{self.style} approach. {STYLES[self.style]}"}
+            )
+            self.message_user(f"Got it: I will coach you with a **{self.style}** style.")
+            return
+        super().on_event(event_name, nmi)
+```
+
+Set `{ "agent_class": "level7_asking:AskingCoach" }` and start a negotiation. The question
+appears with one button per option:
+
+![Level 7: the agent asks the user a question](assets/tutorial/level7-question-full.png)
+
+Click **Aggressive** (or type your own answer). The agent acknowledges and carries on:
+
+![Level 7: the agent adapts to the answer](assets/tutorial/level7-answer-full.png)
+
+!!! warning "`ask_user` blocks"
+    Call it from a worker thread — `on_event`, `handle_user_message` or a tool handler —
+    never from code that runs on the interface thread. An LLM agent can also call it
+    itself: `ask_user` is one of its tools, so a prompt such as *"if you need the user's
+    risk appetite, ask for it"* is enough.
+
+!!! success "Experiment"
+    Add a free-text question (`ask_user("What is your walk-away price?")` with no options),
+    or ask again after the second round and compare.
+
+---
+
 ## What you built
 
 A support agent that
@@ -380,8 +528,10 @@ A support agent that
 2. understands the live negotiation,
 3. converses through an LLM with a persona you control,
 4. makes its judgements in tested code via a tool,
-5. speaks up when it matters, and
-6. can only do what you permitted.
+5. speaks up when it matters,
+6. controls the interface — tools, chat, notifications and the status strip — at any moment,
+7. asks the user when it needs a decision, and
+8. can only do what you permitted.
 
 ## Troubleshooting
 

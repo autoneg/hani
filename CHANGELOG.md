@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-16
+
 ### Added
+- **`ask_user`**: the support agent can ask the human a question (answer buttons and/or a
+  typed reply) and wait for the answer, as `SupportAgent.ask_user()` and as an LLM tool.
+  Returns `None` on timeout or while Autopilot is on.
+- **`message_user`**: the agent can tell the human something at any moment through the chat,
+  a toast notification or the status strip (`SupportAgent.message_user()` and LLM tool).
+- Tutorial levels 6 (control the interface) and 7 (ask the user) with screenshots, plus a
+  table of everything the agent can do to the interface.
+- **Support-agent tutorial** (`docs/tutorial.md`): six levels from installation and a
+  6-line echo agent, through a rule-based advisor, an LLM coach and a custom tool,
+  to a finished Deal Coach, each with a full-screen screenshot of a real run.
+  Runnable code in `examples/support_agent_tutorial/` (tested in
+  `tests/test_tutorial_agents.py`).
+- **Downloadable agent template** (`examples/agent_template/`, also served from the docs
+  site as `downloads/hani-agent-template.zip`) with an example tool, proactive hook,
+  settings file and offline smoke test.
 - **Optional Negotiation Support Agent** (`hani.support_agent`): an LLM-driven
   assistant, enabled by default (with a user on/off switch), that can:
   - chat with the user (and post messages unprompted) via a floating **chat
@@ -42,6 +59,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   experiments, the Prolific workflow, data collection & analytics); new
   `docs/experiments.md` and `docs/agents.md`; Ollama local-fallback and
   per-negotiation LLM logging documented; index/nav updated.
+
+### Changed
+- The support agent can now show, hide, enable and disable **every** tool, including the
+  pinned ones (Scenario Info, Preferences, User Results). Hidden tools are restored when
+  the participant switches the assistant off, and a tool that is shown again keeps its
+  enabled state.
+- The agent status strip is a thin bar fixed to the bottom of the window, so it is visible
+  at every window size (it showed nothing on small displays before); it shows a placeholder
+  until the agent writes.
+- Slimmer top bar (no title text), giving the panels about 30px of extra height.
+- Requires `negmas>=0.17.0`; outcome spaces are stored and referenced as the negmas 0.17
+  `Enumerable*OutcomeSpace` types.
+- Package and documentation links now point at `autoneg/hani`
+  (`https://github.com/autoneg/hani`, `https://autoneg.github.io/hani/`); older releases
+  on PyPI still show the former `yasserfarouk` URLs.
 
 ### Fixed
 - Action panel now rebuilds when the turn transitions from "no offer on the
@@ -391,6 +423,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Links
-- [Repository](https://github.com/yasserfarouk/hani)
-- [Documentation](https://yasserfarouk.github.io/hani/)
-- [Issue Tracker](https://github.com/yasserfarouk/hani/issues)
+- [Repository](https://github.com/autoneg/hani)
+- [Documentation](https://autoneg.github.io/hani/)
+- [Issue Tracker](https://github.com/autoneg/hani/issues)

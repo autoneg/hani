@@ -518,6 +518,16 @@ pn.config.throttled = True
 # and for the page itself while Bokeh is still establishing the session.
 pn.config.loading_spinner = "dots"
 
+# Slim top bar: just the sidebar button and the header controls (no title text),
+# which gives the panels back ~30px of height.
+pn.config.raw_css.append("""
+#header { height: 34px !important; min-height: 34px !important;
+          padding-top: 0 !important; padding-bottom: 0 !important; }
+#header .app-header, #header .title { display: none !important; }
+#header > * { align-self: center !important; margin-top: 0 !important;
+              margin-bottom: 0 !important; max-height: 34px !important; }
+#header #sidebar-button { position: static !important; top: auto !important; }
+""")
 # Override gray background with white
 pn.config.raw_css.append("""
     body, .bk-root, #main, .main, .container-fluid {
@@ -6715,10 +6725,17 @@ Use these `{tag}` placeholders in your prompts. They will be replaced with actua
             # anchor to the viewport (grid cells use CSS transform, which would trap a
             # fixed element inside the cell). The panel forces its own light theme.
             template.header.append(floating)
-            # Full-width, always-visible status board below all the panels.
+            # Always-visible message box beside the assistant bubble (bottom-right)
+            # (position: fixed, so the grid does not transform it).
             board_panel = session_state.get("support_board_panel")
             if board_panel is not None:
-                template.main[5:6, 0:12] = board_panel  # type: ignore
+                template.header.append(board_panel)
+                pn.config.raw_css.append(
+                    ".sa-board { position: fixed !important; bottom: 28px !important; "
+                    "right: 96px !important; top: auto !important; left: auto !important; "
+                    "width: min(80vw, calc(100vw - 130px)) !important; "
+                    "max-width: calc(100vw - 130px) !important; z-index: 900 !important; }"
+                )
         except Exception as e:  # noqa: BLE001 - never let the agent break the app
             print(f"Support agent: could not mount floating UI: {e}")
 

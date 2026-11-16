@@ -33,6 +33,9 @@ class ToolController:
         # Remembers hidden tabs so they can be restored:
         # name -> (name, pane, idx, container_key).
         self._hidden: dict[str, tuple[str, Any, int, str | None]] = {}
+        # The enabled state of each hidden tool, so showing it again restores it
+        # (removing a tab from the Tabs container can switch the tool off).
+        self._was_enabled: dict[str, bool] = {}
 
     # ------------------------------------------------------------------ #
     def _tabs(self, key: str) -> pn.Tabs | None:
@@ -83,8 +86,16 @@ class ToolController:
                         "permanent": bool(getattr(pane, "permanent", False)),
                     }
                 )
-        for nm in self._hidden:
-            out.append({"name": nm, "pane": None, "visible": False, "enabled": None})
+        for nm, (_, pane, _, _) in self._hidden.items():
+            out.append(
+                {
+                    "name": nm,
+                    "pane": None,
+                    "visible": False,
+                    "enabled": bool(getattr(pane, "enabled", True)),
+                    "permanent": bool(getattr(pane, "permanent", False)),
+                }
+            )
         return out
 
     def _container_key(self, container: pn.Tabs) -> str | None:
@@ -96,30 +107,43 @@ class ToolController:
         return None
 
     # ------------------------------------------------------------------ #
-    def set_tool_enabled(self, name: str, enabled: bool) -> dict:
+    def set_tool_enabled(self, name: str, enabled: bool, allow_permanent: bool = False) -> dict:
         found = self._find(name)
         if found is None:
             return {"ok": False, "error": f"tool '{name}' not found"}
         _, _, nm, tool = found
-        if getattr(tool, "permanent", False):
+        if getattr(tool, "permanent", False) and not allow_permanent:
             return {"ok": False, "error": f"'{nm}' is a permanent tool and cannot be disabled"}
         if not hasattr(tool, "enabled"):
             return {"ok": False, "error": f"'{nm}' cannot be toggled"}
         tool.enabled = bool(enabled)
         return {"ok": True, "name": nm, "enabled": bool(enabled)}
 
-    def set_tool_visible(self, name: str, visible: bool) -> dict:
+    def set_tool_visible(self, name: str, visible: bool, allow_permanent: bool = False) -> dict:
+        """Show/hide a tool. ``allow_permanent`` lets the Support Agent (not the
+        human close buttons) hide tools that are normally pinned; they stay
+        restorable through ``set_tool_visible(name, True)`` / ``restore_all``."""
         if visible:
             return self._show(name)
-        return self._hide(name)
+        return self._hide(name, allow_permanent=allow_permanent)
 
-    def _hide(self, name: str) -> dict:
+    def restore_all(self) -> list[str]:
+        """Bring back every tool the agent hid (e.g. when the user switches the
+        agent off), so the participant is never left without their tools."""
+        restored = []
+        for nm in list(self._hidden):
+            if self._show(nm).get("ok"):
+                restored.append(nm)
+        return restored
+
+    def _hide(self, name: str, allow_permanent: bool = False) -> dict:
         found = self._find(name)
         if found is None:
             return {"ok": False, "error": f"tool '{name}' not found (already hidden?)"}
         container, idx, nm, pane = found
-        if getattr(pane, "permanent", False):
+        if getattr(pane, "permanent", False) and not allow_permanent:
             return {"ok": False, "error": f"'{nm}' is permanent and cannot be hidden"}
+        self._was_enabled[nm] = bool(getattr(pane, "enabled", True))
         container.pop(idx)
         self._hidden[nm] = (nm, pane, idx, self._container_key(container))
         return {"ok": True, "name": nm, "visible": False}
@@ -148,6 +172,8 @@ class ToolController:
             return {"ok": False, "error": "no container to restore into"}
         pos = min(idx, len(target.objects))
         target.insert(pos, (nm, pane))
+        if hasattr(pane, "enabled"):
+            pane.enabled = self._was_enabled.pop(nm, True)
         return {"ok": True, "name": nm, "visible": True}
 
     # -- object-based entry points for the Tool move/close buttons ----------
