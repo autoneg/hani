@@ -8,6 +8,8 @@
 
 ![hani](hani.png)
 
+>  **Status: superseded by HANI2.** This project (HANI) is no longer used as the official interface for the ANAC Human-Agent Negotiation (HAN) and Hybrid Intelligence (HI) leagues. Future development happens in **[HANI2](https://github.com/autoneg/hani2)** ([documentation](https://autoneg.github.io/hani2/), `pip install hani2`). HANI stays available for existing users but will receive no new features.
+
 HANI is a web-based interface for conducting negotiations between humans and AI agents. It provides a rich set of tools for analyzing negotiation dynamics, making offers, and understanding your negotiation partner's behavior — plus an optional LLM **negotiation support agent**, an **autopilot**, and a complete **experiment / Prolific workflow** for running human-subject studies.
 
 ## Three Goals

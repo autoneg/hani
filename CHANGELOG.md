@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- README and docs home now state that HANI is no longer the official interface for the ANAC HAN and HI leagues; future development is in HANI2.
+
 ### Fixed
 - Tool calling with the Ollama provider: litellm's Ollama chat transform drops an
   assistant message's `tool_calls`, so models never saw that they had called a tool and
